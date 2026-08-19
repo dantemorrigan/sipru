@@ -1,7 +1,16 @@
 /* ============================================================
    Writed. — custom cursor
    ============================================================ */
+const FINE_POINTER = (() => {
+  try { return window.matchMedia("(hover: hover) and (pointer: fine)").matches; }
+  catch (e) { return true; }
+})();
+
 function CustomCursor() {
+  return FINE_POINTER ? <CustomCursorFine /> : null;
+}
+
+function CustomCursorFine() {
   const dotRef  = useRef(null);
   const ringRef = useRef(null);
   const pos = useRef({ x: -100, y: -100 });
@@ -63,6 +72,7 @@ function CustomCursor() {
    ============================================================ */
 function SplashScreen({ onDone }) {
   const [phase, setPhase] = useState('in');
+  const tl = T((WritedStore.get().user || {}).lang || "en");
 
   useEffect(() => {
     const t1 = setTimeout(() => setPhase('out'), 900);
@@ -77,7 +87,7 @@ function SplashScreen({ onDone }) {
           Writed<span className="dot" />
         </span>
         <div className="splash-line" />
-        <span className="splash-sub">редактор для писателей</span>
+        <span className="splash-sub">{tl("app_splash_sub")}</span>
       </div>
     </div>
   );
@@ -93,6 +103,7 @@ function App() {
   const [splashDone, setSplashDone] = useState(false);
   const [route, setRoute] = useState(() => s.onboarded ? { name: "dashboard" } : { name: "onboarding" });
   const [exportFor, setExportFor] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [toastNode, toast] = useToast();
   const editorApi = useRef(null);
 
@@ -111,16 +122,29 @@ function App() {
     export: (pid, fmt) => setExportFor({ pid, fmt }),
   }), [store]);
 
-  // global shortcut: ⌘/Ctrl+S saves the open document
+  // global shortcuts: ⌘/Ctrl+S saves the open document, ⌘/Ctrl+K opens search
   useEffect(() => {
     function onKey(e) {
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); if (editorApi.current) editorApi.current.run("save"); }
+      const k = (e.key || "").toLowerCase();
+      if (mod && k === "s") { e.preventDefault(); if (editorApi.current) editorApi.current.run("save"); }
+      else if (mod && k === "k") { e.preventDefault(); setSearchOpen((o) => !o); }
       else if (e.key === "Escape" && exportFor) setExportFor(null);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [exportFor]);
+
+  // search scope: the project you are in, otherwise everything
+  const searchScope = route.name === "project" ? route.id
+    : route.name === "doc" ? (() => { const f = store.findDoc(route.id); return f && f.project ? f.project.id : null; })()
+    : null;
+
+  function onSearchPick(r) {
+    setSearchOpen(false);
+    if (r.kind === "synopsis") nav.project(r.projectId);
+    else nav.doc(r.id);
+  }
 
   if (!splashDone) {
     return (
@@ -136,8 +160,8 @@ function App() {
   }
 
   let screen;
-  if (route.name === "dashboard") screen = <Dashboard store={store} user={user} nav={nav} onTheme={setTheme} />;
-  else if (route.name === "project") screen = <ProjectView store={store} user={user} nav={nav} onTheme={setTheme} projectId={route.id} />;
+  if (route.name === "dashboard") screen = <Dashboard store={store} user={user} nav={nav} onTheme={setTheme} onSearch={() => setSearchOpen(true)} onToast={toast} />;
+  else if (route.name === "project") screen = <ProjectView store={store} user={user} nav={nav} onTheme={setTheme} projectId={route.id} onSearch={() => setSearchOpen(true)} onToast={toast} />;
   else if (route.name === "doc") screen = <Editor key={route.id} store={store} user={user} nav={nav} onTheme={setTheme} docId={route.id} apiRef={editorApi} onToast={toast} />;
   else if (route.name === "profile") screen = <Profile store={store} user={user} nav={nav} onTheme={setTheme} onToast={toast} />;
 
@@ -145,6 +169,10 @@ function App() {
     <>
       <CustomCursor />
       {screen}
+      {searchOpen && (
+        <SearchModal store={store} lang={user.lang} projectId={searchScope}
+          onPick={onSearchPick} onClose={() => setSearchOpen(false)} />
+      )}
       {exportFor && <ExportModal store={store} projectId={exportFor.pid} initialFormat={exportFor.fmt}
         onClose={() => setExportFor(null)} onToast={toast} />}
       {s.onboarded && !s.tourDone && route.name !== "profile" && (

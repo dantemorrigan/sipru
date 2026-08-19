@@ -189,9 +189,33 @@ function buildPlain(project, opts, md) {
   const chapters = project.chapters.filter((c) => opts.include[c.id] !== false);
   let out = "";
   if (opts.titlePage) out += project.title.toUpperCase() + "\n" + (project.synopsis || "") + "\n\n\n";
-  if (opts.toc) out += "СОДЕРЖАНИЕ\n" + chapters.map((c, i) => (i + 1) + ". " + c.title).join("\n") + "\n\n\n";
+  if (opts.toc) out += t("toc_title", opts.lang || "en").toUpperCase() + "\n" + chapters.map((c, i) => (i + 1) + ". " + c.title).join("\n") + "\n\n\n";
   chapters.forEach((c) => { out += (md ? htmlToMd(c.content) : htmlToText(c.content)) + "\n\n\n"; });
   return out.trim() + "\n";
+}
+
+/* Real Office Open XML .docx — same chapter selection and book options. */
+function buildBookDocx(project, opts) {
+  const chapters = project.chapters.filter((c) => opts.include[c.id] !== false);
+  const sections = [];
+  if (opts.toc) {
+    sections.push({
+      heading: t("toc_title", opts.lang || "en"),
+      html: "<ol>" + chapters.map((c) => "<li>" + c.title.replace(/[<>&]/g, " ") + "</li>").join("") + "</ol>",
+      pageBreakBefore: opts.titlePage && !opts.merge,
+    });
+  }
+  chapters.forEach((c, i) => {
+    sections.push({
+      html: c.content || "",
+      pageBreakBefore: !opts.merge && (i > 0 || opts.toc || opts.titlePage),
+    });
+  });
+  return WritedFormats.buildDocx({
+    title: opts.titlePage ? project.title : "",
+    subtitle: opts.titlePage ? (project.synopsis || "") : "",
+    sections, paperSize: opts.paperSize, margin: opts.margin, font: opts.font,
+  });
 }
 
 function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
@@ -220,8 +244,10 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
       setTimeout(() => { w.focus(); w.print(); }, 700);
       onToast(tl("exp_toast_pdf"));
     } else if (fmt === "docx") {
-      downloadBlob(base + ".doc", "application/msword", buildBookHTML(project, opts));
-      onToast(tl("exp_toast_docx"));
+      try {
+        downloadBlob(base + ".docx", WritedFormats.DOCX_MIME, buildBookDocx(project, opts));
+        onToast(tl("exp_toast_docx_real"));
+      } catch (e) { onToast(tl("exp_err_docx")); }
     } else if (fmt === "txt") {
       downloadBlob(base + ".txt", "text/plain;charset=utf-8", buildPlain(project, opts, false));
       onToast(tl("exp_toast_txt"));
@@ -268,8 +294,8 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
             </div>
 
             <div className="exp-grp">
-              <div className="exp-grp-h mono">Вёрстка</div>
-              <div className="exp-row"><span className="exp-lbl">Формат</span>
+              <div className="exp-grp-h mono">{tl("exp_section_typeset")}</div>
+              <div className="exp-row"><span className="exp-lbl">{tl("exp_paper")}</span>
                 <div className="seg seg--sm">{Object.entries(PAPER).map(([k, p]) => (
                   <button key={k} className={"seg-btn"+(opts.paperSize===k?" on":"")} onClick={() => set({paperSize:k})}>{p.label}</button>))}</div>
               </div>
@@ -346,14 +372,20 @@ function NoteExportModal({ note, onClose, onToast, lang }) {
     const base = note.title.replace(/[^\wа-яёА-ЯЁ\- ]+/gi, "").trim() || "note";
     if (fmt === "pdf") {
       const w = window.open("", "_blank");
-      if (!w) { onToast("Разрешите всплывающие окна для печати в PDF"); return; }
+      if (!w) { onToast(tl("exp_err_popup")); return; }
       w.document.write(buildNoteHTML(note, opts));
       w.document.close();
       setTimeout(() => { w.focus(); w.print(); }, 700);
       onToast(tl("exp_toast_pdf"));
     } else if (fmt === "docx") {
-      downloadBlob(base + ".doc", "application/msword", buildNoteHTML(note, opts));
-      onToast(tl("exp_toast_docx"));
+      try {
+        downloadBlob(base + ".docx", WritedFormats.DOCX_MIME, WritedFormats.buildDocx({
+          title: opts.titlePage ? note.title : "",
+          sections: [{ html: note.content || "" }],
+          paperSize: opts.paperSize, margin: opts.margin, font: opts.font,
+        }));
+        onToast(tl("exp_toast_docx_real"));
+      } catch (e) { onToast(tl("exp_err_docx")); }
     } else if (fmt === "txt") {
       downloadBlob(base + ".txt", "text/plain;charset=utf-8", htmlToText(note.content));
       onToast(tl("exp_toast_txt"));
@@ -382,7 +414,7 @@ function NoteExportModal({ note, onClose, onToast, lang }) {
             </div>
             <div className="exp-grp">
               <div className="exp-grp-h mono">{tl("exp_section_layout")}</div>
-              <div className="exp-row"><span className="exp-lbl">Формат</span>
+              <div className="exp-row"><span className="exp-lbl">{tl("exp_paper")}</span>
                 <div className="seg seg--sm">{Object.entries(PAPER).map(([k, p]) => (
                   <button key={k} className={"seg-btn"+(opts.paperSize===k?" on":"")} onClick={() => set({paperSize:k})}>{p.label}</button>))}</div>
               </div>
@@ -420,4 +452,4 @@ function NoteExportModal({ note, onClose, onToast, lang }) {
   );
 }
 
-Object.assign(window, { BookPreview, ExportModal, NoteExportModal, htmlToText, htmlToMd, downloadBlob });
+Object.assign(window, { BookPreview, ExportModal, NoteExportModal, htmlToText, htmlToMd, downloadBlob, buildBookDocx });

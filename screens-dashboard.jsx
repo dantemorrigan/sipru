@@ -101,7 +101,119 @@ function SortMenu({ value, onChange, lang }) {
   );
 }
 
-function Dashboard({ store, user, nav, onTheme }) {
+/* ---- file import (txt / md / html) — shared by dashboard & project ---- */
+function ImportButton({ lang, onFile, onToast, label, className }) {
+  const tl = T(lang || "en");
+  const ref = useRef(null);
+  async function onChange(e) {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const parsed = await WritedFormats.importFile(f);
+      onFile(parsed);
+      onToast && onToast(tl("import_ok"));
+    } catch (err) {
+      onToast && onToast(tl(err && err.message === "unsupported" ? "import_err_type" : "import_err"));
+    }
+  }
+  return (
+    <>
+      <button className={className || "btn btn--ghost"} onClick={() => ref.current.click()}
+        title={tl("import_hint")}>
+        <Icon name="upload" size={16} /> {label || tl("import_btn")}
+      </button>
+      <input ref={ref} type="file" style={{ display: "none" }}
+        accept={WritedFormats.IMPORT_ACCEPT} onChange={onChange} />
+    </>
+  );
+}
+
+/* ---- project writing goal ---- */
+const todayKey = () => new Date().toISOString().slice(0, 10);
+
+function GoalBlock({ p, store, words, lang }) {
+  const tl = T(lang || "en");
+  const locale = lang === "ru" ? "ru-RU" : "en-US";
+  const [editing, setEditing] = useState(false);
+  const goal = p.goal;
+
+  /* daily goal keeps a single baseline for the current day — no history */
+  useEffect(() => {
+    if (!goal || !goal.daily) return;
+    const day = todayKey();
+    if (goal.dayDate !== day) store.setGoal(p.id, { ...goal, dayDate: day, dayStart: words });
+  }, [goal && goal.daily, goal && goal.dayDate, p.id]);
+
+  if (editing || !goal) {
+    return <GoalEditor p={p} store={store} words={words} lang={lang}
+      onDone={() => setEditing(false)} compact={!goal && !editing} onEdit={() => setEditing(true)} />;
+  }
+
+  const pct = Math.min(100, Math.round((words / goal.target) * 100));
+  const today = goal.daily ? Math.max(0, words - (goal.dayStart || 0)) : 0;
+  return (
+    <div className="goal-block">
+      <div className="goal-line mono">
+        <span className="goal-cur">{words.toLocaleString(locale)}</span>
+        <span className="goal-sep">/</span>
+        <span>{goal.target.toLocaleString(locale)} {tl("word_many")}</span>
+        <button className="goal-edit" onClick={() => setEditing(true)} title={tl("goal_edit")}>
+          <Icon name="settings" size={13} />
+        </button>
+      </div>
+      <ProgressBar value={words} max={goal.target} accent={words >= goal.target} />
+      <div className="goal-meta mono">
+        {words >= goal.target ? tl("goal_done") : pct + "%"}
+        {goal.daily > 0 && <> · {tl("goal_today")} {today.toLocaleString(locale)}/{goal.daily.toLocaleString(locale)}</>}
+      </div>
+    </div>
+  );
+}
+
+function GoalEditor({ p, store, words, lang, onDone, compact, onEdit }) {
+  const tl = T(lang || "en");
+  const goal = p.goal;
+  const [target, setTarget] = useState(String((goal && goal.target) || Math.max(10000, Math.ceil(words / 1000) * 1000)));
+  const [daily, setDaily] = useState(String((goal && goal.daily) || ""));
+
+  if (compact) {
+    return (
+      <button className="status-toggle mono goal-add" onClick={onEdit}>
+        <Icon name="target" size={14} /> {tl("goal_set")}
+      </button>
+    );
+  }
+
+  function save() {
+    const tgt = parseInt(String(target).replace(/\D/g, ""), 10);
+    if (!tgt) return;
+    const d = parseInt(String(daily).replace(/\D/g, ""), 10) || 0;
+    store.setGoal(p.id, { target: tgt, daily: d, dayDate: d ? todayKey() : "", dayStart: d ? words : 0 });
+    onDone();
+  }
+
+  return (
+    <div className="goal-block goal-block--edit">
+      <label className="goal-field mono">{tl("goal_target")}
+        <input inputMode="numeric" value={target} onChange={(e) => setTarget(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && save()} />
+      </label>
+      <label className="goal-field mono">{tl("goal_daily")}
+        <input inputMode="numeric" value={daily} placeholder={tl("goal_daily_off")}
+          onChange={(e) => setDaily(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} />
+      </label>
+      <div className="goal-actions">
+        <button className="btn btn--accent btn--xs" onClick={save}>{tl("goal_save")}</button>
+        <button className="btn btn--ghost btn--xs" onClick={onDone}>{tl("confirm_cancel")}</button>
+        {p.goal && <button className="btn btn--ghost btn--xs goal-off"
+          onClick={() => { store.setGoal(p.id, null); onDone(); }}>{tl("goal_remove")}</button>}
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({ store, user, nav, onTheme, onSearch, onToast }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [sort, setSort] = useState("created_desc");
@@ -133,7 +245,10 @@ function Dashboard({ store, user, nav, onTheme }) {
 
   return (
     <div className="app-shell screen-enter">
-      <TopBar user={user} store={store} nav={nav} onTheme={onTheme} />
+      <TopBar user={user} store={store} nav={nav} onTheme={onTheme}
+        right={<button className="btn btn--ghost btn--search" onClick={onSearch} title={tl("search_title")}>
+          <Icon name="search" size={16} /> <span className="btn-search-l">{tl("search_btn")}</span>
+        </button>} />
       <div className="scroll-area">
         <div className="wrap">
 
@@ -161,6 +276,16 @@ function Dashboard({ store, user, nav, onTheme }) {
               <div><span className="bigaction-t">{tl("btn_new_note")}</span><span className="bigaction-s mono">{tl("desc_note")}</span></div>
               <Icon name="plus" size={18} className="bigaction-plus" />
             </button>
+          </div>
+
+          <div className="dash-import">
+            <ImportButton lang={lang} onToast={onToast}
+              onFile={({ title, html }) => {
+                const id = store.createNote(title);
+                store.updateDoc(id, { content: html });
+                nav.doc(id);
+              }} />
+            <span className="dash-import-h mono">{tl("import_hint")}</span>
           </div>
 
           <div className="dash-filter">
@@ -241,7 +366,7 @@ function ProjectCard({ p, store, nav, idx, onDelete, lang }) {
   const tl = T(lang || "en");
   const locale = lang === "ru" ? "ru-RU" : "en-US";
   const words = store.projectWords(p);
-  const goal = Math.max(2000, Math.ceil(words / 1000) * 1000 + 1000);
+  const goal = (p.goal && p.goal.target) || Math.max(2000, Math.ceil(words / 1000) * 1000 + 1000);
   return (
     <div className="card card--project fade-up" style={{ animationDelay: idx * 60 + "ms" }}>
       <div className="card-inner" role="button" tabIndex={0}
@@ -295,7 +420,7 @@ function NoteCard({ n, nav, idx, onDelete, lang }) {
 }
 
 /* ----------------------- PROJECT (folder) ----------------------- */
-function ProjectView({ store, user, nav, onTheme, projectId }) {
+function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }) {
   const s = store.get();
   const p = s.projects.find((x) => x.id === projectId);
   const [dragId, setDragId] = useState(null);
@@ -318,7 +443,6 @@ function ProjectView({ store, user, nav, onTheme, projectId }) {
   }
 
   const words = store.projectWords(p);
-  const goal = Math.max(3000, Math.ceil(words / 5000) * 5000 + 5000);
 
   function onDrop(targetId) {
     if (!dragId || dragId === targetId) { setDragId(null); setOverId(null); return; }
@@ -343,7 +467,12 @@ function ProjectView({ store, user, nav, onTheme, projectId }) {
   return (
     <div className="app-shell screen-enter">
       <TopBar user={user} store={store} nav={nav} onTheme={onTheme}
-        right={<button className="btn btn--ghost" onClick={() => nav.export(p.id)}><Icon name="book" size={16} /> {tl("assemble_book")}</button>} />
+        right={<>
+          <button className="btn btn--ghost btn--search" onClick={onSearch} title={tl("search_title")}>
+            <Icon name="search" size={16} /> <span className="btn-search-l">{tl("search_btn")}</span>
+          </button>
+          <button className="btn btn--ghost" onClick={() => nav.export(p.id)}><Icon name="book" size={16} /> {tl("assemble_book")}</button>
+        </>} />
       <div className="scroll-area">
         <div className="wrap">
           <button className="backlink mono" onClick={() => nav.dashboard()}><Icon name="back" size={14} /> {tl("all_works")}</button>
@@ -370,8 +499,8 @@ function ProjectView({ store, user, nav, onTheme, projectId }) {
             </div>
             <div className="proj-hero-side">
               <div className="proj-bignum mono">{words.toLocaleString(locale)}</div>
-              <div className="proj-bignum-lbl mono">{tl("words_goal_label")} {goal.toLocaleString(locale)}</div>
-              <ProgressBar value={words} max={goal} accent={p.status==="done"} />
+              <div className="proj-bignum-lbl mono">{tl("dash_words_total")}</div>
+              <GoalBlock p={p} store={store} words={words} lang={lang} />
               <button className={"status-toggle mono" + (p.status==="done"?" on":"")}
                 onClick={() => store.updateProject(p.id, { status: p.status === "done" ? "draft" : "done" })}>
                 <Icon name="check" size={14} /> {p.status === "done" ? tl("mark_done") : tl("mark_in_progress")}
@@ -383,6 +512,12 @@ function ProjectView({ store, user, nav, onTheme, projectId }) {
           </section>
 
           <div className="section-head"><span className="eyebrow">{tl("section_chapters")}</span><span className="rule-thin section-rule" />
+            <ImportButton lang={lang} onToast={onToast} className="addchap mono" label={tl("import_chapter_btn")}
+              onFile={({ title, html }) => {
+                const id = store.addChapter(p.id, title);
+                store.updateDoc(id, { content: html });
+                nav.doc(id);
+              }} />
             <button className="addchap mono" onClick={() => { const id = store.addChapter(p.id); nav.doc(id); }}><Icon name="plus" size={14} /> {tl("add_chapter_btn")}</button>
           </div>
 
@@ -439,4 +574,4 @@ function ProjectView({ store, user, nav, onTheme, projectId }) {
   );
 }
 
-Object.assign(window, { TopBar, Dashboard, ProjectView, ProgressBar, ConfirmDelete });
+Object.assign(window, { TopBar, Dashboard, ProjectView, ProgressBar, ConfirmDelete, ImportButton, GoalBlock });

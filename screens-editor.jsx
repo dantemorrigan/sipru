@@ -1,13 +1,50 @@
 /* ============================================================
    Writed. — Editor (focus mode)
    ============================================================ */
-function useDebouncedSave(docId, store) {
-  const t = useRef(null);
-  useEffect(() => () => clearTimeout(t.current), [docId]);
-  return useCallback((content) => {
-    clearTimeout(t.current);
-    t.current = setTimeout(() => store.updateDoc(docId, { content }), 500);
+/* Debounced save for ordinary typing + a reliable flush of the very last
+   state (page hide, tab switch, unmount, doc/mode change, ⌘S).            */
+function useDocSave(docId, store, getHTML) {
+  const timer = useRef(null);
+  const dirty = useRef(false);
+  const pending = useRef(null);
+  const getRef = useRef(getHTML);
+  getRef.current = getHTML;
+
+  const flush = useCallback(() => {
+    clearTimeout(timer.current);
+    timer.current = null;
+    if (!dirty.current) return;
+    dirty.current = false;
+    /* on unmount React has already detached the ref, so fall back to the
+       last html we were handed — that is what makes leaving safe */
+    const live = getRef.current();
+    const html = live != null ? live : pending.current;
+    pending.current = null;
+    if (html != null) store.updateDoc(docId, { content: html });
   }, [docId, store]);
+
+  const schedule = useCallback((html) => {
+    dirty.current = true;
+    if (html != null) pending.current = html;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(flush, 500);
+  }, [flush]);
+
+  useEffect(() => {
+    const onHide = () => flush();
+    const onVis = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("pagehide", onHide);
+    window.addEventListener("beforeunload", onHide);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      window.removeEventListener("beforeunload", onHide);
+      document.removeEventListener("visibilitychange", onVis);
+      flush();                       // component unmount / document change
+    };
+  }, [flush]);
+
+  return { schedule, flush };
 }
 
 const FONT_MAP = { book: "var(--book)", article: "var(--book-alt)", mono: "var(--mono)" };
@@ -29,7 +66,12 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [noteExport, setNoteExport] = useState(false);
   const [kbOffset, setKbOffset] = useState(0);
-  const doSave = useDebouncedSave(docId, store);
+  const [snapOpen, setSnapOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState(null);
+  const [hist, setHist] = useState({ undo: false, redo: false });
+  const depth = useRef({ u: 0, r: 0 });
+  const { schedule: doSave, flush: flushSave } =
+    useDocSave(docId, store, useCallback(() => (ref.current ? ref.current.innerHTML : null), []));
 
   useEffect(() => {
     const vv = window.visualViewport;
@@ -53,6 +95,8 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       ref.current.innerHTML = html;
       try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch (e) {}
       setWords(store.countWords(html));
+      depth.current = { u: 0, r: 0 };
+      setHist({ undo: false, redo: false });
       setTimeout(() => ref.current && ref.current.focus(), 60);
     }
   }, [docId]);
@@ -65,8 +109,10 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   }, [mode]);
 
   function switchMode(m) {
+    if (m === mode) return;
     if (mode === "edit" && ref.current) {
       saved.current = ref.current.innerHTML;
+      flushSave();
       store.updateDoc(docId, { content: saved.current });
     }
     setMode(m);
@@ -102,6 +148,39 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const html = ref.current.innerHTML;
     setWords(store.countWords(html));
     doSave(html); saved.current = html;
+    depth.current.u++; depth.current.r = 0;
+    setHist((h) => (h.undo && !h.redo) ? h : { undo: true, redo: false });
+  }
+
+  /* Native contentEditable history — reliable on desktop and mobile alike.
+     Depth counters drive the disabled state and self-correct when the
+     browser's own stack turns out to be shorter than we assumed.          */
+  function runHistory(cmd) {
+    const el = ref.current;
+    if (!el) return;
+    const before = el.innerHTML;
+    el.focus();
+    try { document.execCommand(cmd, false, null); } catch (e) { return; }
+    const d = depth.current;
+    if (el.innerHTML === before) {
+      if (cmd === "undo") d.u = 0; else d.r = 0;
+    } else {
+      if (cmd === "undo") { d.u = Math.max(0, d.u - 1); d.r++; }
+      else { d.r = Math.max(0, d.r - 1); d.u++; }
+      const html = el.innerHTML;
+      saved.current = html;
+      setWords(store.countWords(html));
+      doSave(html);
+    }
+    setHist({ undo: d.u > 0, redo: d.r > 0 });
+    refreshActive();
+  }
+
+  function onKeyDown(e) {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const k = (e.key || "").toLowerCase();
+    if (k === "z") { e.preventDefault(); runHistory(e.shiftKey ? "redo" : "undo"); }
+    else if (k === "y") { e.preventDefault(); runHistory("redo"); }
   }
 
   function exec(cmd, val) {
@@ -113,10 +192,37 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const cur = active.block;
     exec("formatBlock", cur === tag ? "p" : tag);
   }
+  function persistNow() {
+    if (!ref.current) return null;
+    const html = ref.current.innerHTML;
+    flushSave();
+    store.updateDoc(docId, { content: html });
+    saved.current = html;
+    return html;
+  }
   function saveNow() {
-    if (!ref.current) return;
-    store.updateDoc(docId, { content: ref.current.innerHTML });
+    if (persistNow() == null) return;
     setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1400);
+  }
+
+  /* ---- snapshots ---- */
+  function saveSnapshot(name) {
+    persistNow();
+    store.createSnapshot(docId, name);
+    if (onToast) onToast(tl("snap_saved"));
+  }
+  function doRestore(snap) {
+    persistNow();
+    store.createSnapshot(docId, tl("snap_auto_name"));
+    store.updateDoc(docId, { content: snap.content });
+    saved.current = snap.content;
+    if (ref.current) ref.current.innerHTML = snap.content;
+    setWords(store.countWords(snap.content));
+    depth.current = { u: 0, r: 0 };
+    setHist({ undo: false, redo: false });
+    setRestoreTarget(null);
+    setSnapOpen(false);
+    if (onToast) onToast(tl("snap_restored"));
   }
 
   function handleDelete() {
@@ -142,6 +248,9 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           case "ol": exec("insertOrderedList"); break;
           case "hr": exec("insertHorizontalRule"); break;
           case "save": saveNow(); break;
+          case "undo": runHistory("undo"); break;
+          case "redo": runHistory("redo"); break;
+          case "snapshots": setSnapOpen(true); break;
           case "rename": rest ? store.updateDoc(docId, { title: rest }) : setRenaming(true); break;
           case "preview": setMode("preview"); break;
           case "edit": setMode("edit"); break;
@@ -190,6 +299,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
             <button className={"modeswitch-b" + (mode==="edit"?" on":"")} onClick={() => switchMode("edit")}><Icon name="edit" size={15} /> {tl("mode_edit")}</button>
             <button className={"modeswitch-b" + (mode==="preview"?" on":"")} onClick={() => switchMode("preview")}><Icon name="eye" size={15} /> {tl("mode_preview")}</button>
           </div>
+          <button className="icon-btn" onClick={() => setSnapOpen(true)} title={tl("snap_btn")}><Icon name="history" size={18} /></button>
           <button className={"icon-btn" + (savedFlash ? " icon-btn--flash" : "")} onClick={saveNow} title={tl("ed_save")}><Icon name="save" size={18} /></button>
           {project
             ? <button className="icon-btn" onClick={() => nav.export(project.id)} title={tl("ed_export_book")}><Icon name="export" size={18} /></button>
@@ -203,6 +313,18 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       <div className="ed-body">
         <aside className={"ed-tools" + (mode !== "edit" ? " ed-tools--preview" : "")}
           style={kbOffset > 0 ? { bottom: kbOffset } : undefined}>
+          {mode === "edit" && (
+            <div className="ed-tools-grp">
+              <button className="tool" title={tl("ed_undo")} disabled={!hist.undo}
+                onMouseDown={(e) => { e.preventDefault(); runHistory("undo"); }}>
+                <Icon name="undo" size={19} />
+              </button>
+              <button className="tool" title={tl("ed_redo")} disabled={!hist.redo}
+                onMouseDown={(e) => { e.preventDefault(); runHistory("redo"); }}>
+                <Icon name="redo" size={19} />
+              </button>
+            </div>
+          )}
           {mode === "edit" && tools.map((grp, gi) => (
             <div className="ed-tools-grp" key={gi}>
               {grp.g.map(([icon, cmd]) => (
@@ -255,7 +377,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
             <div className="sheet-edge" />
             <div ref={ref} className="ed-area" contentEditable suppressContentEditableWarning
               spellCheck={true} data-placeholder={tl("editor_placeholder")}
-              onInput={onInput} onKeyUp={refreshActive}
+              onInput={onInput} onKeyDown={onKeyDown} onKeyUp={refreshActive}
               onMouseUp={refreshActive} onFocus={refreshActive} />
           </div>
           <div style={{ height: "120px" }} />
@@ -294,6 +416,21 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           lang={lang}
         />
       )}
+      {snapOpen && (
+        <SnapshotModal
+          snapshots={store.snapshots(docId)}
+          lang={lang}
+          onSave={saveSnapshot}
+          onDelete={(sid) => { store.deleteSnapshot(docId, sid); if (onToast) onToast(tl("snap_deleted")); }}
+          onRestore={(snap) => setRestoreTarget(snap)}
+          onClose={() => setSnapOpen(false)}
+        />
+      )}
+      {restoreTarget && (
+        <ConfirmRestore snap={restoreTarget} lang={lang}
+          onConfirm={() => doRestore(restoreTarget)}
+          onCancel={() => setRestoreTarget(null)} />
+      )}
       {noteExport && !project && (
         <NoteExportModal
           note={{ ...doc, content: saved.current || doc.content }}
@@ -306,4 +443,86 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   );
 }
 
-window.Editor = Editor;
+/* ============================================================
+   Snapshots — versions of a single chapter / note
+   ============================================================ */
+function snapPreview(html) {
+  return (html || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ").trim().slice(0, 130);
+}
+
+function SnapshotModal({ snapshots, lang, onSave, onDelete, onRestore, onClose }) {
+  const tl = T(lang || "en");
+  const [name, setName] = useState("");
+  const locale = lang === "ru" ? "ru-RU" : "en-US";
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div className="modal snap-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div><div className="eyebrow">{tl("snap_title")}</div>
+            <h2 className="modal-title">{tl("snap_btn")}</h2></div>
+          <button className="icon-btn" onClick={onClose}><Icon name="close" size={18} /></button>
+        </div>
+
+        <form className="snap-new" onSubmit={(e) => { e.preventDefault(); onSave(name.trim()); setName(""); }}>
+          <input className="snap-input" value={name} maxLength={60}
+            placeholder={tl("snap_name_placeholder")} onChange={(e) => setName(e.target.value)} />
+          <button type="submit" className="btn btn--accent"><Icon name="save" size={15} /> {tl("snap_save")}</button>
+        </form>
+
+        <div className="snap-list">
+          {!snapshots.length && <div className="snap-empty mono">{tl("snap_empty")}</div>}
+          {snapshots.map((sn) => (
+            <div className="snap-item" key={sn.id}>
+              <div className="snap-item-head">
+                <span className="snap-item-name">{sn.name || new Date(sn.createdAt).toLocaleString(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                <span className="snap-item-meta mono">{wordsLabel(sn.words || 0, lang)}</span>
+              </div>
+              {sn.name ? <div className="snap-item-date mono">{new Date(sn.createdAt).toLocaleString(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div> : null}
+              <div className="snap-item-prev">{snapPreview(sn.content) || "—"}</div>
+              <div className="snap-item-actions">
+                <button className="btn btn--ghost btn--xs" onClick={() => onRestore(sn)}>
+                  <Icon name="reset" size={14} /> {tl("snap_restore")}
+                </button>
+                <button className="btn btn--ghost btn--xs snap-del" title={tl("snap_delete")}
+                  onClick={() => onDelete(sn.id)}><Icon name="trash" size={14} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="snap-foot mono">{tl("snap_limit")}</div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmRestore({ snap, lang, onConfirm, onCancel }) {
+  const tl = T(lang || "en");
+  const locale = lang === "ru" ? "ru-RU" : "en-US";
+  return (
+    <div className="modal-scrim" onMouseDown={onCancel}>
+      <div className="confirm-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="confirm-icon"><Icon name="reset" size={22} /></div>
+        <div className="confirm-title">{tl("snap_confirm_title")}</div>
+        <div className="confirm-name">
+          {snap.name || new Date(snap.createdAt).toLocaleString(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+        </div>
+        <p className="confirm-note mono">{tl("snap_confirm_body")}</p>
+        <div className="confirm-actions">
+          <button className="btn btn--ghost" onClick={onCancel}>{tl("confirm_cancel")}</button>
+          <button className="btn btn--accent" onClick={onConfirm}><Icon name="reset" size={15} /> {tl("snap_confirm_ok")}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { Editor, SnapshotModal, ConfirmRestore });

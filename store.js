@@ -13,6 +13,25 @@
     return m ? m.length : 0;
   }
 
+  /* plain-text cache — recomputed only when a document's html changes */
+  const textCache = new Map();
+  function plainText(id, html) {
+    const hit = textCache.get(id);
+    if (hit && hit.html === html) return hit.text;
+    const text = (html || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      .replace(/\s+/g, " ").trim();
+    textCache.set(id, { html, text });
+    return text;
+  }
+  function snippetAt(text, at, len) {
+    const from = Math.max(0, at - 40);
+    const to = Math.min(text.length, at + len + 60);
+    return { before: (from > 0 ? "…" : "") + text.slice(from, at),
+      match: text.slice(at, at + len),
+      after: text.slice(at + len, to) + (to < text.length ? "…" : "") };
+  }
+
   function seed() {
     const p1 = {
       id: uid("p_"), title: "Северный свет", status: "draft",
@@ -52,13 +71,35 @@
     };
   }
 
+  const SCHEMA = 2;
+  const MAX_SNAPSHOTS = 30;
+
+  /* Non-destructive migration: only adds missing fields, never drops data. */
+  function migrate(s) {
+    if (!s || typeof s !== "object") return null;
+    if (!s.user) s.user = {};
+    if (!Array.isArray(s.projects)) s.projects = [];
+    if (!Array.isArray(s.notes)) s.notes = [];
+    s.projects.forEach((p) => {
+      if (!Array.isArray(p.chapters)) p.chapters = [];
+      if (p.goal === undefined) p.goal = null;
+      p.chapters.forEach((c) => { if (!Array.isArray(c.snapshots)) c.snapshots = []; });
+    });
+    s.notes.forEach((n) => { if (!Array.isArray(n.snapshots)) n.snapshots = []; });
+    s.version = SCHEMA;
+    return s;
+  }
+
   let state = load();
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = migrate(JSON.parse(raw));
+        if (parsed) return parsed;
+      }
     } catch (e) {}
-    const s = seed();
+    const s = migrate(seed());
     persist(s);
     return s;
   }
@@ -150,6 +191,67 @@
       commit();
     },
 
+    /* ---- writing goal (project level) ---- */
+    setGoal(pid, goal) {
+      const p = state.projects.find((x) => x.id === pid);
+      if (!p) return;
+      p.goal = goal ? { target: Math.max(1, Math.round(goal.target) || 0),
+        daily: goal.daily ? Math.max(1, Math.round(goal.daily)) : 0,
+        dayDate: goal.dayDate || "", dayStart: goal.dayStart || 0 } : null;
+      p.updatedAt = now();
+      commit();
+    },
+
+    /* ---- snapshots (chapter / note versions) ---- */
+    snapshots(docId) {
+      const f = Store.findDoc(docId);
+      return (f && f.doc.snapshots) || [];
+    },
+    createSnapshot(docId, name) {
+      const f = Store.findDoc(docId);
+      if (!f) return null;
+      if (!Array.isArray(f.doc.snapshots)) f.doc.snapshots = [];
+      const content = f.doc.content || "";
+      const snap = { id: uid("s_"), name: name || "", createdAt: now(), content, words: countWords(content) };
+      f.doc.snapshots.unshift(snap);
+      if (f.doc.snapshots.length > MAX_SNAPSHOTS) f.doc.snapshots.length = MAX_SNAPSHOTS;
+      commit();
+      return snap;
+    },
+    deleteSnapshot(docId, sid) {
+      const f = Store.findDoc(docId);
+      if (!f || !f.doc.snapshots) return;
+      f.doc.snapshots = f.doc.snapshots.filter((s) => s.id !== sid);
+      commit();
+    },
+
+    /* ---- search (plain JS, on demand — no index) ---- */
+    search(query, projectId) {
+      const q = (query || "").trim().toLowerCase();
+      if (!q) return [];
+      const out = [];
+      const scan = (doc, project, kind) => {
+        const title = doc.title || "";
+        const inTitle = title.toLowerCase().indexOf(q);
+        const text = plainText(doc.id, doc.content || "");
+        const at = text.toLowerCase().indexOf(q);
+        if (inTitle < 0 && at < 0) return;
+        out.push({ id: doc.id, kind, title, projectId: project ? project.id : null,
+          projectTitle: project ? project.title : "", inTitle: inTitle >= 0,
+          snippet: at >= 0 ? snippetAt(text, at, q.length) : null });
+      };
+      state.projects.forEach((p) => {
+        if (projectId && p.id !== projectId) return;
+        const syn = (p.synopsis || "");
+        const sAt = syn.toLowerCase().indexOf(q);
+        if (sAt >= 0) out.push({ id: p.id, kind: "synopsis", title: p.title, projectId: p.id,
+          projectTitle: p.title, inTitle: false, snippet: snippetAt(syn, sAt, q.length) });
+        p.chapters.forEach((c) => scan(c, p, "chapter"));
+      });
+      if (!projectId) state.notes.forEach((n) => scan(n, null, "note"));
+      return out.slice(0, 60);
+    },
+
     /* ---- stats ---- */
     stats() {
       let words = 0, chapters = 0;
@@ -164,11 +266,11 @@
     /* ---- backup ---- */
     exportAll() { return JSON.stringify(state, null, 2); },
     importAll(json) {
-      try { const s = JSON.parse(json); if (s && s.user) { state = s; commit(); return true; } }
+      try { const s = migrate(JSON.parse(json)); if (s && s.user) { state = s; textCache.clear(); commit(); return true; } }
       catch (e) {}
       return false;
     },
-    reset() { localStorage.removeItem(KEY); state = seed(); commit(); },
+    reset() { localStorage.removeItem(KEY); state = migrate(seed()); textCache.clear(); commit(); },
 
     countWords
   };

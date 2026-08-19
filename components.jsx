@@ -54,6 +54,10 @@ const ICONS = {
   type: <g {...P}><path d="M4 7V5h16v2M9 5v14M12 19H6M15 19h3"/></g>,
   focus: <g {...P}><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"/></g>,
   user: <g {...P}><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></g>,
+  undo: <g {...P}><path d="M4 9h11a5 5 0 0 1 0 10h-6"/><path d="M8 5L4 9l4 4"/></g>,
+  redo: <g {...P}><path d="M20 9H9a5 5 0 0 0 0 10h6"/><path d="M16 5l4 4-4 4"/></g>,
+  history: <g {...P}><path d="M4 12a8 8 0 1 1 2.5 5.8"/><path d="M4 18v-4h4"/><path d="M12 8v4l3 2"/></g>,
+  target: <g {...P}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.4"/></g>,
   clock: <g {...P}><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></g>,
 };
 function Icon({ name, size = 20, style, className }) {
@@ -66,13 +70,13 @@ function Icon({ name, size = 20, style, className }) {
 }
 
 /* ---------- logo with the living dot ---------- */
-function Logo({ size = 22, alive = false, onClick, onDotClick, style }) {
+function Logo({ size = 22, alive = false, onClick, onDotClick, dotTitle, style }) {
   return (
     <span className={"brand" + (alive ? " alive" : "")} onClick={onClick}
       style={{ fontSize: size, cursor: onClick ? "pointer" : "default", ...style }}>
       Writed<span className="dot"
         onClick={onDotClick ? (e) => { e.stopPropagation(); onDotClick(e); } : undefined}
-        title={onDotClick ? "Статистика" : undefined}
+        title={onDotClick ? dotTitle : undefined}
       />
     </span>
   );
@@ -110,7 +114,7 @@ function StatsDot({ store, nav, lang }) {
 
   return (
     <div className="stats-dot-wrap" ref={wrapRef}>
-      <Logo size={19} alive
+      <Logo size={19} alive dotTitle={tl("stats_title")}
         onClick={() => { setOpen(false); nav.dashboard(); }}
         onDotClick={() => setOpen((o) => !o)}
       />
@@ -172,8 +176,86 @@ function useToast() {
   return [node, show];
 }
 
+/* ---------- project / global search (⌘K) ---------- */
+function SearchModal({ store, lang, projectId, onPick, onClose }) {
+  const tl = T(lang || "en");
+  const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
+  const [sel, setSel] = useState(0);
+  const listRef = useRef(null);
+
+  /* debounce so a long project isn't rescanned on every keystroke */
+  useEffect(() => {
+    const t = setTimeout(() => { setQuery(q); setSel(0); }, 140);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const results = useMemo(
+    () => (query.trim() ? store.search(query, projectId) : []),
+    [query, projectId, store]
+  );
+
+  useEffect(() => {
+    const el = listRef.current && listRef.current.children[sel];
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+  }, [sel]);
+
+  /* Escape closes the search even when focus has left the input */
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function onKeyDown(e) {
+    if (e.key === "Escape") { e.preventDefault(); onClose(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); setSel((i) => Math.min(results.length - 1, i + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setSel((i) => Math.max(0, i - 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (results[sel]) onPick(results[sel]); }
+  }
+
+  return (
+    <div className="modal-scrim search-scrim" onMouseDown={onClose}>
+      <div className="modal search-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="search-bar">
+          <Icon name="search" size={18} />
+          <input className="search-input" autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+            onKeyDown={onKeyDown} placeholder={tl(projectId ? "search_placeholder_project" : "search_placeholder")} />
+          <button className="icon-btn" onClick={onClose} title={tl("confirm_cancel")}><Icon name="close" size={17} /></button>
+        </div>
+
+        <div className="search-list" ref={listRef}>
+          {!query.trim() && <div className="search-note mono">{tl("search_start")}</div>}
+          {query.trim() && !results.length && <div className="search-note mono">{tl("search_empty")}</div>}
+          {results.map((r, i) => (
+            <button key={r.kind + r.id} className={"search-item" + (i === sel ? " on" : "")}
+              onMouseEnter={() => setSel(i)} onClick={() => onPick(r)}>
+              <span className="search-item-top">
+                <Icon name={r.kind === "note" ? "note" : r.kind === "synopsis" ? "folder" : "book"} size={14} />
+                <span className="search-item-title">{r.title}</span>
+                {r.kind === "chapter" && r.projectTitle &&
+                  <span className="search-item-proj mono">{r.projectTitle}</span>}
+                {r.kind === "synopsis" && <span className="search-item-proj mono">{tl("search_synopsis")}</span>}
+                {r.inTitle && !r.snippet && <span className="search-item-proj mono">{tl("search_in_title")}</span>}
+              </span>
+              {r.snippet && (
+                <span className="search-item-snip">
+                  {r.snippet.before}<mark>{r.snippet.match}</mark>{r.snippet.after}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="search-foot mono">
+          {results.length ? results.length + " " + tl("search_results_n") + " · " : ""}{tl("search_hint")}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const FONT_LABEL = { book: "Newsreader", article: "Spectral", mono: "JetBrains Mono" };
 
 Object.assign(window, {
-  useStore, Icon, ICONS, Logo, StatsDot, ThemeToggle, timeAgo, plural, wordsLabel, useToast, FONT_LABEL, T,
+  useStore, Icon, ICONS, Logo, StatsDot, ThemeToggle, timeAgo, plural, wordsLabel, useToast, FONT_LABEL, T, SearchModal,
 });

@@ -1,0 +1,13 @@
+{
+  "name": "writed",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Writed. — a minimal local-first editor for writers",
+  "scripts": {
+    "build": "node build.js",
+    "check": "node build.js --check"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

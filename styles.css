@@ -3,8 +3,10 @@
    Helvetica/Swiss minimalism · tactile paper & ink · terminal
    ============================================================ */
 
-/* ---- Fonts ---- */
-@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
+/* ---- Fonts ----
+   Loaded non-blockingly from index.html so the app paints (and works)
+   even when the font CDN is unreachable — every stack has a local
+   fallback below. ---- */
 
 :root {
   --ui: "Helvetica Neue", Helvetica, Arial, "Segoe UI", Roboto, sans-serif;

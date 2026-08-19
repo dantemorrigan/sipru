@@ -246,6 +246,66 @@
       toast_project_created: "Проект создан",
       default_project_title: "Новый проект",
       default_note_title: "Новая заметка",
+
+      /* ---- search ---- */
+      search_title: "Поиск",
+      search_btn: "Поиск",
+      search_placeholder: "Искать по главам и заметкам…",
+      search_placeholder_project: "Искать в проекте…",
+      search_hint: "Enter — открыть · Esc — закрыть",
+      search_empty: "Ничего не найдено",
+      search_start: "Начните вводить запрос",
+      search_in_title: "в названии",
+      search_synopsis: "синопсис",
+      search_results_n: "результатов",
+
+      /* ---- undo / redo ---- */
+      ed_undo: "Отменить",
+      ed_redo: "Вернуть",
+
+      /* ---- snapshots ---- */
+      snap_title: "Версии",
+      snap_btn: "Версии главы",
+      snap_save: "Сохранить версию",
+      snap_saved: "Версия сохранена",
+      snap_empty: "Версий пока нет",
+      snap_restore: "Восстановить",
+      snap_delete: "Удалить версию",
+      snap_deleted: "Версия удалена",
+      snap_restored: "Версия восстановлена",
+      snap_auto_name: "перед восстановлением",
+      snap_confirm_title: "Восстановить эту версию?",
+      snap_confirm_body: "Текущий текст будет сохранён отдельной версией, поэтому его можно вернуть.",
+      snap_confirm_ok: "Восстановить",
+      snap_name_placeholder: "Название версии (необязательно)",
+      snap_limit: "Хранится до 30 последних версий",
+
+      /* ---- goals ---- */
+      goal_title: "Цель",
+      goal_set: "Поставить цель",
+      goal_edit: "Изменить цель",
+      goal_target: "Цель, слов",
+      goal_daily: "В день, слов",
+      goal_daily_off: "без дневной цели",
+      goal_today: "сегодня",
+      goal_save: "Сохранить",
+      goal_remove: "Отключить цель",
+      goal_done: "цель достигнута",
+      goal_of: "из",
+
+      /* ---- import ---- */
+      import_btn: "Импорт файла",
+      import_chapter_btn: "Импортировать главу",
+      import_hint: "TXT · Markdown · HTML",
+      import_ok: "Файл импортирован",
+      import_err: "Не удалось прочитать файл",
+      import_err_type: "Поддерживаются только TXT, Markdown и HTML",
+
+      /* ---- export ---- */
+      exp_paper: "Формат",
+      exp_section_typeset: "Вёрстка",
+      exp_toast_docx_real: "DOCX сохранён",
+      exp_err_docx: "Не удалось собрать DOCX",
     },
 
     en: {
@@ -491,6 +551,66 @@
       toast_project_created: "Project created",
       default_project_title: "New project",
       default_note_title: "New note",
+
+      /* ---- search ---- */
+      search_title: "Search",
+      search_btn: "Search",
+      search_placeholder: "Search chapters and notes…",
+      search_placeholder_project: "Search in this project…",
+      search_hint: "Enter to open · Esc to close",
+      search_empty: "Nothing found",
+      search_start: "Type to search",
+      search_in_title: "in title",
+      search_synopsis: "synopsis",
+      search_results_n: "results",
+
+      /* ---- undo / redo ---- */
+      ed_undo: "Undo",
+      ed_redo: "Redo",
+
+      /* ---- snapshots ---- */
+      snap_title: "Versions",
+      snap_btn: "Chapter versions",
+      snap_save: "Save version",
+      snap_saved: "Version saved",
+      snap_empty: "No versions yet",
+      snap_restore: "Restore",
+      snap_delete: "Delete version",
+      snap_deleted: "Version deleted",
+      snap_restored: "Version restored",
+      snap_auto_name: "before restore",
+      snap_confirm_title: "Restore this version?",
+      snap_confirm_body: "The current text is kept as its own version, so you can always go back.",
+      snap_confirm_ok: "Restore",
+      snap_name_placeholder: "Version name (optional)",
+      snap_limit: "The last 30 versions are kept",
+
+      /* ---- goals ---- */
+      goal_title: "Goal",
+      goal_set: "Set a goal",
+      goal_edit: "Edit goal",
+      goal_target: "Target words",
+      goal_daily: "Words per day",
+      goal_daily_off: "no daily goal",
+      goal_today: "today",
+      goal_save: "Save",
+      goal_remove: "Turn goal off",
+      goal_done: "goal reached",
+      goal_of: "of",
+
+      /* ---- import ---- */
+      import_btn: "Import file",
+      import_chapter_btn: "Import chapter",
+      import_hint: "TXT · Markdown · HTML",
+      import_ok: "File imported",
+      import_err: "Could not read the file",
+      import_err_type: "Only TXT, Markdown and HTML are supported",
+
+      /* ---- export ---- */
+      exp_paper: "Paper",
+      exp_section_typeset: "Typesetting",
+      exp_toast_docx_real: "DOCX saved",
+      exp_err_docx: "Could not build the DOCX",
     },
   };
 
