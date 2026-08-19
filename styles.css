@@ -81,8 +81,9 @@
   color-scheme: dark;
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
+html { -webkit-tap-highlight-color: transparent; }
 body {
   margin: 0;
   font-family: var(--ui);

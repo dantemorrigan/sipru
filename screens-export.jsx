@@ -252,6 +252,16 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
   function doExport(fmt) {
     const base = project.title.replace(/[^\wа-яёА-ЯЁ\- ]+/gi, "").trim() || "book";
     if (fmt === "pdf") {
+      /* window.open()'s print-preview tab is a browser-only affordance —
+         inside Tauri's Android WebView it can leave the user on a blank
+         screen with no way back. Save the print-ready HTML through the
+         same native picker as the other formats instead: the OS dialog
+         always has a working Cancel/Back. */
+      if (window.__TAURI__) {
+        downloadBlob(base + ".html", "text/html;charset=utf-8", buildBookHTML(project, opts));
+        onToast(tl("exp_toast_pdf_tauri"));
+        return;
+      }
       const w = window.open("", "_blank");
       if (!w) { onToast(tl("exp_err_popup")); return; }
       w.document.write(buildBookHTML(project, opts));
@@ -386,6 +396,11 @@ function NoteExportModal({ note, onClose, onToast, lang }) {
   function doExport(fmt) {
     const base = note.title.replace(/[^\wа-яёА-ЯЁ\- ]+/gi, "").trim() || "note";
     if (fmt === "pdf") {
+      if (window.__TAURI__) {
+        downloadBlob(base + ".html", "text/html;charset=utf-8", buildNoteHTML(note, opts));
+        onToast(tl("exp_toast_pdf_tauri"));
+        return;
+      }
       const w = window.open("", "_blank");
       if (!w) { onToast(tl("exp_err_popup")); return; }
       w.document.write(buildNoteHTML(note, opts));
