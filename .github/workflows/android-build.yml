@@ -68,6 +68,16 @@ jobs:
           NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
 
+      # `tauri android init` generates its own launcher icon resources and
+      # does not pick up the pre-made src-tauri/icons/android/ set (that
+      # directory is `tauri icon`'s *output* location, not a documented
+      # input for mobile init) — confirmed by testing an installed APK.
+      # Overwrite the generated res/ files directly with ours.
+      - name: Apply Writed. launcher icon
+        run: |
+          cp -rv src-tauri/icons/android/mipmap-* src-tauri/gen/android/app/src/main/res/
+          cp -v src-tauri/icons/android/values/ic_launcher_background.xml src-tauri/gen/android/app/src/main/res/values/
+
       # Universal APK = arm64 + armv7 + x86 + x86_64 in one file (no
       # --split-per-abi). Debug-signed via Gradle's built-in debug
       # keystore — no signing setup needed, matching the macOS build's
