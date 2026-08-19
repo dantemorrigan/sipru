@@ -15,30 +15,44 @@
 .topbar-c { justify-self: center; }
 .topbar-r { justify-self: end; display: flex; align-items: center; gap: 8px; }
 .user-chip { display: inline-flex; align-items: center; gap: 9px; background: transparent; border: none;
-  padding: 5px 8px 5px 5px; color: var(--ink); transition: opacity .2s; }
-.user-chip:hover { opacity: .65; }
-.user-ava { width: 30px; height: 30px; display: grid; place-items: center; background: var(--ink);
-  color: var(--paper); font-size: 13px; font-weight: 700; }
+  padding: 3px; color: var(--ink); transition: opacity .2s var(--ease); }
+.user-chip:hover { opacity: .7; }
+.user-ava { width: 38px; height: 38px; display: grid; place-items: center; background: var(--ink);
+  color: var(--paper); font-size: 13px; font-weight: 700; border-radius: 50%; border: 1px solid var(--line);
+  overflow: hidden; }
 .user-name { font-size: var(--t-sm); font-weight: 500; letter-spacing: -.01em; }
 
 /* ---------- dashboard ---------- */
-.dash-hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 30px;
-  padding: 40px 0 36px; }
+.dash-hero-card { position: relative; margin: 28px 0 32px; padding: 34px 34px 26px;
+  background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-xl);
+  overflow: hidden; }
+.dash-hero-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
 .dash-title { font-size: var(--t-3xl); line-height: .94; letter-spacing: -.035em; font-weight: 600;
   margin: 12px 0 0; }
-.dash-stat { text-align: right; flex: 0 0 auto; padding-bottom: 8px; }
-.dash-stat-num { font-size: var(--t-xl); font-weight: 500; letter-spacing: -.02em; color: var(--ink); }
-.dash-stat-lbl { font-size: var(--t-xs); color: var(--ink-soft); letter-spacing: .04em; margin-top: 4px; }
+.dash-hero-feather { color: var(--accent); opacity: .9; flex: 0 0 auto;
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--accent) 55%, transparent)); }
+.dash-hero-rule { height: 1px; background: var(--line); margin: 26px 0 18px; }
+.dash-hero-stats { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.dash-hero-stat { display: flex; align-items: baseline; gap: 8px; }
+.dash-hero-stat-n { font-size: var(--t-lg); font-weight: 500; letter-spacing: -.02em; color: var(--ink); }
+.dash-hero-stat-l { font-size: var(--t-xs); color: var(--ink-soft); letter-spacing: .04em; }
+.dash-hero-dot { color: var(--ink-faint); }
 
-.dash-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 40px; }
-.bigaction { display: flex; align-items: center; gap: 16px; text-align: left; background: var(--sheet);
-  border: 1px solid var(--line); padding: 22px 24px; color: var(--ink); transition: all .3s var(--ease); position: relative; overflow: hidden; }
-.bigaction:hover { border-color: var(--ink); transform: translateY(-2px); box-shadow: var(--sheet-shadow); }
-.bigaction > div { display: flex; flex-direction: column; gap: 3px; }
-.bigaction-t { font-size: var(--t-md); font-weight: 600; letter-spacing: -.015em; }
-.bigaction-s { font-size: var(--t-xs); color: var(--ink-soft); letter-spacing: .1em; }
-.bigaction-plus { margin-left: auto; color: var(--ink-faint); transition: all .3s var(--ease); }
-.bigaction:hover .bigaction-plus { color: var(--accent); transform: rotate(90deg); }
+.dash-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 40px; }
+.bigaction { display: flex; align-items: center; gap: 14px; text-align: left; background: var(--sheet);
+  border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px 20px; color: var(--ink);
+  transition: all .22s var(--ease-out); position: relative; overflow: hidden; }
+.bigaction:hover { border-color: var(--ink-faint); transform: translateY(-2px); box-shadow: var(--shadow-2); }
+.bigaction:active { transform: translateY(0) scale(.99); }
+.bigaction > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.bigaction-icon { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center;
+  background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r-md); color: var(--accent); }
+.bigaction-t { font-size: var(--t-base); font-weight: 600; letter-spacing: -.01em; }
+.bigaction-s { font-size: var(--t-xs); color: var(--ink-soft); letter-spacing: .06em; }
+.bigaction-chev { margin-left: auto; flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center;
+  background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r-pill);
+  color: var(--ink-faint); transform: rotate(-90deg); transition: all .22s var(--ease-out); }
+.bigaction:hover .bigaction-chev { color: var(--accent); border-color: var(--accent); background: var(--accent-tint); }
 
 .dash-filter { margin-bottom: 26px; }
 .seg { display: inline-flex; border: 1px solid var(--line); background: var(--paper-2); }
@@ -157,8 +171,8 @@
 .chap-empty button { background: none; border: none; color: var(--accent); font-family: var(--mono); cursor: pointer; }
 
 /* ---------- confirm delete modal ---------- */
-.confirm-modal { background: var(--sheet); border: 1px solid var(--ink-faint);
-  box-shadow: 0 40px 100px -30px rgba(0,0,0,.6); animation: paletteIn .3s var(--ease-out);
+.confirm-modal { background: var(--sheet); border: 1px solid var(--line); position: relative;
+  box-shadow: 0 40px 100px -30px rgba(0,0,0,.6); animation: paletteIn .22s var(--ease-out);
   padding: 44px 48px 40px; width: min(420px, 92vw); display: flex; flex-direction: column;
   align-items: center; text-align: center; gap: 10px; }
 .confirm-icon { color: var(--accent); opacity: .65; margin-bottom: 4px;
@@ -340,9 +354,9 @@
 /* ---------- modals ---------- */
 .modal-scrim { position: fixed; inset: 0; z-index: 55; background: color-mix(in srgb, var(--paper) 25%, rgba(10,8,4,.6));
   backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: clamp(8px, 4vh, 40px) clamp(8px, 4vw, 40px); animation: scrimIn .25s var(--ease); }
-.modal { background: var(--sheet); border: 1px solid var(--ink-faint); box-shadow: 0 40px 100px -30px rgba(0,0,0,.6); animation: paletteIn .3s var(--ease-out); }
+.modal { background: var(--sheet); border: 1px solid var(--line); position: relative; box-shadow: 0 40px 100px -30px rgba(0,0,0,.6); animation: paletteIn .22s var(--ease-out); }
 @keyframes scrimIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes paletteIn { from { opacity: 0; transform: translateY(-12px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes paletteIn { from { opacity: 0; transform: translateY(-10px) scale(.98); } to { opacity: 1; transform: none; } }
 .export-modal { display: grid; grid-template-columns: 440px 1fr; width: min(1100px, 96vw); height: min(800px, calc(100dvh - 32px)); overflow: hidden; }
 .export-side { display: flex; flex-direction: column; border-right: 1px solid var(--line); min-height: 0; }
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 24px 26px 18px; border-bottom: 1px solid var(--line); }
@@ -427,7 +441,7 @@
 .stats-popup-l { font-size: var(--t-xs); color: var(--ink-soft); letter-spacing: .04em; margin-top: 4px; }
 
 /* ---------- toast ---------- */
-.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 80;
+.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 50;
   background: var(--ink); color: var(--paper); padding: 13px 22px; font-size: var(--t-sm); font-weight: 500;
   letter-spacing: -.005em; box-shadow: 0 20px 50px -18px rgba(0,0,0,.5); animation: toastIn .4s var(--ease-out); }
 @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
@@ -502,9 +516,9 @@
     /* status bar / notch on edge-to-edge Android */
     padding-top: calc(env(safe-area-inset-top, 0px) + 13px); }
   .topbar-c { display: none; }
-  .dash-hero { flex-direction: column; align-items: flex-start; gap: 14px; padding: 28px 0 24px; }
+  .dash-hero-card { margin: 18px 0 24px; padding: 24px 20px 20px; }
   .dash-title { font-size: clamp(36px, 10vw, 60px); }
-  .dash-stat { text-align: left; }
+  .dash-hero-feather { width: 40px; height: 40px; }
   .dash-actions { grid-template-columns: 1fr; gap: 12px; margin-bottom: 28px; }
   .bigaction { padding: 18px 20px; }
   .proj-hero { grid-template-columns: 1fr; gap: 20px; padding: 10px 0 28px; }
@@ -592,6 +606,15 @@
   .modal-scrim { padding: 10px 0 0; align-items: flex-end; }
   .export-modal { border-radius: var(--r-xl) var(--r-xl) 0 0; }
 
+  /* bottom-sheet drag handle on the small confirm/info dialogs — purely
+     decorative, signals "swipe to dismiss". Left off the bigger export/
+     search/snapshot modals, whose own content already reaches the edge. */
+  .confirm-modal::after {
+    content: ""; position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+    width: 36px; height: 4px; border-radius: var(--r-pill); background: var(--ink-faint); opacity: .5;
+  }
+  .confirm-modal { padding-bottom: 40px; }
+
   /* export rows: stack label + control vertically so segs get full width to scroll */
   .exp-row { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 0; }
   .exp-lbl { min-width: auto; }
@@ -659,8 +682,7 @@
    разметки и логики.
    ============================================================ */
 
-/* ---- topbar avatar ---- */
-.user-ava { border-radius: var(--r-sm); }
+/* ---- topbar avatar: circular, set at definition above ---- */
 
 /* ---- dashboard: big actions ---- */
 .bigaction { border-radius: var(--r-lg); box-shadow: var(--shadow-1);
@@ -840,10 +862,6 @@
 .goal-off { color: var(--ink-faint); }
 .goal-add { margin-top: 4px; }
 
-/* ---------- import ---------- */
-.dash-import { display: flex; align-items: center; gap: 12px; margin: -22px 0 30px; flex-wrap: wrap; }
-.dash-import-h { font-size: var(--t-xs); color: var(--ink-faint); letter-spacing: .1em; }
-
 @media (max-width: 860px) {
   .btn--search .btn-search-l { display: none; }
   .btn--search { padding: 9px 11px; }
@@ -853,5 +871,4 @@
   .snap-list { padding: 8px 18px; }
   .snap-foot { padding: 12px 18px 16px; }
   .goal-block { min-width: 100%; }
-  .dash-import { margin: -16px 0 22px; }
 }

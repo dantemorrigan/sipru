@@ -58,6 +58,7 @@ const ICONS = {
   redo: <g {...P}><path d="M20 9H9a5 5 0 0 0 0 10h6"/><path d="M16 5l4 4-4 4"/></g>,
   history: <g {...P}><path d="M4 12a8 8 0 1 1 2.5 5.8"/><path d="M4 18v-4h4"/><path d="M12 8v4l3 2"/></g>,
   target: <g {...P}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.4"/></g>,
+  feather: <g {...P}><path d="M20 4c-8 0-14 6-14 14v2h2c8 0 14-6 14-14V4h-2z"/><path d="M19 5 8 16"/><path d="M13 15H9v-4"/></g>,
   clock: <g {...P}><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></g>,
 };
 function Icon({ name, size = 20, style, className }) {

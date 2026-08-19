@@ -60,16 +60,16 @@
 
 /* ---- Dark (night writing) ---- */
 [data-theme="dark"] {
-  --paper:    #15140f;
-  --paper-2:  #1d1b15;
-  --paper-3:  #24211a;
-  --sheet:    #1a1813;
-  --ink:      #ece7db;
+  --paper:    #0d0d0b;
+  --paper-2:  #171612;
+  --paper-3:  #201f19;
+  --sheet:    #131210;
+  --ink:      #f0ece2;
   --ink-2:    #c4bdac;
   --ink-soft: #8a8373;
   --ink-faint:#5d574a;
-  --line:     rgba(236,231,219,.14);
-  --line-2:   rgba(236,231,219,.07);
+  --line:     rgba(240,236,226,.12);
+  --line-2:   rgba(240,236,226,.06);
   --accent:   #df6f44;
   --accent-2: #e8825a;
   --accent-tint: rgba(223,111,68,.14);
@@ -181,9 +181,9 @@ body::before {
 .btn:disabled { opacity: .4; cursor: not-allowed; }
 
 .icon-btn { width: 38px; height: 38px; display: grid; place-items: center;
-  border: 1px solid transparent; background: transparent; color: var(--ink-2);
-  border-radius: 0; transition: all .22s var(--ease); }
-.icon-btn:hover { color: var(--ink); background: var(--paper-3); }
+  border: 1px solid var(--line); background: var(--sheet); color: var(--ink-2);
+  border-radius: 0; transition: all .2s var(--ease); }
+.icon-btn:hover { color: var(--ink); background: var(--paper-3); border-color: var(--ink-faint); }
 .icon-btn.active { color: var(--accent); }
 
 /* focus ring */
@@ -303,7 +303,7 @@ body.cursor-text .cursor-ring { opacity: 0; }
 .btn--accent:hover { box-shadow: 0 8px 22px -8px color-mix(in srgb, var(--accent) 65%, transparent); }
 
 /* icon buttons — rounded touch target */
-.icon-btn { border-radius: var(--r-sm); }
+.icon-btn { border-radius: var(--r-md); }
 
 /* focus ring — softer halo */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: var(--r-sm); }

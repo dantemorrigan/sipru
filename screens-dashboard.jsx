@@ -102,7 +102,7 @@ function SortMenu({ value, onChange, lang }) {
 }
 
 /* ---- file import (txt / md / html) — shared by dashboard & project ---- */
-function ImportButton({ lang, onFile, onToast, label, className }) {
+function ImportButton({ lang, onFile, onToast, label, className, children }) {
   const tl = T(lang || "en");
   const ref = useRef(null);
   async function onChange(e) {
@@ -121,7 +121,7 @@ function ImportButton({ lang, onFile, onToast, label, className }) {
     <>
       <button className={className || "btn btn--ghost"} onClick={() => ref.current.click()}
         title={tl("import_hint")}>
-        <Icon name="upload" size={16} /> {label || tl("import_btn")}
+        {children || (<><Icon name="upload" size={16} /> {label || tl("import_btn")}</>)}
       </button>
       <input ref={ref} type="file" style={{ display: "none" }}
         accept={WritedFormats.IMPORT_ACCEPT} onChange={onChange} />
@@ -252,40 +252,45 @@ function Dashboard({ store, user, nav, onTheme, onSearch, onToast }) {
       <div className="scroll-area">
         <div className="wrap">
 
-          <section className="dash-hero">
-            <div>
-              <div className="eyebrow">{tl(greetKey)}, {user.name || tl("default_author")}</div>
-              <h1 className="dash-title">{lang === "ru" ? <>Что напишем<br />сегодня<span style={{ color: "var(--accent)" }}>?</span></> : <>What will you<br />write<span style={{ color: "var(--accent)" }}>?</span></>}</h1>
-            </div>
-            <div className="dash-stat">
-              <div className="dash-stat-num mono">{stats.words.toLocaleString(locale)}</div>
-              <div className="dash-stat-lbl mono">
-                {tl("dash_words_total")} · {stats.projects} {pluralT(stats.projects, lang, "proj_one", "proj_few", "proj_many")} · {stats.notes} {pluralT(stats.notes, lang, "note_one", "note_few", "note_many")}
+          <section className="dash-hero-card">
+            <div className="dash-hero-top">
+              <div>
+                <div className="eyebrow">{tl(greetKey)}, {user.name || tl("default_author")}</div>
+                <h1 className="dash-title">{lang === "ru" ? <>Что напишем<br />сегодня<span style={{ color: "var(--accent)" }}>?</span></> : <>What will you<br />write<span style={{ color: "var(--accent)" }}>?</span></>}</h1>
               </div>
+              <Icon name="feather" size={56} className="dash-hero-feather" />
+            </div>
+            <div className="dash-hero-rule" />
+            <div className="dash-hero-stats mono">
+              <div className="dash-hero-stat"><span className="dash-hero-stat-n">{stats.words.toLocaleString(locale)}</span><span className="dash-hero-stat-l">{tl("dash_words_total")}</span></div>
+              <span className="dash-hero-dot">·</span>
+              <div className="dash-hero-stat"><span className="dash-hero-stat-n">{stats.projects}</span><span className="dash-hero-stat-l">{pluralT(stats.projects, lang, "proj_one", "proj_few", "proj_many")}</span></div>
+              <span className="dash-hero-dot">·</span>
+              <div className="dash-hero-stat"><span className="dash-hero-stat-n">{stats.notes}</span><span className="dash-hero-stat-l">{pluralT(stats.notes, lang, "note_one", "note_few", "note_many")}</span></div>
             </div>
           </section>
 
           <div className="dash-actions">
             <button className="bigaction" onClick={() => nav.createProject()}>
-              <Icon name="folder" size={22} />
+              <span className="bigaction-icon"><Icon name="folder" size={20} /></span>
               <div><span className="bigaction-t">{tl("btn_new_project")}</span><span className="bigaction-s mono">{tl("desc_project")}</span></div>
-              <Icon name="plus" size={18} className="bigaction-plus" />
+              <span className="bigaction-chev"><Icon name="chevron" size={16} /></span>
             </button>
             <button className="bigaction" onClick={() => nav.createNote()}>
-              <Icon name="note" size={22} />
+              <span className="bigaction-icon"><Icon name="note" size={20} /></span>
               <div><span className="bigaction-t">{tl("btn_new_note")}</span><span className="bigaction-s mono">{tl("desc_note")}</span></div>
-              <Icon name="plus" size={18} className="bigaction-plus" />
+              <span className="bigaction-chev"><Icon name="chevron" size={16} /></span>
             </button>
-          </div>
-
-          <div className="dash-import">
-            <ImportButton lang={lang} onToast={onToast}
+            <ImportButton lang={lang} onToast={onToast} className="bigaction"
               onFile={({ title, html }) => {
                 const id = store.createNote(title);
                 store.updateDoc(id, { content: html });
                 nav.doc(id);
-              }} />
-            <span className="dash-import-h mono">{tl("import_hint")}</span>
+              }}>
+              <span className="bigaction-icon"><Icon name="upload" size={20} /></span>
+              <div><span className="bigaction-t">{tl("import_btn")}</span><span className="bigaction-s mono">{tl("import_hint")}</span></div>
+              <span className="bigaction-chev"><Icon name="chevron" size={16} /></span>
+            </ImportButton>
           </div>
 
           <div className="dash-filter">
