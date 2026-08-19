@@ -39,12 +39,18 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      # local-cache restores a zipped NDK from the GH Actions cache, which
+      # has been observed to extract incompletely (missing the clang
+      # wrapper scripts under toolchains/llvm/prebuilt/.../bin, causing
+      # "aarch64-linux-android24-clang not found"). Always doing a fresh
+      # download+extract from Google is slower but reliable.
       - name: Setup Android NDK
         id: ndk
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r26d
-          local-cache: true
+          ndk-version: r27c
+          local-cache: false
+          add-to-path: true
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
