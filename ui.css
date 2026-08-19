@@ -523,6 +523,7 @@
   .bigaction { padding: 18px 20px; }
   .proj-hero { grid-template-columns: 1fr; gap: 20px; padding: 10px 0 28px; }
   .proj-hero-side { flex-direction: row; flex-wrap: wrap; gap: 14px; }
+  .proj-delete-btn { margin-top: 0; }
   .card-grid { grid-template-columns: 1fr; gap: 12px; }
 
   /* ---- mobile editor: immersive full-height layout ---- */
