@@ -2,7 +2,7 @@
    Writed. — Dashboard + Project (folder) view
    ============================================================ */
 
-function TopBar({ user, store, nav, onTheme, right }) {
+function TopBar({ user, store, nav, onTheme, right, hideProfile }) {
   const tl = T(user.lang || "en");
   return (
     <header className="topbar">
@@ -12,16 +12,18 @@ function TopBar({ user, store, nav, onTheme, right }) {
       <div className="topbar-c"></div>
       <div className="topbar-r">
         {right}
-        <button className="user-chip" onClick={() => nav.profile()} title={tl("topbar_profile")}>
-          <span className="user-ava mono">
-            {user.avatar
-              ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} />
-              : (user.name || tl("default_author").charAt(0)).trim().charAt(0).toUpperCase()
-            }
-          </span>
-          <span className="user-name">{user.name || tl("default_author")}</span>
-        </button>
-        <ThemeToggle theme={user.theme} onChange={onTheme} lang={user.lang} />
+        {!hideProfile && <>
+          <button className="user-chip" onClick={() => nav.profile()} title={tl("topbar_profile")}>
+            <span className="user-ava mono">
+              {user.avatar
+                ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} />
+                : (user.name || tl("default_author").charAt(0)).trim().charAt(0).toUpperCase()
+              }
+            </span>
+            <span className="user-name">{user.name || tl("default_author")}</span>
+          </button>
+          <ThemeToggle theme={user.theme} onChange={onTheme} lang={user.lang} />
+        </>}
       </div>
     </header>
   );
@@ -441,7 +443,7 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
   if (!p) {
     return (
       <div className="app-shell">
-        <TopBar user={user} store={store} nav={nav} onTheme={onTheme} />
+        <TopBar user={user} store={store} nav={nav} onTheme={onTheme} hideProfile />
         <div className="empty mono">{tl("project_not_found")}</div>
       </div>
     );
@@ -471,12 +473,12 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
 
   return (
     <div className="app-shell screen-enter">
-      <TopBar user={user} store={store} nav={nav} onTheme={onTheme}
+      <TopBar user={user} store={store} nav={nav} onTheme={onTheme} hideProfile
         right={<>
           <button className="btn btn--ghost btn--search" onClick={onSearch} title={tl("search_title")}>
             <Icon name="search" size={16} /> <span className="btn-search-l">{tl("search_btn")}</span>
           </button>
-          <button className="btn btn--ghost" data-tour="assemble-book" onClick={() => nav.export(p.id)}><Icon name="book" size={16} /> {tl("assemble_book")}</button>
+          <button className="btn btn--ghost btn--assemble" data-tour="assemble-book" onClick={() => nav.export(p.id)}><Icon name="book" size={16} /> <span className="btn-assemble-l">{tl("assemble_book")}</span></button>
         </>} />
       <div className="scroll-area">
         <div className="wrap">

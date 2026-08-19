@@ -796,6 +796,8 @@
 .tool:disabled { opacity: .3; pointer-events: none; }
 
 /* ---------- search ---------- */
+.btn--search, .btn--assemble { height: 38px; padding: 0 15px; white-space: nowrap; }
+.btn--assemble { padding: 0 17px; }
 .btn--search .btn-search-l { display: inline; }
 .search-scrim { align-items: flex-start; }
 .search-modal { width: min(620px, 94vw); margin-top: 12vh; display: flex; flex-direction: column;
@@ -863,8 +865,10 @@
 .goal-add { margin-top: 4px; }
 
 @media (max-width: 860px) {
+  .btn--search, .btn--assemble { height: 36px; padding: 0 12px; font-size: var(--t-xs); gap: 6px; }
+  .btn--assemble { padding: 0 14px; }
   .btn--search .btn-search-l { display: none; }
-  .btn--search { padding: 9px 11px; }
+  .btn--search { padding: 0 10px; }
   .search-modal { margin-top: 0; max-height: 86vh; width: 100vw; }
   .snap-modal { max-height: 88vh; }
   .snap-new { padding: 14px 18px; flex-direction: column; }
