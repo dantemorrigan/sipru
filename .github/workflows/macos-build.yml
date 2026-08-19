@@ -1,0 +1,70 @@
+name: macOS build (Tauri)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src-tauri/**"
+      - "*.jsx"
+      - "*.js"
+      - "*.css"
+      - "*.svg"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/macos-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      # Universal binary = Apple Silicon + Intel in one .app/.dmg.
+      # `tauri build` runs the existing `npm run build` (JSX → build/) and
+      # the dist-staging script itself, via beforeBuildCommand.
+      - name: Build Writed. for macOS (universal)
+        run: npx tauri build --target universal-apple-darwin
+        env:
+          # No Apple Developer signing/notarization yet — free distribution
+          # via GitHub Releases. Users right-click → Open on first launch.
+          CI: true
+
+      - name: Locate bundle output
+        run: |
+          echo "--- .app ---"
+          find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1
+          echo "--- .dmg ---"
+          find src-tauri/target/universal-apple-darwin/release/bundle/dmg -maxdepth 1
+
+      - name: Upload Writed.app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Writed-macOS-app
+          path: src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
+          if-no-files-found: error
+
+      - name: Upload Writed.dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: Writed-macOS-dmg
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error

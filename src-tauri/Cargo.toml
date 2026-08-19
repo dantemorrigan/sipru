@@ -1,0 +1,19 @@
+[package]
+name = "writed"
+version = "1.2.0"
+description = "Writed. — a minimal local-first editor for writers"
+authors = ["Writed."]
+license = ""
+repository = "https://github.com/dantemorrigan/writed."
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.3", features = [] }

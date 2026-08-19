@@ -5,9 +5,11 @@
   "description": "Writed. — a minimal local-first editor for writers",
   "scripts": {
     "build": "node build.js",
-    "check": "node build.js --check"
+    "check": "node build.js --check",
+    "tauri": "tauri"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "@tauri-apps/cli": "^2.11.4"
   }
 }
