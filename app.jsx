@@ -37,7 +37,9 @@ function CustomCursorFine() {
 
     function onOver(e) {
       const t = e.target.closest('button, a, [role="button"], label, .icon-btn, .btn');
-      const isText = e.target.matches('input[type="text"], input[type="email"], input:not([type]), textarea, [contenteditable]');
+      /* closest, not matches: inside the editor the event target is the
+         <p>/<h1> under the pointer, not the contenteditable itself */
+      const isText = !!e.target.closest('input[type="text"], input[type="email"], input:not([type]), textarea, [contenteditable=""], [contenteditable="true"]');
       document.body.classList.toggle('cursor-hover', !!t && !isText);
       document.body.classList.toggle('cursor-text', isText);
     }
