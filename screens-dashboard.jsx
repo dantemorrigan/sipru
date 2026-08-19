@@ -471,7 +471,7 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
           <button className="btn btn--ghost btn--search" onClick={onSearch} title={tl("search_title")}>
             <Icon name="search" size={16} /> <span className="btn-search-l">{tl("search_btn")}</span>
           </button>
-          <button className="btn btn--ghost" onClick={() => nav.export(p.id)}><Icon name="book" size={16} /> {tl("assemble_book")}</button>
+          <button className="btn btn--ghost" data-tour="assemble-book" onClick={() => nav.export(p.id)}><Icon name="book" size={16} /> {tl("assemble_book")}</button>
         </>} />
       <div className="scroll-area">
         <div className="wrap">
@@ -518,7 +518,7 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
                 store.updateDoc(id, { content: html });
                 nav.doc(id);
               }} />
-            <button className="addchap mono" onClick={() => { const id = store.addChapter(p.id); nav.doc(id); }}><Icon name="plus" size={14} /> {tl("add_chapter_btn")}</button>
+            <button className="addchap mono" data-tour="add-chapter" onClick={() => { const id = store.addChapter(p.id); nav.doc(id); }}><Icon name="plus" size={14} /> {tl("add_chapter_btn")}</button>
           </div>
 
           <ol className="chap-list">

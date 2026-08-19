@@ -127,7 +127,10 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [focusMode]);
 
-  function refreshActive() {
+  const refreshRaf = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(refreshRaf.current), [docId]);
+
+  function computeActive() {
     try {
       const st = { bold: document.queryCommandState("bold"), italic: document.queryCommandState("italic"),
         underline: document.queryCommandState("underline"), strike: document.queryCommandState("strikeThrough"),
@@ -142,6 +145,16 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       st.block = block;
       setActive(st);
     } catch (e) {}
+  }
+  /* queryCommandState (×6) forces a synchronous selection/style recalc in
+     the browser; onKeyUp fires it after every single keystroke, which is
+     the main source of typing lag on heavier documents. Formatting state
+     essentially never changes mid-word, so coalescing to once per frame
+     costs nothing perceptible and collapses a burst of keystrokes (fast
+     typing, IME, paste) into a single recalculation. */
+  function refreshActive() {
+    if (refreshRaf.current) return;
+    refreshRaf.current = requestAnimationFrame(() => { refreshRaf.current = 0; computeActive(); });
   }
 
   function onInput() {

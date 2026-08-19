@@ -200,7 +200,13 @@
 
 .ed-body { flex: 1; display: flex; min-height: 0; }
 .ed-tools { display: flex; flex-direction: column; gap: 18px; padding: 22px 12px; border-right: 1px solid var(--line);
-  align-items: center; transition: opacity .4s, transform .4s; z-index: 10; background: var(--paper); }
+  align-items: center; transition: opacity .4s, transform .4s; z-index: 10; background: var(--paper);
+  /* short windows: scroll internally instead of pushing buttons off-screen
+     with no way to reach them (min-height:0 lets a flex item shrink below
+     its content size so overflow-y can actually engage) */
+  min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+.ed-tools::-webkit-scrollbar { width: 5px; }
+.ed-tools::-webkit-scrollbar-thumb { background: var(--line); }
 .ed-tools-grp { display: flex; flex-direction: column; gap: 2px; padding-bottom: 16px; border-bottom: 1px solid var(--line-2); }
 .ed-tools-grp:last-child { border-bottom: none; padding-bottom: 0; }
 .ed-tools-modes { margin-top: auto; }

@@ -14,16 +14,49 @@ function tourMeasure(el) {
   return { top: r.top, left: r.left, width: r.width, height: r.height };
 }
 
+/* Any scrollable ancestor works, not just the page's own .scroll-area —
+   the editor toolbar scrolls internally too when the window is short. */
+function tourScrollParent(el) {
+  let n = el.parentElement;
+  while (n && n !== document.body) {
+    if (n.scrollHeight > n.clientHeight + 1) {
+      const oy = getComputedStyle(n).overflowY;
+      if (oy === "auto" || oy === "scroll") return n;
+    }
+    n = n.parentElement;
+  }
+  return null;
+}
+
 function tourEnsureVisible(el) {
-  const sc = el.closest(".scroll-area");
+  const sc = tourScrollParent(el);
   if (!sc) return;
   const er = el.getBoundingClientRect();
   const sr = sc.getBoundingClientRect();
-  const pad = 96;
+  const pad = Math.min(96, sr.height / 4);
   let d = 0;
   if (er.top < sr.top + pad) d = er.top - (sr.top + pad);
   else if (er.bottom > sr.bottom - pad) d = er.bottom - (sr.bottom - pad);
   if (d) sc.scrollTop += d;
+}
+
+/* Four solid rectangles that tile the viewport minus the spotlight hole.
+   Deliberately not a single huge box-shadow spread: some WebKit builds
+   (notably the WKWebView used by the Tauri/macOS build) clip an oversized
+   blurred/spread shadow layer, especially right after a window resize —
+   plain rects have no such limit and are cheaper to paint besides. */
+function tourBands(rect, pad) {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const top = Math.max(0, Math.min(vh, rect.top - pad));
+  const bottom = Math.max(0, Math.min(vh, rect.top + rect.height + pad));
+  const left = Math.max(0, Math.min(vw, rect.left - pad));
+  const right = Math.max(0, Math.min(vw, rect.left + rect.width + pad));
+  return [
+    { top: 0, left: 0, width: vw, height: top },
+    { top: bottom, left: 0, width: vw, height: Math.max(0, vh - bottom) },
+    { top, left: 0, width: left, height: Math.max(0, bottom - top) },
+    { top, left: right, width: Math.max(0, vw - right), height: Math.max(0, bottom - top) },
+  ];
 }
 
 function tourComputePos(rect, cw, ch, prefer) {
@@ -104,12 +137,12 @@ function buildTourSteps(nav, store) {
       body: tl("tour_goal_body"),
     });
     steps.push({
-      screen: "project", selector: ".addchap", prefer: "bottom",
+      screen: "project", selector: '[data-tour="add-chapter"]', prefer: "bottom",
       eyebrow: tl("tour_chap_eyebrow"), title: tl("tour_chap_title"),
       body: tl("tour_chap_body"),
     });
     steps.push({
-      screen: "project", selector: ".topbar-r .btn--ghost", prefer: "bottom",
+      screen: "project", selector: '[data-tour="assemble-book"]', prefer: "bottom",
       eyebrow: tl("tour_export_eyebrow"), title: tl("tour_export_title"),
       body: tl("tour_export_body"),
     });
@@ -118,7 +151,7 @@ function buildTourSteps(nav, store) {
   if (chap) {
     steps.push({
       screen: "doc", goto: () => nav.doc(chap.id),
-      selector: ".ed-tools-grp", prefer: "right",
+      selector: ".ed-tools", prefer: "right",
       eyebrow: tl("tour_tools_eyebrow"), title: tl("tour_tools_title"),
       body: tl("tour_tools_body"),
     });
@@ -179,12 +212,19 @@ function Tour({ store, nav, onFinish }) {
         timers.push(setTimeout(() => !cancelled && setRect(tourMeasure(el)), 260));
       });
     }
+    // a target that isn't laid out yet (display:none, mid-transition, not
+    // yet scrolled into a still-animating container) must never be treated
+    // as "found" — that's how a stale/zero rect ends up spotlighting
+    // whatever happens to occupy those coordinates.
+    function isShown(el) {
+      return el.getClientRects().length > 0;
+    }
     let tries = 0;
     function attempt() {
       if (cancelled) return;
       if (!step.selector) { setRect(null); return; }
       const el = document.querySelector(step.selector);
-      if (el) settle(el);
+      if (el && isShown(el)) settle(el);
       else if (tries++ < 80) timers.push(setTimeout(attempt, 50));
       else setRect(null);
     }
@@ -192,15 +232,28 @@ function Tour({ store, nav, onFinish }) {
     return () => { cancelled = true; cancelAnimationFrame(raf); timers.forEach(clearTimeout); };
   }, [i]);
 
-  // keep the spotlight glued to the element on resize / scroll settle
+  // keep the spotlight glued to the element through resize, scroll (window
+  // or any scrollable ancestor — capture:true sees both) and window/Tauri
+  // live-resize. Coalesced to one remeasure per frame: never more than one
+  // getBoundingClientRect + setState per paint, regardless of event rate.
   useEffect(() => {
+    let raf = 0;
     function reflow() {
-      if (!step.selector) return;
-      const el = document.querySelector(step.selector);
-      if (el) setRect(tourMeasure(el));
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        if (!step.selector) return;
+        const el = document.querySelector(step.selector);
+        if (el && el.getClientRects().length > 0) setRect(tourMeasure(el));
+      });
     }
     window.addEventListener("resize", reflow);
-    return () => window.removeEventListener("resize", reflow);
+    window.addEventListener("scroll", reflow, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", reflow);
+      window.removeEventListener("scroll", reflow, true);
+    };
   }, [i]);
 
   // place the card once it (and the target) are measured
@@ -230,10 +283,13 @@ function Tour({ store, nav, onFinish }) {
     <div className="tour-root" aria-live="polite">
       <div className="tour-catch" />
       {showSpot ? (
-        <div className="tour-spot" style={{
-          top: rect.top - TOUR_PAD, left: rect.left - TOUR_PAD,
-          width: rect.width + TOUR_PAD * 2, height: rect.height + TOUR_PAD * 2,
-        }} />
+        <>
+          {tourBands(rect, TOUR_PAD).map((b, n) => <div className="tour-band" key={n} style={b} />)}
+          <div className="tour-ring" style={{
+            top: rect.top - TOUR_PAD, left: rect.left - TOUR_PAD,
+            width: rect.width + TOUR_PAD * 2, height: rect.height + TOUR_PAD * 2,
+          }} />
+        </>
       ) : (
         <div className="tour-veil" />
       )}

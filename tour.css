@@ -13,17 +13,27 @@
 /* full-screen click swallower so the page can't be mis-clicked mid-tour */
 .tour-catch { position: fixed; inset: 0; z-index: 5000; }
 
-/* dim everything except the cut-out; the huge spread paints the scrim */
-.tour-spot {
+/* Dim everything except the cut-out with four plain rectangles (not one
+   huge box-shadow spread — see tourBands() in tour.jsx for why) plus a
+   thin ring traced right at the hole. All four bands + the ring animate
+   the same top/left/width/height transition, so the spotlight still
+   glides between steps exactly as before. */
+.tour-band {
   position: fixed; z-index: 5001; pointer-events: none;
-  box-shadow: 0 0 0 100vmax var(--tour-scrim);
+  background: var(--tour-scrim);
+  transition: top .42s var(--ease-out), left .42s var(--ease-out),
+              width .42s var(--ease-out), height .42s var(--ease-out);
+}
+.tour-ring {
+  position: fixed; z-index: 5001; pointer-events: none;
   outline: 1.5px solid var(--accent);
   outline-offset: 0;
   transition: top .42s var(--ease-out), left .42s var(--ease-out),
               width .42s var(--ease-out), height .42s var(--ease-out);
 }
-/* faint accent halo + corner ticks for a drafting-table feel */
-.tour-spot::before {
+/* faint accent halo for a drafting-table feel — a small fixed-size shadow,
+   cheap to paint regardless of how large the spotlight itself gets */
+.tour-ring::before {
   content: ""; position: absolute; inset: -1.5px;
   box-shadow: 0 0 0 4px var(--accent-tint);
 }
@@ -114,8 +124,8 @@
 /* ============================================================
    REDESIGN v2 — fluent / soft tour (Google · Figma)
    ============================================================ */
-.tour-spot { outline-offset: 3px; border-radius: var(--r-md); }
-.tour-spot::before { inset: -1.5px; border-radius: calc(var(--r-md) + 2px); }
+.tour-ring { outline-offset: 3px; border-radius: var(--r-md); }
+.tour-ring::before { inset: -1.5px; border-radius: calc(var(--r-md) + 2px); }
 .tour-card { border-radius: var(--r-lg); }
 .tour-pip { border-radius: var(--r-pill); }
 .tour-btn { border-radius: var(--r-md); }
