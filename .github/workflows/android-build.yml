@@ -1,0 +1,84 @@
+name: Android build (Tauri)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src-tauri/**"
+      - "*.jsx"
+      - "*.js"
+      - "*.css"
+      - "*.svg"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/android-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+          local-cache: true
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      # gen/android isn't committed (it's generated, like gen/schemas for
+      # desktop) — regenerated fresh from tauri.conf.json every run.
+      - name: Initialize Android project
+        run: npx tauri android init --ci
+        env:
+          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+
+      # Universal APK = arm64 + armv7 + x86 + x86_64 in one file (no
+      # --split-per-abi). Debug-signed via Gradle's built-in debug
+      # keystore — no signing setup needed, matching the macOS build's
+      # "no Developer signing, free distribution" approach.
+      - name: Build Writed. for Android (universal APK)
+        run: npx tauri android build --apk --debug
+        env:
+          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          CI: true
+
+      - name: Locate APK output
+        run: find src-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk"
+
+      - name: Upload Writed.apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: Writed-Android-apk
+          path: src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk
+          if-no-files-found: error
