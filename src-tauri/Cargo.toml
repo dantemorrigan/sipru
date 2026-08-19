@@ -17,3 +17,7 @@ tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
 tauri = { version = "2.11.3", features = [] }
+# Native save dialog + file write, used by export on Android (and desktop
+# Tauri) instead of the browser-only <a download> flow.
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"

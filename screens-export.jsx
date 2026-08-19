@@ -112,6 +112,21 @@ function htmlToMd(html) {
 }
 
 function downloadBlob(name, mime, content) {
+  /* Inside the Tauri app (desktop and Android alike) an <a download> click
+     doesn't reach a real save location — Android's WebView in particular
+     has nowhere to put it. Route through the native save dialog + fs
+     write instead, so the user picks a destination via the system picker
+     exactly like any other Android app. Plain web/browser build (no
+     window.__TAURI__) keeps the original <a download> behavior. */
+  const tauri = window.__TAURI__;
+  if (tauri && tauri.dialog && tauri.fs) {
+    const bytes = content instanceof Uint8Array ? content : new TextEncoder().encode(content);
+    const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : "";
+    tauri.dialog.save({ defaultPath: name, filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : undefined })
+      .then((path) => path && tauri.fs.writeFile(path, bytes))
+      .catch(() => {});
+    return;
+  }
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url; a.download = name;

@@ -268,7 +268,11 @@
   color: var(--ink-soft); place-items: center; transition: all .18s var(--ease); }
 .focus-exit-btn:hover { color: var(--ink); background: var(--paper-3); }
 @media (hover: none) {
-  .focus-exit-btn { display: grid; }
+  .focus-exit-btn {
+    display: grid;
+    top: calc(env(safe-area-inset-top, 0px) + 14px);
+    right: calc(env(safe-area-inset-right, 0px) + 14px);
+  }
 }
 
 /* editor footer */
@@ -435,7 +439,10 @@
 
 /* ---------- onboarding ---------- */
 .onb { position: fixed; inset: 0; z-index: 50; background: var(--paper); display: flex; flex-direction: column;
-  padding: 34px 7vw; overflow: hidden; transition: opacity .7s var(--ease); }
+  padding: 34px 7vw; overflow: hidden; transition: opacity .7s var(--ease);
+  /* status bar / notch at top, gesture bar at bottom on edge-to-edge Android */
+  padding-top: calc(env(safe-area-inset-top, 0px) + 34px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 34px); }
 .onb--leave { opacity: 0; }
 .onb-grid { position: absolute; inset: 0; pointer-events: none; }
 .onb-grid span { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-2); }
@@ -491,7 +498,9 @@
 /* ---------- responsive ---------- */
 @media (max-width: 860px) {
   .wrap { padding: 20px 18px 0; }
-  .topbar { padding: 13px 18px; grid-template-columns: auto auto; }
+  .topbar { padding: 13px 18px; grid-template-columns: auto auto;
+    /* status bar / notch on edge-to-edge Android */
+    padding-top: calc(env(safe-area-inset-top, 0px) + 13px); }
   .topbar-c { display: none; }
   .dash-hero { flex-direction: column; align-items: flex-start; gap: 14px; padding: 28px 0 24px; }
   .dash-title { font-size: clamp(36px, 10vw, 60px); }
@@ -508,7 +517,8 @@
   .editor-root { height: 100dvh; }
 
   /* Header: compact — hide modeswitch (moved to toolbar) */
-  .ed-head { padding: 10px 14px; gap: 8px; }
+  .ed-head { padding: 10px 14px; gap: 8px;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 10px); }
   .ed-head-r { gap: 4px; }
   .modeswitch { display: none; }
 
@@ -610,14 +620,14 @@
 
 @media (max-width: 480px) {
   .wrap { padding: 16px 14px 0; }
-  .topbar { padding: 11px 14px; }
+  .topbar { padding: 11px 14px; padding-top: calc(env(safe-area-inset-top, 0px) + 11px); }
   .dash-title { font-size: clamp(28px, 9vw, 44px); }
   .bigaction { padding: 16px 16px; gap: 12px; }
   .bigaction-t { font-size: var(--t-base); }
   .section-head { margin: 22px 0 14px; }
 
   /* Editor: phone-optimised */
-  .ed-head { padding: 8px 10px; }
+  .ed-head { padding: 8px 10px; padding-top: calc(env(safe-area-inset-top, 0px) + 8px); }
   .ed-area { font-size: 18px; line-height: 1.72; }
   .sheet { padding: 28px 16px; margin: 14px 0; box-shadow: none; }
   .editor-root.focus .sheet { padding: 6vh 18px 40vh; }
