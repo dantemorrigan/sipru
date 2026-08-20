@@ -52,10 +52,13 @@ jobs:
           local-cache: false
           add-to-path: true
 
+      # Only the ABIs real phones ship: arm64-v8a (every 64-bit device) and
+      # armeabi-v7a (older 32-bit ones). i686/x86_64 are emulator-only and
+      # were doubling the native payload for no real-device benefit.
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi
 
       - name: Install JS dependencies
         run: npm ci
@@ -78,12 +81,18 @@ jobs:
           cp -rv src-tauri/icons/android/mipmap-* src-tauri/gen/android/app/src/main/res/
           cp -v src-tauri/icons/android/values/ic_launcher_background.xml src-tauri/gen/android/app/src/main/res/values/
 
-      # Universal APK = arm64 + armv7 + x86 + x86_64 in one file (no
-      # --split-per-abi). Debug-signed via Gradle's built-in debug
-      # keystore — no signing setup needed, matching the macOS build's
-      # "no Developer signing, free distribution" approach.
+      # Run the webview at the panel's full rate (120/90 Hz) instead of the
+      # default mode. No-ops if the generated activity looks unfamiliar.
+      - name: Enable adaptive refresh rate
+        run: python3 .github/scripts/high_refresh_rate.py
+
+      # Universal APK = arm64 + armv7 in one file (no --split-per-abi), so a
+      # single download works on any real phone. Debug-signed via Gradle's
+      # built-in debug keystore — no signing setup needed, matching the macOS
+      # build's "no Developer signing, free distribution" approach. The heavy
+      # lifting on size is [profile.dev] in Cargo.toml stripping debug info.
       - name: Build Writed. for Android (universal APK)
-        run: npx tauri android build --apk --debug
+        run: npx tauri android build --apk --debug --target aarch64 armv7
         env:
           NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
@@ -99,6 +108,21 @@ jobs:
           mkdir -p dist-apk
           cp "$SRC" "dist-apk/Writed-${VERSION}-Android.apk"
           ls -la dist-apk
+
+      # Size report: the uploaded artifact is a zip, so its download size hides
+      # the real on-device APK size. Print both, plus the per-ABI native libs.
+      - name: Report APK size
+        run: |
+          APK=$(find dist-apk -name "*.apk" | head -1)
+          echo "### APK size" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| item | size |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **APK (on device)** | $(du -h "$APK" | cut -f1) |" >> $GITHUB_STEP_SUMMARY
+          unzip -l "$APK" | awk '/lib\/.*\.so$/ {printf "| lib %s | %.1f MB |\n", $4, $1/1048576}' >> $GITHUB_STEP_SUMMARY
+          echo "--- native libs inside the APK ---"
+          unzip -l "$APK" | grep '\.so$' || true
+          du -h "$APK"
 
       - name: Upload Writed.apk
         uses: actions/upload-artifact@v4

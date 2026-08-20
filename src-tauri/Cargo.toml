@@ -21,3 +21,19 @@ tauri = { version = "2.11.3", features = [] }
 # Tauri) instead of the browser-only <a download> flow.
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+
+# The Android APK ships from `tauri android build --apk --debug`, which uses
+# this profile — and cargo's default dev profile embeds full DWARF debug info,
+# which was ~all of the ~500 MB APK (four ABIs x one unstripped .so each).
+# Dropping debug info costs nothing at runtime and does not slow compiles;
+# opt-level 1 keeps builds quick while giving the shell sane native codegen.
+[profile.dev]
+debug = false
+strip = "debuginfo"
+opt-level = 1
+
+[profile.release]
+opt-level = "s"     # the shell just hosts a webview; size beats micro-speed
+lto = true
+codegen-units = 1
+strip = true

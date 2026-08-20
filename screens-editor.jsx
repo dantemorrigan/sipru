@@ -15,14 +15,18 @@ function useDocSave(docId, store, getHTML) {
     timer.current = null;
     if (!dirty.current) return;
     dirty.current = false;
-    /* on unmount React has already detached the ref, so fall back to the
-       last html we were handed — that is what makes leaving safe */
+    /* getHTML reads the editor's DOM node through a ref we own, which keeps
+       working after unmount (a detached node still holds its innerHTML), so
+       leaving is safe without serializing on every keystroke */
     const live = getRef.current();
     const html = live != null ? live : pending.current;
     pending.current = null;
     if (html != null) store.updateDoc(docId, { content: html });
   }, [docId, store]);
 
+  /* Called once per keystroke, so it must stay O(1): serializing the document
+     here was the main source of typing lag on long chapters. The actual
+     innerHTML read happens once per flush instead. */
   const schedule = useCallback((html) => {
     dirty.current = true;
     if (html != null) pending.current = html;
@@ -71,8 +75,13 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const [hist, setHist] = useState({ undo: false, redo: false });
   const [linkPopup, setLinkPopup] = useState(null);
   const depth = useRef({ u: 0, r: 0 });
+  /* React nulls `ref` on unmount, but a detached DOM node still holds its
+     content — keeping our own handle lets the final save read live HTML
+     instead of a copy we'd otherwise have to refresh on every keystroke. */
+  const nodeRef = useRef(null);
+  const wordTimer = useRef(null);
   const { schedule: doSave, flush: flushSave } =
-    useDocSave(docId, store, useCallback(() => (ref.current ? ref.current.innerHTML : null), []));
+    useDocSave(docId, store, useCallback(() => (nodeRef.current ? nodeRef.current.innerHTML : null), []));
 
   useEffect(() => {
     const vv = window.visualViewport;
@@ -158,12 +167,42 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     refreshRaf.current = requestAnimationFrame(() => { refreshRaf.current = 0; computeActive(); });
   }
 
+  /* Typing a character cannot change which formats are active — only moving
+     the caret can. Skipping the recalc for ordinary keys keeps the style
+     recalc out of the typing path entirely; navigation keys still refresh. */
+  const NAV_KEYS = { ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1,
+    Home: 1, End: 1, PageUp: 1, PageDown: 1, Enter: 1, Backspace: 1, Delete: 1 };
+  function onKeyUp(e) {
+    if (NAV_KEYS[e.key] || e.ctrlKey || e.metaKey) refreshActive();
+  }
+
+  /* Words from textContent, counted without building an array of every match:
+     countWords() strips tags off a full innerHTML copy, which is far too much
+     work to repeat per keystroke on a long chapter. */
+  function countVisibleWords(el) {
+    const t = el.textContent;
+    let n = 0, inWord = false;
+    for (let i = 0; i < t.length; i++) {
+      const c = t.charCodeAt(i);
+      const ws = c === 32 || c === 9 || c === 10 || c === 13 || c === 160;
+      if (ws) inWord = false;
+      else if (!inWord) { inWord = true; n++; }
+    }
+    return n;
+  }
+
+  /* Runs on every keystroke, so it stays O(1): no innerHTML serialization and
+     no full-document word count. The counter refreshes on a short idle pause,
+     which also collapses a burst of typing into one React re-render. */
   function commitChange() {
-    const html = ref.current.innerHTML;
-    setWords(store.countWords(html));
-    doSave(html); saved.current = html;
+    doSave(null);
     depth.current.u++; depth.current.r = 0;
     setHist((h) => (h.undo && !h.redo) ? h : { undo: true, redo: false });
+    clearTimeout(wordTimer.current);
+    wordTimer.current = setTimeout(() => {
+      const el = nodeRef.current;
+      if (el) setWords(countVisibleWords(el));
+    }, 200);
   }
 
   /* ---- inline text replacement helper: swaps [start,end) of a text node
@@ -175,10 +214,37 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const el = document.createElement(tagName);
     el.textContent = innerText;
     range.insertNode(el);
-    const after = document.createRange();
-    after.setStartAfter(el); after.collapse(true);
+
+    /* A caret sitting merely *after* the new element still counts as being
+       inside it, so everything typed next would nest into the <strong> — which
+       is how "**a** and *b*" ended up as one deeply nested run. For the tags
+       execCommand knows, toggling the format off resets that sticky typing
+       style; <code> has no such command, so it gets a real trailing space to
+       land the caret in (nbsp here matches what the editor already produces
+       for any trailing space). */
     const sel = window.getSelection();
-    sel.removeAllRanges(); sel.addRange(after);
+    const RESET = { strong: "bold", em: "italic", s: "strikeThrough" };
+    const after = document.createRange();
+    if (RESET[tagName]) {
+      let tail = el.nextSibling;
+      if (!tail || tail.nodeType !== 3) {
+        tail = document.createTextNode("");
+        el.parentNode.insertBefore(tail, el.nextSibling);
+      }
+      after.setStart(tail, 0); after.collapse(true);
+      sel.removeAllRanges(); sel.addRange(after);
+      if (document.queryCommandState(RESET[tagName])) {
+        document.execCommand(RESET[tagName], false, null);
+      }
+    } else {
+      /* nbsp, not a plain space: Chrome collapses trailing whitespace at the
+         end of a block, which would drop the separator and pull typing back
+         inside the <code>. */
+      const tail = document.createTextNode("\u00A0");
+      el.parentNode.insertBefore(tail, el.nextSibling);
+      after.setStart(tail, tail.length); after.collapse(true);
+      sel.removeAllRanges(); sel.addRange(after);
+    }
   }
 
   const URL_RE = /^(https?:\/\/[^\s]+|www\.[^\s]+\.[^\s]+)$/i;
@@ -444,8 +510,10 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           case "redo": runHistory("redo"); break;
           case "snapshots": setSnapOpen(true); break;
           case "rename": rest ? store.updateDoc(docId, { title: rest }) : setRenaming(true); break;
-          case "preview": setMode("preview"); break;
-          case "edit": setMode("edit"); break;
+          /* switchMode (not setMode) so the preview reads the live document
+             rather than whatever was last serialized */
+          case "preview": switchMode("preview"); break;
+          case "edit": switchMode("edit"); break;
           case "focus": setFocusMode((f) => !f); break;
           case "chapter": if (project) { const id = store.addChapter(project.id, rest); nav.doc(id); } break;
           case "export": if (project) nav.export(project.id, rest); break;
@@ -496,7 +564,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           <button className={"icon-btn" + (savedFlash ? " icon-btn--flash" : "")} onClick={saveNow} title={tl("ed_save")}><Icon name="save" size={18} /></button>
           {project
             ? <button className="icon-btn" onClick={() => nav.export(project.id)} title={tl("ed_export_book")}><Icon name="export" size={18} /></button>
-            : <button className="icon-btn" onClick={() => setNoteExport(true)} title={tl("ed_export_note")}><Icon name="export" size={18} /></button>
+            : <button className="icon-btn" onClick={() => { persistNow(); setNoteExport(true); }} title={tl("ed_export_note")}><Icon name="export" size={18} /></button>
           }
           <button className="icon-btn icon-btn--danger" onClick={() => setConfirmDelete(true)} title={tl("ed_delete_doc")}><Icon name="trash" size={18} /></button>
           <ThemeToggle theme={user.theme} onChange={onTheme} lang={lang} />
@@ -569,9 +637,10 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           style={{ display: mode === "edit" ? "" : "none" }}>
           <div className="sheet" style={{ "--ed-font": editorFontVar }}>
             <div className="sheet-edge" />
-            <div ref={ref} className="ed-area" contentEditable suppressContentEditableWarning
+            <div ref={(el) => { ref.current = el; if (el) nodeRef.current = el; }}
+              className="ed-area" contentEditable suppressContentEditableWarning
               spellCheck={true} data-placeholder={tl("editor_placeholder")}
-              onInput={onInput} onKeyDown={onKeyDown} onKeyUp={refreshActive}
+              onInput={onInput} onKeyDown={onKeyDown} onKeyUp={onKeyUp}
               onMouseUp={refreshActive} onFocus={refreshActive} />
           </div>
           <div style={{ height: "120px" }} />
