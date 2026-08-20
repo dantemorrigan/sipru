@@ -1,15 +1,22 @@
 /* ============================================================
    Writed. — background update check against writed.ru
 
-   Deliberately not tauri-plugin-updater: that one compares semver
-   (it has no concept of a build number), demands a minisign
+   Deliberately not tauri-plugin-updater: it demands a minisign
    signature per artifact, installs only .app.tar.gz bundles — not
-   the .dmg we ship — and has no Android support at all. This talks
-   to the documented endpoint instead and reuses the dialog + fs
-   plugins the export flow already relies on, so no new dependency
-   and no new permission is introduced.
+   the .dmg we ship — and has no Android support at all. This
+   reuses the dialog + fs plugins the export flow already relies
+   on instead, so no new dependency and no new permission is
+   introduced.
+
+   There is no separate update manifest to keep in sync (that was
+   the previous design, and it drifted from reality more than
+   once). Instead this reads the site's own downloads section —
+   the same "Скачать" buttons a person clicks by hand — and treats
+   whatever release its button links to as current. The site owner
+   already keeps that link pointed at the latest GitHub release, so
+   there is nothing extra to publish.
    ============================================================ */
-const UPDATE_ENDPOINT = "https://writed.ru/update/latest.json";
+const UPDATE_ENDPOINT = "https://writed.ru/";
 const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;  /* at most once every 6 hours */
 const UPDATE_SETTLE_MS = 4000;                  /* let the app paint first */
 const UPDATE_TIMEOUT_MS = 10000;
@@ -34,9 +41,40 @@ const nativeFS = () => {
   return t && t.dialog && t.fs ? t : null;
 };
 
+/* GitHub release download URLs always carry the tag, e.g.
+   .../releases/download/v1.2.0/Writed-1.2.0-Android.apk */
+function versionFromUrl(url) {
+  const m = /\/releases\/download\/v?([0-9]+(?:\.[0-9]+)*)\//.exec(url || "");
+  return m ? m[1] : null;
+}
+
+function isNewerVersion(a, b) {
+  const pa = String(a || "0").split(".").map(Number);
+  const pb = String(b || "0").split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
+/* Finds the "Скачать" link for one platform in the downloads section
+   of the fetched site markup — the exact same button a person uses. */
+function findPlatformUrl(doc, platform) {
+  const iconClass = platform === "android" ? "android-icon" : "macos-icon";
+  const rows = doc.querySelectorAll(".download-row");
+  for (const row of rows) {
+    if (row.querySelector("." + iconClass)) {
+      const link = row.querySelector("a.dl-btn[href]");
+      return link ? link.getAttribute("href") : null;
+    }
+  }
+  return null;
+}
+
 function UpdateBanner({ lang }) {
   const tl = T(lang || "en");
-  const [info, setInfo] = useState(null);      /* {build, version, notes, url} */
+  const [info, setInfo] = useState(null);      /* {version, url} */
   const [phase, setPhase] = useState("idle");  /* idle | loading | done | error */
   const [pct, setPct] = useState(0);
   const alive = useRef(true);
@@ -50,19 +88,20 @@ function UpdateBanner({ lang }) {
     const settle = setTimeout(() => {
       const bail = setTimeout(() => ctrl.abort(), UPDATE_TIMEOUT_MS);
       fetch(UPDATE_ENDPOINT, { cache: "no-store", signal: ctrl.signal })
-        .then((r) => { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
-        .then((data) => {
-          const build = Number(data && data.build) || 0;
-          const plat = (data && data.platforms || {})[updatePlatform()];
-          /* a build the user already dismissed stays dismissed */
-          if (build > (window.WRITED_BUILD || 0) && build !== updateState().dismissed
-              && plat && plat.url && alive.current) {
-            setInfo({ build, version: data.version, notes: data.releaseNotes, url: plat.url });
+        .then((r) => { if (!r.ok) throw new Error("http " + r.status); return r.text(); })
+        .then((html) => {
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          const url = findPlatformUrl(doc, updatePlatform());
+          const version = versionFromUrl(url);
+          /* a version the user already dismissed stays dismissed */
+          if (version && url && isNewerVersion(version, window.WRITED_VERSION)
+              && version !== updateState().dismissed && alive.current) {
+            setInfo({ version, url });
           }
         })
         .catch(() => {
-          /* offline, DNS failure, 404, unreachable host, malformed JSON — a
-             background check has no business interrupting anyone, so this
+          /* offline, DNS failure, 404, unreachable host, unexpected markup —
+             a background check has no business interrupting anyone, so this
              stays silent and simply retries after the next interval */
         })
         .finally(() => { clearTimeout(bail); saveUpdateState({ checkedAt: Date.now() }); });
@@ -72,7 +111,7 @@ function UpdateBanner({ lang }) {
   }, []);
 
   function dismiss() {
-    if (info) saveUpdateState({ dismissed: info.build });
+    if (info) saveUpdateState({ dismissed: info.version });
     setInfo(null);
   }
 
@@ -131,7 +170,6 @@ function UpdateBanner({ lang }) {
             : phase === "error" ? tl("upd_err")
             : tl("upd_available")}
         </div>
-        {phase === "idle" && info.notes && <div className="upd-notes mono">{info.notes}</div>}
         {phase === "done" && <div className="upd-notes mono">{tl(isAndroid() ? "upd_open_apk" : "upd_open_dmg")}</div>}
         {phase === "loading" && (
           <div className="upd-bar" aria-label={tl("upd_downloading")}>

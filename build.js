@@ -19,12 +19,10 @@ fs.mkdirSync(OUT, { recursive: true });
 let stale = [];
 
 /* version.js is generated rather than committed, so package.json stays the
-   single source of truth — the running app and the update check can never
-   disagree about which build this is. Bump "build" there to ship an update. */
+   single source of truth for what version is running. */
 {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8"));
-  const code = "window.WRITED_VERSION=" + JSON.stringify(pkg.version) +
-    ";window.WRITED_BUILD=" + (Number(pkg.build) || 0) + ";\n";
+  const code = "window.WRITED_VERSION=" + JSON.stringify(pkg.version) + ";\n";
   const dest = path.join(OUT, "version.js");
   const prev = fs.existsSync(dest) ? fs.readFileSync(dest, "utf8") : null;
   if (prev !== code) {
