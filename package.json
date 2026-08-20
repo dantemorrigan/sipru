@@ -1,6 +1,7 @@
 {
   "name": "writed",
   "version": "1.2.0",
+  "build": 14,
   "private": true,
   "description": "Writed. — a minimal local-first editor for writers",
   "scripts": {

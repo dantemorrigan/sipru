@@ -92,6 +92,17 @@
       /* ---- editor ---- */
       ed_back: "Назад",
       ed_rename: "Переименовать",
+      /* ---- updates ---- */
+      upd_available: "Доступна новая версия Writed",
+      upd_btn: "Обновить",
+      upd_downloading: "Загрузка обновления",
+      upd_done: "Обновление загружено",
+      upd_open_dmg: "Откройте файл и перетащите Writed. в «Программы»",
+      upd_open_apk: "Откройте файл, чтобы установить",
+      upd_err: "Не удалось загрузить обновление",
+      upd_retry: "Повторить",
+      upd_dismiss: "Скрыть",
+
       ed_link: "Ссылка",
       link_url_placeholder: "https://example.com",
       link_apply: "Применить",
@@ -402,6 +413,17 @@
       /* ---- editor ---- */
       ed_back: "Back",
       ed_rename: "Rename",
+      /* ---- updates ---- */
+      upd_available: "A new version of Writed is available",
+      upd_btn: "Update",
+      upd_downloading: "Downloading update",
+      upd_done: "Update downloaded",
+      upd_open_dmg: "Open the file and drag Writed. into Applications",
+      upd_open_apk: "Open the file to install",
+      upd_err: "Couldn't download the update",
+      upd_retry: "Retry",
+      upd_dismiss: "Dismiss",
+
       ed_link: "Link",
       link_url_placeholder: "https://example.com",
       link_apply: "Apply",

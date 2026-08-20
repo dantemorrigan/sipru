@@ -180,6 +180,9 @@ function App() {
       {s.onboarded && !s.tourDone && route.name !== "profile" && (
         <Tour store={store} nav={nav} onFinish={() => store.completeTour()} />
       )}
+      {/* checks in the background well after first paint; renders nothing
+          until writed.ru actually reports a higher build number */}
+      {s.tourDone && <UpdateBanner lang={user.lang} />}
       {toastNode}
     </>
   );

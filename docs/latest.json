@@ -1,0 +1,13 @@
+{
+  "version": "1.2.0",
+  "build": 15,
+  "releaseNotes": "Быстрее редактор, новая иконка и меньше размер приложения.",
+  "platforms": {
+    "macos": {
+      "url": "https://github.com/dantemorrigan/writed./releases/download/v1.2.0/Writed._1.2.0_universal.dmg"
+    },
+    "android": {
+      "url": "https://github.com/dantemorrigan/writed./releases/download/v1.2.0/Writed-1.2.0-Android.apk"
+    }
+  }
+}

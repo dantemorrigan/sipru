@@ -471,6 +471,36 @@
   letter-spacing: -.005em; box-shadow: 0 20px 50px -18px rgba(0,0,0,.5); animation: toastIn .4s var(--ease-out); }
 @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
+/* ---------- update banner ----------
+   z-index sits under the toast (50) and the modal scrim (55) so neither a
+   transient message nor an open dialog ever ends up behind it. All colors
+   come from the theme tokens, so dark mode needs no separate rule. */
+.upd { position: fixed; right: 22px; bottom: 22px; z-index: 45;
+  display: flex; align-items: center; gap: 16px; max-width: min(420px, calc(100vw - 32px));
+  padding: 14px 14px 14px 18px; background: var(--sheet); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-3);
+  animation: updIn .28s var(--ease-out) both; }
+@keyframes updIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.upd-main { min-width: 0; flex: 1; }
+.upd-title { display: flex; align-items: center; gap: 8px; font-size: var(--t-sm);
+  font-weight: 500; letter-spacing: -.01em; }
+.upd-spark { flex: 0 0 auto; }
+.upd-notes { margin-top: 5px; font-size: var(--t-xs); color: var(--ink-soft); line-height: 1.45;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.upd-bar { margin-top: 9px; height: 3px; border-radius: var(--r-pill); background: var(--paper-3); overflow: hidden; }
+.upd-bar span { display: block; height: 100%; background: var(--accent);
+  border-radius: var(--r-pill); transition: width .2s var(--ease-out); }
+.upd-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.upd-pct { font-size: var(--t-xs); color: var(--ink-soft); min-width: 34px; text-align: right; }
+.upd-go { background: var(--ink); color: var(--paper); border: none; border-radius: var(--r-sm);
+  padding: 8px 15px; font-family: var(--ui); font-size: var(--t-xs); font-weight: 500;
+  white-space: nowrap; cursor: pointer; transition: background .18s var(--ease); }
+.upd-go:hover { background: var(--accent); }
+.upd-x { background: transparent; border: none; color: var(--ink-faint);
+  display: grid; place-items: center; padding: 6px; border-radius: var(--r-sm); cursor: pointer;
+  transition: color .18s var(--ease); }
+.upd-x:hover { color: var(--ink); }
+
 /* ---------- save flash ---------- */
 .icon-btn:active { transform: scale(.84); }
 .icon-btn--flash { color: var(--accent) !important; animation: savedPulse .55s var(--ease); }
@@ -537,6 +567,9 @@
 /* ---------- responsive ---------- */
 @media (max-width: 860px) {
   .wrap { padding: 20px 18px 0; }
+  /* full-width sheet on phones, clear of the Android gesture bar */
+  .upd { left: 12px; right: 12px; max-width: none;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
   /* keyboard opening on the name step (step 1) squeezes the visual
      viewport; let the stage scroll and sit near the top instead of
      being vertically centered off past the keyboard */
