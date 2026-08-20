@@ -18,17 +18,29 @@ on:
 permissions:
   contents: read
 
+# The repo is named "writed." (trailing dot). GitHub's default Windows
+# workspace layout is D:\a\<repo>\<repo> — both segments derived from the
+# repo name — and Windows silently can't create/resolve a path component
+# that ends in a dot, so the default GITHUB_WORKSPACE is unusable here and
+# actions/checkout fails immediately. Checking out into a fixed absolute
+# path outside that tree sidesteps it entirely.
 jobs:
   build:
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: C:\writed-src
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: C:\writed-src
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: C:\writed-src\package-lock.json
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -50,11 +62,11 @@ jobs:
           CI: true
 
       - name: Locate installer output
-        run: Get-ChildItem -Recurse src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis
+        run: Get-ChildItem -Recurse C:\writed-src\src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis
 
       - name: Upload Writed installer
         uses: actions/upload-artifact@v4
         with:
           name: Writed-Windows-installer
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+          path: C:\writed-src\src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\*-setup.exe
           if-no-files-found: error
