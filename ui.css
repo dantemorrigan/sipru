@@ -512,6 +512,11 @@
 /* ---------- responsive ---------- */
 @media (max-width: 860px) {
   .wrap { padding: 20px 18px 0; }
+  /* keyboard opening on the name step (step 1) squeezes the visual
+     viewport; let the stage scroll and sit near the top instead of
+     being vertically centered off past the keyboard */
+  .onb { overflow-y: auto; }
+  .onb-stage { justify-content: flex-start; padding-top: 6vh; min-height: 0; }
   .topbar { padding: 13px 18px; grid-template-columns: auto auto;
     /* status bar / notch on edge-to-edge Android */
     padding-top: calc(env(safe-area-inset-top, 0px) + 13px); }

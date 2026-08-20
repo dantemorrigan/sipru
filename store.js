@@ -32,41 +32,79 @@
       after: text.slice(at + len, to) + (to < text.length ? "…" : "") };
   }
 
-  function seed() {
+  function demoContent(lang) {
+    if (lang === "ru") {
+      const p1 = {
+        id: uid("p_"), title: "Северный свет", status: "draft",
+        synopsis: "Роман о смотрителе маяка, который начинает получать письма из будущего.",
+        createdAt: now() - 86400000 * 40, updatedAt: now() - 3600000 * 5,
+        chapters: [
+          { id: uid("c_"), title: "Глава I. Туман", updatedAt: now() - 3600000 * 5,
+            content: "<h1>Туман</h1><p>Маяк стоял на краю мира, и каждую ночь Эльса считала удары волн о камень — будто кто-то снаружи просился войти.</p><p>В тот вечер море пахло железом. Она поднялась по ста двадцати ступеням, зажгла лампу и впервые за семь лет услышала, как под дверью шуршит бумага.</p><blockquote>«Вы не знаете меня. Но к зиме вы будете знать слишком много.»</blockquote><p>Письмо было датировано числом, которого ещё не наступило.</p>" },
+          { id: uid("c_"), title: "Глава II. Сто двадцать ступеней", updatedAt: now() - 86400000 * 2,
+            content: "<h1>Сто двадцать ступеней</h1><p>Утром туман не рассеялся. Эльса спустилась к воде с фонарём и нашла на гальке вторую записку — теми же чернилами, тем же быстрым почерком, что и накануне.</p><p>Она перечитала её трижды, прежде чем поняла: почерк был её собственный.</p>" },
+          { id: uid("c_"), title: "Глава III. Чужие чернила", updatedAt: now() - 86400000 * 6,
+            content: "<h1>Чужие чернила</h1><p>Смотритель с соседнего острова сказал, что чернила такого оттенка перестали выпускать тридцать лет назад. Эльса промолчала о том, что её перо до сих пор пахнет ими.</p>" }
+        ]
+      };
+      const p2 = {
+        id: uid("p_"), title: "Тихие города", status: "done",
+        synopsis: "Сборник рассказов о местах, которые помнят больше, чем люди.",
+        createdAt: now() - 86400000 * 180, updatedAt: now() - 86400000 * 20,
+        chapters: [
+          { id: uid("c_"), title: "Площадь без названия", updatedAt: now() - 86400000 * 21,
+            content: "<h1>Площадь без названия</h1><p>Каждый город хранит одну площадь, имя которой стёрлось со всех карт, но осталось на губах стариков.</p>" },
+          { id: uid("c_"), title: "Дом напротив вокзала", updatedAt: now() - 86400000 * 20,
+            content: "<h1>Дом напротив вокзала</h1><p>Поезда приходили реже, чем письма, и реже, чем сны о тех, кто уехал.</p>" }
+        ]
+      };
+      const notes = [
+        { id: uid("n_"), title: "Идеи для второй части", status: "draft", updatedAt: now() - 3600000 * 30,
+          content: "<h2>Куда дальше</h2><ul><li>Письма начинают противоречить друг другу</li><li>Появляется второй смотритель — или это она сама?</li><li>Финал: лампа гаснет в полдень</li></ul>" },
+        { id: uid("n_"), title: "Цитаты и эпиграфы", status: "draft", updatedAt: now() - 86400000 * 4,
+          content: "<blockquote>«Время — это вода, которую держат в ладонях.»</blockquote><p>— проверить источник</p>" }
+      ];
+      return { projects: [p1, p2], notes };
+    }
     const p1 = {
-      id: uid("p_"), title: "Северный свет", status: "draft",
-      synopsis: "Роман о смотрителе маяка, который начинает получать письма из будущего.",
+      id: uid("p_"), title: "Northern Light", status: "draft",
+      synopsis: "A novel about a lighthouse keeper who starts receiving letters from the future.",
       createdAt: now() - 86400000 * 40, updatedAt: now() - 3600000 * 5,
       chapters: [
-        { id: uid("c_"), title: "Глава I. Туман", updatedAt: now() - 3600000 * 5,
-          content: "<h1>Туман</h1><p>Маяк стоял на краю мира, и каждую ночь Эльса считала удары волн о камень — будто кто-то снаружи просился войти.</p><p>В тот вечер море пахло железом. Она поднялась по ста двадцати ступеням, зажгла лампу и впервые за семь лет услышала, как под дверью шуршит бумага.</p><blockquote>«Вы не знаете меня. Но к зиме вы будете знать слишком много.»</blockquote><p>Письмо было датировано числом, которого ещё не наступило.</p>" },
-        { id: uid("c_"), title: "Глава II. Сто двадцать ступеней", updatedAt: now() - 86400000 * 2,
-          content: "<h1>Сто двадцать ступеней</h1><p>Утром туман не рассеялся. Эльса спустилась к воде с фонарём и нашла на гальке вторую записку — теми же чернилами, тем же быстрым почерком, что и накануне.</p><p>Она перечитала её трижды, прежде чем поняла: почерк был её собственный.</p>" },
-        { id: uid("c_"), title: "Глава III. Чужие чернила", updatedAt: now() - 86400000 * 6,
-          content: "<h1>Чужие чернила</h1><p>Смотритель с соседнего острова сказал, что чернила такого оттенка перестали выпускать тридцать лет назад. Эльса промолчала о том, что её перо до сих пор пахнет ими.</p>" }
+        { id: uid("c_"), title: "Chapter I. Fog", updatedAt: now() - 3600000 * 5,
+          content: "<h1>Fog</h1><p>The lighthouse stood at the edge of the world, and every night Elsa counted the waves striking stone — as if something outside were asking to come in.</p><p>That evening the sea smelled of iron. She climbed the hundred and twenty steps, lit the lamp, and for the first time in seven years heard paper rustling under the door.</p><blockquote>“You don't know me. But by winter you will know too much.”</blockquote><p>The letter was dated a day that hadn't come yet.</p>" },
+        { id: uid("c_"), title: "Chapter II. A Hundred and Twenty Steps", updatedAt: now() - 86400000 * 2,
+          content: "<h1>A Hundred and Twenty Steps</h1><p>By morning the fog hadn't lifted. Elsa went down to the water with a lantern and found a second note on the shingle — same ink, same quick hand as the day before.</p><p>She read it three times before she understood: the handwriting was her own.</p>" },
+        { id: uid("c_"), title: "Chapter III. Someone Else's Ink", updatedAt: now() - 86400000 * 6,
+          content: "<h1>Someone Else's Ink</h1><p>The keeper on the neighboring island said that shade of ink stopped being made thirty years ago. Elsa said nothing about her pen still smelling of it.</p>" }
       ]
     };
     const p2 = {
-      id: uid("p_"), title: "Тихие города", status: "done",
-      synopsis: "Сборник рассказов о местах, которые помнят больше, чем люди.",
+      id: uid("p_"), title: "Quiet Towns", status: "done",
+      synopsis: "A collection of stories about places that remember more than people do.",
       createdAt: now() - 86400000 * 180, updatedAt: now() - 86400000 * 20,
       chapters: [
-        { id: uid("c_"), title: "Площадь без названия", updatedAt: now() - 86400000 * 21,
-          content: "<h1>Площадь без названия</h1><p>Каждый город хранит одну площадь, имя которой стёрлось со всех карт, но осталось на губах стариков.</p>" },
-        { id: uid("c_"), title: "Дом напротив вокзала", updatedAt: now() - 86400000 * 20,
-          content: "<h1>Дом напротив вокзала</h1><p>Поезда приходили реже, чем письма, и реже, чем сны о тех, кто уехал.</p>" }
+        { id: uid("c_"), title: "The Square With No Name", updatedAt: now() - 86400000 * 21,
+          content: "<h1>The Square With No Name</h1><p>Every town keeps one square whose name has faded from every map, yet still lives on the lips of the old.</p>" },
+        { id: uid("c_"), title: "The House Across From the Station", updatedAt: now() - 86400000 * 20,
+          content: "<h1>The House Across From the Station</h1><p>Trains came less often than letters, and less often than dreams of those who'd left.</p>" }
       ]
     };
     const notes = [
-      { id: uid("n_"), title: "Идеи для второй части", status: "draft", updatedAt: now() - 3600000 * 30,
-        content: "<h2>Куда дальше</h2><ul><li>Письма начинают противоречить друг другу</li><li>Появляется второй смотритель — или это она сама?</li><li>Финал: лампа гаснет в полдень</li></ul>" },
-      { id: uid("n_"), title: "Цитаты и эпиграфы", status: "draft", updatedAt: now() - 86400000 * 4,
-        content: "<blockquote>«Время — это вода, которую держат в ладонях.»</blockquote><p>— проверить источник</p>" }
+      { id: uid("n_"), title: "Ideas for part two", status: "draft", updatedAt: now() - 3600000 * 30,
+        content: "<h2>Where to next</h2><ul><li>The letters start contradicting each other</li><li>A second keeper appears — or is it her?</li><li>Ending: the lamp goes out at noon</li></ul>" },
+      { id: uid("n_"), title: "Quotes and epigraphs", status: "draft", updatedAt: now() - 86400000 * 4,
+        content: "<blockquote>“Time is water held in open hands.”</blockquote><p>— check source</p>" }
     ];
+    return { projects: [p1, p2], notes };
+  }
+
+  function seed(lang) {
+    const { projects, notes } = demoContent(lang);
     return {
       user: { name: "", theme: "light", editorFont: "book", lang: "en", createdAt: now() },
       onboarded: false,
-      projects: [p1, p2],
+      projects,
       notes
     };
   }
@@ -99,7 +137,8 @@
         if (parsed) return parsed;
       }
     } catch (e) {}
-    const s = migrate(seed());
+    const guessLang = (typeof navigator !== "undefined" && navigator.language && navigator.language.startsWith("ru")) ? "ru" : "en";
+    const s = migrate(seed(guessLang));
     persist(s);
     return s;
   }
@@ -117,8 +156,14 @@
 
     /* ---- user / onboarding ---- */
     completeOnboarding(name, theme, lang) {
-      state.user.lang = lang || "en";
-      state.user.name = name || (lang === "ru" ? "Автор" : "Author");
+      const resolvedLang = lang || "en";
+      if (!state.onboarded) {
+        const { projects, notes } = demoContent(resolvedLang);
+        state.projects = projects;
+        state.notes = notes;
+      }
+      state.user.lang = resolvedLang;
+      state.user.name = name || (resolvedLang === "ru" ? "Автор" : "Author");
       state.user.theme = theme || "light";
       state.onboarded = true;
       commit();
