@@ -40,12 +40,14 @@ jobs:
           cd C:\writed-src
           git checkout ${{ github.sha }}
 
+      # No cache: input — actions/setup-node's cache-dependency-path glob
+      # resolution doesn't cope with a working directory outside the
+      # (broken, trailing-dot) default GITHUB_WORKSPACE. Not worth fighting
+      # for a first build; can be revisited once this actually builds green.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: C:\writed-src\package-lock.json
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
