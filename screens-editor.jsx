@@ -314,7 +314,9 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     }
     const anchorEl = sel.anchorNode && (sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode);
     const linkEl = anchorEl && anchorEl.closest && anchorEl.closest("a");
-    setLinkPopup({ range: range.cloneRange(), href: linkEl ? (linkEl.getAttribute("href") || "") : "" });
+    const rect = range.getBoundingClientRect();
+    setLinkPopup({ range: range.cloneRange(), href: linkEl ? (linkEl.getAttribute("href") || "") : "",
+      anchor: { x: rect.left + rect.width / 2, y: rect.bottom } });
   }
   function applyLink(url) {
     if (!linkPopup) return;
@@ -632,7 +634,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
         />
       )}
       {linkPopup && (
-        <LinkPopup href={linkPopup.href} lang={lang}
+        <LinkPopup href={linkPopup.href} anchor={linkPopup.anchor} lang={lang}
           onApply={applyLink} onClose={() => setLinkPopup(null)} />
       )}
     </div>
@@ -640,14 +642,27 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 }
 
 /* ---- inline link editor popover ---- */
-function LinkPopup({ href, lang, onApply, onClose }) {
+function LinkPopup({ href, anchor, lang, onApply, onClose }) {
   const tl = T(lang);
   const [url, setUrl] = useState(href || "");
+  const [style, setStyle] = useState({ opacity: 0 });
   const inputRef = useRef(null);
+  const popRef = useRef(null);
   useEffect(() => { setTimeout(() => inputRef.current && inputRef.current.focus(), 30); }, []);
+  useEffect(() => {
+    const el = popRef.current;
+    if (!el || !anchor) return;
+    const margin = 12;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    let left = anchor.x - w / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - w - margin));
+    let top = anchor.y + 10;
+    if (top + h + margin > window.innerHeight) top = Math.max(margin, anchor.y - h - 10);
+    setStyle({ left, top, opacity: 1 });
+  }, [anchor]);
   return (
     <div className="link-pop-scrim" onMouseDown={onClose}>
-      <div className="link-pop" onMouseDown={(e) => e.stopPropagation()}>
+      <div ref={popRef} className="link-pop" style={style} onMouseDown={(e) => e.stopPropagation()}>
         <Icon name="link" size={16} />
         <input ref={inputRef} className="link-pop-input mono" value={url}
           placeholder={tl("link_url_placeholder")}

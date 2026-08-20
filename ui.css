@@ -272,10 +272,10 @@
 
 /* ---- link insert/edit popover ---- */
 .link-pop-scrim { position: fixed; inset: 0; z-index: 60; }
-.link-pop { position: fixed; top: 84px; left: 50%; transform: translateX(-50%); z-index: 61;
-  display: flex; align-items: center; gap: 10px; background: var(--sheet); border: 1px solid var(--line);
-  border-radius: var(--r-lg); box-shadow: var(--shadow-3); padding: 10px 12px; min-width: 360px;
-  color: var(--ink-soft); animation: dotExpand .18s var(--ease-out) both; }
+.link-pop { position: fixed; z-index: 61; display: flex; align-items: center; gap: 10px;
+  background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3); padding: 10px 12px; width: min(360px, calc(100vw - 24px));
+  color: var(--ink-soft); transition: opacity .15s var(--ease-out); }
 .link-pop-input { flex: 1; background: transparent; border: none; outline: none; color: var(--ink);
   font-size: var(--t-sm); min-width: 0; }
 .link-pop-rm, .link-pop-ok { flex: 0 0 auto; }
