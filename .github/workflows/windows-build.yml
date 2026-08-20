@@ -18,22 +18,27 @@ on:
 permissions:
   contents: read
 
-# The repo is named "writed." (trailing dot). GitHub's default Windows
-# workspace layout is D:\a\<repo>\<repo> — both segments derived from the
-# repo name — and Windows silently can't create/resolve a path component
-# that ends in a dot, so the default GITHUB_WORKSPACE is unusable here and
-# actions/checkout fails immediately. Checking out into a fixed absolute
-# path outside that tree sidesteps it entirely.
+# The repo is named "writed." (trailing dot). The runner always spawns every
+# step — including uses: steps like actions/checkout — with its working
+# directory forced to GITHUB_WORKSPACE, which on Windows defaults to
+# D:\a\writed.\writed. (both segments taken from the repo name). Windows
+# silently can't resolve a path component ending in a dot, so that step
+# spawn fails before any step's own code runs, actions/checkout included —
+# an explicit `path:` input on checkout does not help, since the failure
+# happens before checkout's code even starts. Cloning by hand into a fixed
+# path (C:\writed-src) with an explicit working-directory sidesteps the
+# broken default workspace entirely.
 jobs:
   build:
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: C:\writed-src
     steps:
-      - uses: actions/checkout@v4
-        with:
-          path: C:\writed-src
+      - name: Checkout (manual clone, see note above on the trailing-dot repo name)
+        shell: pwsh
+        working-directory: C:\
+        run: |
+          git clone --no-checkout https://github.com/${{ github.repository }}.git C:\writed-src
+          cd C:\writed-src
+          git checkout ${{ github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -48,6 +53,8 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Install JS dependencies
+        shell: pwsh
+        working-directory: C:\writed-src
         run: npm ci
 
       # NSIS installer, no code signing yet — same free-distribution approach
@@ -57,11 +64,14 @@ jobs:
       # are covered. `tauri build` runs `npm run build` + stage-dist.js via
       # beforeBuildCommand.
       - name: Build Writed. for Windows
+        shell: pwsh
+        working-directory: C:\writed-src
         run: npx tauri build --target x86_64-pc-windows-msvc --bundles nsis
         env:
           CI: true
 
       - name: Locate installer output
+        shell: pwsh
         run: Get-ChildItem -Recurse C:\writed-src\src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis
 
       - name: Upload Writed installer
