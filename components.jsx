@@ -60,6 +60,7 @@ const ICONS = {
   target: <g {...P}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.4"/></g>,
   feather: <g {...P}><path d="M20 4c-8 0-14 6-14 14v2h2c8 0 14-6 14-14V4h-2z"/><path d="M19 5 8 16"/><path d="M13 15H9v-4"/></g>,
   clock: <g {...P}><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></g>,
+  link: <g {...P}><path d="M9.5 14.5l5-5"/><path d="M8 16a4 4 0 0 1 0-5.6l2-2a4 4 0 0 1 5.6 5.6l-1 1"/><path d="M16 8a4 4 0 0 1 0 5.6l-2 2a4 4 0 0 1-5.6-5.6l1-1"/></g>,
 };
 function Icon({ name, size = 20, style, className }) {
   return (

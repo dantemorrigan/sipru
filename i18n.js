@@ -92,6 +92,10 @@
       /* ---- editor ---- */
       ed_back: "Назад",
       ed_rename: "Переименовать",
+      ed_link: "Ссылка",
+      link_url_placeholder: "https://example.com",
+      link_apply: "Применить",
+      link_remove: "Убрать ссылку",
       mode_edit: "Редактор",
       mode_preview: "Превью",
       ed_save: "Сохранить",
@@ -398,6 +402,10 @@
       /* ---- editor ---- */
       ed_back: "Back",
       ed_rename: "Rename",
+      ed_link: "Link",
+      link_url_placeholder: "https://example.com",
+      link_apply: "Apply",
+      link_remove: "Remove link",
       mode_edit: "Editor",
       mode_preview: "Preview",
       ed_save: "Save",

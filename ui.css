@@ -263,6 +263,27 @@
 .ed-area li { margin-bottom: .4em; }
 .ed-area hr { border: none; text-align: center; margin: 1.8em 0; }
 .ed-area hr::after { content: "✶"; color: var(--accent); font-size: .9em; }
+.ed-area code { font-family: var(--mono); font-size: .87em; background: var(--paper-2);
+  border: 1px solid var(--line); border-radius: var(--r-sm); padding: .1em .35em; }
+.ed-area a, .ed-link { color: var(--accent); text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); text-underline-offset: 2px;
+  transition: text-decoration-color .18s var(--ease); }
+.ed-area a:hover, .ed-link:hover { text-decoration-color: var(--accent); }
+
+/* ---- link insert/edit popover ---- */
+.link-pop-scrim { position: fixed; inset: 0; z-index: 60; }
+.link-pop { position: fixed; top: 84px; left: 50%; transform: translateX(-50%); z-index: 61;
+  display: flex; align-items: center; gap: 10px; background: var(--sheet); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-3); padding: 10px 12px; min-width: 360px;
+  color: var(--ink-soft); animation: dotExpand .18s var(--ease-out) both; }
+.link-pop-input { flex: 1; background: transparent; border: none; outline: none; color: var(--ink);
+  font-size: var(--t-sm); min-width: 0; }
+.link-pop-rm, .link-pop-ok { flex: 0 0 auto; }
+.link-pop-rm { background: transparent; border: none; color: var(--ink-faint); display: grid; place-items: center; cursor: pointer; }
+.link-pop-rm:hover { color: var(--accent); }
+.link-pop-ok { background: var(--ink); color: var(--paper); border: none; border-radius: var(--r-sm);
+  padding: 7px 14px; font-size: var(--t-xs); font-weight: 500; cursor: pointer; transition: background .18s var(--ease); }
+.link-pop-ok:hover { background: var(--accent); }
 
 /* focus mode */
 .editor-root.focus .ed-head,
@@ -308,6 +329,8 @@
 .preview-scroll { flex: 1; overflow-y: auto; background: var(--paper-2); padding: 44px 20px; }
 .book { max-width: 900px; margin: 0 auto; }
 .book-page { background: var(--sheet); box-shadow: var(--sheet-shadow); padding: 92px 88px; min-height: 70vh; color: var(--ink); overflow-wrap: break-word; word-break: break-word; }
+.book-page a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.book-page code { font-family: var(--mono); font-size: .87em; background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: .1em .35em; }
 .book-foot { text-align: center; padding: 18px; font-size: var(--t-xs); color: var(--ink-faint); letter-spacing: .12em; text-transform: uppercase; }
 
 /* preview anchors + scroll-to-top */

@@ -69,6 +69,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const [snapOpen, setSnapOpen] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState(null);
   const [hist, setHist] = useState({ undo: false, redo: false });
+  const [linkPopup, setLinkPopup] = useState(null);
   const depth = useRef({ u: 0, r: 0 });
   const { schedule: doSave, flush: flushSave } =
     useDocSave(docId, store, useCallback(() => (ref.current ? ref.current.innerHTML : null), []));
@@ -157,12 +158,182 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     refreshRaf.current = requestAnimationFrame(() => { refreshRaf.current = 0; computeActive(); });
   }
 
-  function onInput() {
+  function commitChange() {
     const html = ref.current.innerHTML;
     setWords(store.countWords(html));
     doSave(html); saved.current = html;
     depth.current.u++; depth.current.r = 0;
     setHist((h) => (h.undo && !h.redo) ? h : { undo: true, redo: false });
+  }
+
+  /* ---- inline text replacement helper: swaps [start,end) of a text node
+     for <tag>innerText</tag> and leaves the caret right after it ---- */
+  function wrapRange(node, start, end, tagName, innerText) {
+    const range = document.createRange();
+    range.setStart(node, start); range.setEnd(node, end);
+    range.deleteContents();
+    const el = document.createElement(tagName);
+    el.textContent = innerText;
+    range.insertNode(el);
+    const after = document.createRange();
+    after.setStartAfter(el); after.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(after);
+  }
+
+  const URL_RE = /^(https?:\/\/[^\s]+|www\.[^\s]+\.[^\s]+)$/i;
+
+  /* ---- Obsidian-style live markdown: "# " → H1, "**x**" → bold, a typed
+     URL followed by a space → auto-link, etc. Runs inside onInput right
+     after the browser has already inserted the triggering character. */
+  function tryMarkdownTransform(e) {
+    if (!e || !e.nativeEvent) return false;
+    const data = e.nativeEvent.data;
+    if (!data) return false;
+    const sel = window.getSelection();
+    if (!sel || !sel.isCollapsed || !sel.anchorNode || sel.anchorNode.nodeType !== 3) return false;
+    const node = sel.anchorNode;
+    const offset = sel.anchorOffset;
+    const text = node.textContent;
+    /* a lone/trailing space in contentEditable is often inserted as
+       U+00A0 nbsp rather than a plain space — normalize before matching */
+    const before = text.slice(0, offset).replace(/\u00A0/g, " ");
+    const isSpace = data === " " || data === "\u00A0";
+
+    if (isSpace) {
+      const parentBlock = node.parentElement;
+      const atLineStart = parentBlock && parentBlock.firstChild === node;
+      if (atLineStart) {
+        const m = before.match(/^(#{1,3}|>|-|\*|\d+\.) $/);
+        if (m) {
+          const range = document.createRange();
+          range.setStart(node, 0); range.setEnd(node, offset);
+          sel.removeAllRanges(); sel.addRange(range);
+          ref.current.focus();
+          document.execCommand("delete", false, null);
+          const marker = m[1];
+          if (marker === "#") document.execCommand("formatBlock", false, "h1");
+          else if (marker === "##") document.execCommand("formatBlock", false, "h2");
+          else if (marker === "###") document.execCommand("formatBlock", false, "h3");
+          else if (marker === ">") document.execCommand("formatBlock", false, "blockquote");
+          else if (marker === "-" || marker === "*") document.execCommand("insertUnorderedList", false, null);
+          else document.execCommand("insertOrderedList", false, null);
+          refreshActive();
+          return true;
+        }
+      }
+      /* auto-link a typed URL followed by a space */
+      const wm = before.match(/(\S+) $/);
+      if (wm && URL_RE.test(wm[1]) && !(node.parentElement && node.parentElement.closest("a"))) {
+        const word = wm[1];
+        const start = offset - wm[0].length, end = start + word.length;
+        const href = /^https?:\/\//i.test(word) ? word : "https://" + word;
+        const a = document.createElement("a");
+        a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer"; a.className = "ed-link";
+        a.textContent = word;
+        const range = document.createRange();
+        range.setStart(node, start); range.setEnd(node, end);
+        range.deleteContents(); range.insertNode(a);
+        const after = document.createRange();
+        after.setStartAfter(a); after.collapse(true);
+        sel.removeAllRanges(); sel.addRange(after);
+        return true;
+      }
+      return false;
+    }
+
+    if (data === "-") {
+      const parentBlock = node.parentElement;
+      const atLineStart = parentBlock && parentBlock.firstChild === node;
+      if (atLineStart && before === "---") {
+        const range = document.createRange();
+        range.setStart(node, 0); range.setEnd(node, offset);
+        sel.removeAllRanges(); sel.addRange(range);
+        ref.current.focus();
+        document.execCommand("delete", false, null);
+        document.execCommand("insertHorizontalRule", false, null);
+        return true;
+      }
+      return false;
+    }
+
+    if (data === "*") {
+      const bold = before.match(/\*\*([^*\n]+)\*\*$/);
+      if (bold) { wrapRange(node, offset - bold[0].length, offset, "strong", bold[1]); return true; }
+      const em = before.match(/\*([^*\n]+)\*$/);
+      if (em && before[before.length - em[0].length - 1] !== "*") {
+        wrapRange(node, offset - em[0].length, offset, "em", em[1]); return true;
+      }
+      return false;
+    }
+    if (data === "_") {
+      const em = before.match(/_([^_\n]+)_$/);
+      if (em) { wrapRange(node, offset - em[0].length, offset, "em", em[1]); return true; }
+      return false;
+    }
+    if (data === "~") {
+      const s = before.match(/~~([^~\n]+)~~$/);
+      if (s) { wrapRange(node, offset - s[0].length, offset, "s", s[1]); return true; }
+      return false;
+    }
+    if (data === "`") {
+      const c = before.match(/`([^`\n]+)`$/);
+      if (c) { wrapRange(node, offset - c[0].length, offset, "code", c[1]); return true; }
+      return false;
+    }
+    return false;
+  }
+
+  function onInput(e) {
+    tryMarkdownTransform(e);
+    commitChange();
+  }
+
+  /* ---- link insert/edit popover ---- */
+  function expandToWord(range) {
+    const node = range.startContainer;
+    if (node.nodeType !== 3) return null;
+    const text = node.textContent;
+    let start = range.startOffset, end = range.startOffset;
+    while (start > 0 && !/\s/.test(text[start - 1])) start--;
+    while (end < text.length && !/\s/.test(text[end])) end++;
+    if (start === end) return null;
+    const r = document.createRange();
+    r.setStart(node, start); r.setEnd(node, end);
+    return r;
+  }
+  function openLinkPopup() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    let range = sel.getRangeAt(0);
+    if (range.collapsed) {
+      const expanded = expandToWord(range);
+      if (!expanded) return;
+      range = expanded;
+      sel.removeAllRanges(); sel.addRange(range);
+    }
+    const anchorEl = sel.anchorNode && (sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode);
+    const linkEl = anchorEl && anchorEl.closest && anchorEl.closest("a");
+    setLinkPopup({ range: range.cloneRange(), href: linkEl ? (linkEl.getAttribute("href") || "") : "" });
+  }
+  function applyLink(url) {
+    if (!linkPopup) return;
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(linkPopup.range);
+    ref.current.focus();
+    const clean = (url || "").trim();
+    if (!clean) {
+      document.execCommand("unlink", false, null);
+    } else {
+      const href = /^https?:\/\//i.test(clean) || /^mailto:/i.test(clean) ? clean : "https://" + clean;
+      document.execCommand("createLink", false, href);
+      ref.current.querySelectorAll('a[href="' + href.replace(/"/g, '\\"') + '"]').forEach((a) => {
+        a.target = "_blank"; a.rel = "noopener noreferrer"; a.classList.add("ed-link");
+      });
+    }
+    setLinkPopup(null);
+    commitChange();
+    refreshActive();
   }
 
   /* Native contentEditable history — reliable on desktop and mobile alike.
@@ -194,6 +365,11 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const k = (e.key || "").toLowerCase();
     if (k === "z") { e.preventDefault(); runHistory(e.shiftKey ? "redo" : "undo"); }
     else if (k === "y") { e.preventDefault(); runHistory("redo"); }
+    else if (k === "b") { e.preventDefault(); exec("bold"); }
+    else if (k === "i") { e.preventDefault(); exec("italic"); }
+    else if (k === "u") { e.preventDefault(); exec("underline"); }
+    else if (k === "k") { e.preventDefault(); e.stopPropagation(); openLinkPopup(); }
+    else if (e.shiftKey && k === "x") { e.preventDefault(); exec("strikeThrough"); }
   }
 
   function exec(cmd, val) {
@@ -260,6 +436,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           case "ul": exec("insertUnorderedList"); break;
           case "ol": exec("insertOrderedList"); break;
           case "hr": exec("insertHorizontalRule"); break;
+          case "link": openLinkPopup(); break;
           case "save": saveNow(); break;
           case "undo": runHistory("undo"); break;
           case "redo": runHistory("redo"); break;
@@ -286,6 +463,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     { g: [["bold","bold"],["italic","italic"],["underline","underline"],["strike","strike"]] },
     { g: [["h1","h1"],["h2","h2"],["h3","h3"]] },
     { g: [["quote","quote"],["ul","ul"],["ol","ol"],["hr","hr"]] },
+    { g: [["link","link"]] },
   ];
 
   const FONT_MAP_FAMILY = { book: "var(--book)", article: "var(--book-alt)", mono: "var(--mono)" };
@@ -342,12 +520,13 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
             <div className="ed-tools-grp" key={gi}>
               {grp.g.map(([icon, cmd]) => (
                 <button key={cmd} className={"tool" + (active[cmd] || active.block===cmd ? " on" : "")}
-                  title={cmd} onMouseDown={(e) => { e.preventDefault();
+                  title={cmd === "link" ? tl("ed_link") : cmd} onMouseDown={(e) => { e.preventDefault();
                     if (["h1","h2","h3","quote"].includes(cmd)) block(cmd==="quote"?"blockquote":cmd);
                     else if (cmd==="strike") exec("strikeThrough");
                     else if (cmd==="ul") exec("insertUnorderedList");
                     else if (cmd==="ol") exec("insertOrderedList");
                     else if (cmd==="hr") exec("insertHorizontalRule");
+                    else if (cmd==="link") openLinkPopup();
                     else exec(cmd); }}>
                   <Icon name={icon} size={19} />
                 </button>
@@ -452,6 +631,36 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           lang={lang}
         />
       )}
+      {linkPopup && (
+        <LinkPopup href={linkPopup.href} lang={lang}
+          onApply={applyLink} onClose={() => setLinkPopup(null)} />
+      )}
+    </div>
+  );
+}
+
+/* ---- inline link editor popover ---- */
+function LinkPopup({ href, lang, onApply, onClose }) {
+  const tl = T(lang);
+  const [url, setUrl] = useState(href || "");
+  const inputRef = useRef(null);
+  useEffect(() => { setTimeout(() => inputRef.current && inputRef.current.focus(), 30); }, []);
+  return (
+    <div className="link-pop-scrim" onMouseDown={onClose}>
+      <div className="link-pop" onMouseDown={(e) => e.stopPropagation()}>
+        <Icon name="link" size={16} />
+        <input ref={inputRef} className="link-pop-input mono" value={url}
+          placeholder={tl("link_url_placeholder")}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); onApply(url); }
+            else if (e.key === "Escape") { e.preventDefault(); onClose(); }
+          }} />
+        {href && <button className="link-pop-rm" title={tl("link_remove")} onClick={() => onApply("")}>
+          <Icon name="close" size={15} />
+        </button>}
+        <button className="link-pop-ok" onClick={() => onApply(url)}>{tl("link_apply")}</button>
+      </div>
     </div>
   );
 }
