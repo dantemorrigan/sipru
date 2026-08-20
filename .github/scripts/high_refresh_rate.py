@@ -7,12 +7,23 @@ the window keeps whatever mode the system picked by default, which on a number
 of 90/120 Hz phones is the 60 Hz one; setting preferredRefreshRate lets the
 webview animate and scroll at the panel's full rate.
 
-Deliberately conservative: if the generated activity does not look the way we
-expect, this prints a notice and exits 0 so the build carries on unchanged.
+Tauri's real generated MainActivity already has a body (it calls
+enableEdgeToEdge() in onCreate), so this parses brace structure instead of
+guessing the whole class text, and only ever inserts one line — it never
+reconstructs class/method declarations. That keeps whatever else Tauri
+generates (edge-to-edge, future additions) intact.
+
+Deliberately conservative: if onCreate can't be located, this prints a notice
+and exits 0 so the build carries on with the default refresh rate.
 """
 import glob
 import re
 import sys
+
+PATCH_LINE = (
+    "    windowManager.defaultDisplay.supportedModes.maxByOrNull { it.refreshRate }"
+    "?.let { window.attributes = window.attributes.apply { preferredRefreshRate = it.refreshRate } }\n"
+)
 
 matches = glob.glob(
     "src-tauri/gen/android/app/src/main/java/**/MainActivity.kt", recursive=True
@@ -28,32 +39,41 @@ if "preferredRefreshRate" in src:
     print("notice: refresh-rate patch already present in " + path)
     sys.exit(0)
 
-# The generated activity is a one-liner: `class MainActivity : TauriActivity()`
-# (optionally followed by an empty body). Give it a body with an onCreate that
-# opts into the fastest supported mode. supportedModes/preferredRefreshRate are
-# both API 23+, and Tauri's minSdk is 24, so no version guard is needed.
-body = """class MainActivity : TauriActivity() {
-  override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-    val fastest = windowManager.defaultDisplay.supportedModes.maxByOrNull { it.refreshRate }
-    if (fastest != null) {
-      window.attributes = window.attributes.apply { preferredRefreshRate = fastest.refreshRate }
-    }
-  }
-}"""
-
-patched, n = re.subn(
-    r"class\s+MainActivity\s*:\s*TauriActivity\(\)\s*(\{\s*\})?", body, src, count=1
-)
-if n == 0:
-    print("notice: unexpected MainActivity shape — skipping refresh-rate patch")
-    print(src)
+m = re.search(r"class\s+MainActivity\s*:\s*TauriActivity\(\)\s*\{", src)
+if not m:
+    print("notice: MainActivity does not extend TauriActivity() — skipping")
     sys.exit(0)
 
-if "import android.os.Bundle" not in patched:
-    patched = re.sub(
-        r"(^package .*\n)", r"\1\nimport android.os.Bundle\n", patched, count=1, flags=re.M
+# Find the class body's matching closing brace by depth-counting from the '{'
+# `m` ended on, so this only ever looks *inside* the real class, never guesses
+# its shape.
+depth = 1
+i = m.end()
+while i < len(src) and depth > 0:
+    if src[i] == "{":
+        depth += 1
+    elif src[i] == "}":
+        depth -= 1
+    i += 1
+class_end = i
+class_body = src[m.end():class_end]
+
+oc = re.search(r"override\s+fun\s+onCreate\([^)]*\)\s*\{", class_body)
+if oc:
+    # Insert right after the existing onCreate's opening brace — before
+    # whatever it already does (super.onCreate, enableEdgeToEdge, …) — so the
+    # mode is set as early as possible without touching existing lines.
+    insert_at = m.end() + oc.end()
+    patched = src[:insert_at] + "\n" + PATCH_LINE + src[insert_at:]
+else:
+    # No onCreate at all: add a minimal one right inside the class body.
+    onc = (
+        "\n  override fun onCreate(savedInstanceState: android.os.Bundle?) {\n"
+        "    super.onCreate(savedInstanceState)\n"
+        + PATCH_LINE
+        + "  }\n"
     )
+    patched = src[:m.end()] + onc + src[m.end():]
 
 open(path, "w", encoding="utf-8").write(patched)
 print("patched " + path + " for adaptive refresh rate:\n")
