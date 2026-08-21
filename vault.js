@@ -123,7 +123,12 @@
   }
 
   async function quarantine(path, raw) {
-    var dest = path.replace(/\.json$/, "") + ".corrupt-" + Date.now() + ".json";
+    /* A legacy vault's corrupt file can itself be a dotfile (LEGACY_*_META);
+       strip any leading dot from the base name so the quarantine copy is
+       never rejected by the same forbidden-leading-dot scope rule this was
+       written to work around elsewhere. */
+    var dest = path.replace(/\.json$/, "").replace(/\/\.([^\/]*)$/, "/$1")
+      + ".corrupt-" + Date.now() + ".json";
     try { await T.fs.writeTextFile(dest, raw != null ? raw : await T.fs.readTextFile(path)); return dest; }
     catch (e) { return null; }
   }
@@ -441,10 +446,17 @@
   }
 
   /* Creates the folder and writes a real file into it, because mkdir alone
-     succeeds in places that later refuse writes. Cleans up after itself. */
+     succeeds in places that later refuse writes. Cleans up after itself.
+     The marker is deliberately not a dotfile: Tauri's fs scope glob does not
+     cross a leading dot, so ".writed-probe" was rejected as a forbidden path
+     even inside a folder the scope otherwise allows — the exact bug already
+     fixed for the vault's own metadata files, reintroduced here. That made
+     app-private storage, which needs no permission at all, probe as
+     unavailable right alongside the scoped-storage locations that
+     legitimately are. */
   async function probe(dir) {
     if (!available() || !dir) return { ok: false, error: "no path" };
-    var marker = join(dir, ".writed-probe");
+    var marker = join(dir, "writed-probe.tmp");
     try {
       await T.fs.mkdir(dir, { recursive: true });
       await T.fs.writeTextFile(marker, "ok");
