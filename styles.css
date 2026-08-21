@@ -240,53 +240,6 @@ body::before {
 }
 @keyframes splashFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* ---- Custom cursor (desktop only) ---- */
-@media (hover: hover) and (pointer: fine) {
-  body { cursor: none; }
-  button, a, [role="button"], input, textarea, select, label { cursor: none; }
-  /* keep the floating dot+ring as the ONLY cursor — beat explicit
-     cursor:pointer/text on cards, chapters, titles, the logo dot, etc. */
-  *, *::before, *::after { cursor: none !important; }
-}
-
-.cursor-dot {
-  position: fixed; z-index: 10000; pointer-events: none;
-  top: 0; left: 0;
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--ink);
-  transform: translate(-50%, -50%);
-  transition: width .15s var(--ease), height .15s var(--ease), background .2s var(--ease), opacity .2s var(--ease);
-  will-change: transform;
-}
-.cursor-ring {
-  position: fixed; z-index: 9999; pointer-events: none;
-  top: 0; left: 0;
-  width: 30px; height: 30px;
-  border-radius: 50%;
-  border: 1.5px solid var(--ink);
-  opacity: .5;
-  transform: translate(-50%, -50%);
-  transition: width .3s var(--ease), height .3s var(--ease), opacity .3s var(--ease), border-color .2s var(--ease);
-  will-change: transform;
-}
-
-@media (hover: none) {
-  .cursor-dot, .cursor-ring { display: none; }
-}
-
-/* hover state — ring expands, dot shrinks */
-body.cursor-hover .cursor-dot  { width: 4px; height: 4px; background: var(--accent); }
-body.cursor-hover .cursor-ring { width: 44px; height: 44px; opacity: .35; border-color: var(--accent); }
-
-/* click state */
-body.cursor-click .cursor-dot  { width: 12px; height: 12px; background: var(--accent); }
-body.cursor-click .cursor-ring { width: 18px; height: 18px; opacity: .8; border-color: var(--accent); }
-
-/* text cursor — ring becomes a thin vertical line */
-body.cursor-text .cursor-dot  { width: 2px; height: 18px; border-radius: 1px; background: var(--accent); opacity: .7; }
-body.cursor-text .cursor-ring { opacity: 0; }
-
 /* ============================================================
    REDESIGN v2 — fluent / soft (Google · Figma)
    Rounded geometry + gentle easing on shared primitives.

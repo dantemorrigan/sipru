@@ -6,69 +6,6 @@ const FINE_POINTER = (() => {
   catch (e) { return true; }
 })();
 
-function CustomCursor() {
-  return FINE_POINTER ? <CustomCursorFine /> : null;
-}
-
-function CustomCursorFine() {
-  const dotRef  = useRef(null);
-  const ringRef = useRef(null);
-  const pos = useRef({ x: -100, y: -100 });
-  const ring = useRef({ x: -100, y: -100 });
-  const raf  = useRef(null);
-
-  useEffect(() => {
-    const dot  = dotRef.current;
-    const ringEl = ringRef.current;
-    if (!dot || !ringEl) return;
-
-    function lerp(a, b, t) { return a + (b - a) * t; }
-
-    function tick() {
-      ring.current.x = lerp(ring.current.x, pos.current.x, 0.12);
-      ring.current.y = lerp(ring.current.y, pos.current.y, 0.12);
-      dot.style.transform  = `translate(calc(${pos.current.x}px - 50%), calc(${pos.current.y}px - 50%))`;
-      ringEl.style.transform = `translate(calc(${ring.current.x}px - 50%), calc(${ring.current.y}px - 50%))`;
-      raf.current = requestAnimationFrame(tick);
-    }
-    raf.current = requestAnimationFrame(tick);
-
-    function onMove(e) { pos.current.x = e.clientX; pos.current.y = e.clientY; }
-
-    function onOver(e) {
-      const t = e.target.closest('button, a, [role="button"], label, .icon-btn, .btn');
-      /* closest, not matches: inside the editor the event target is the
-         <p>/<h1> under the pointer, not the contenteditable itself */
-      const isText = !!e.target.closest('input[type="text"], input[type="email"], input:not([type]), textarea, [contenteditable=""], [contenteditable="true"]');
-      document.body.classList.toggle('cursor-hover', !!t && !isText);
-      document.body.classList.toggle('cursor-text', isText);
-    }
-
-    function onDown() { document.body.classList.add('cursor-click'); }
-    function onUp()   { document.body.classList.remove('cursor-click'); }
-
-    window.addEventListener('mousemove', onMove, { passive: true });
-    window.addEventListener('mouseover', onOver, { passive: true });
-    window.addEventListener('mousedown', onDown, { passive: true });
-    window.addEventListener('mouseup',   onUp,   { passive: true });
-
-    return () => {
-      cancelAnimationFrame(raf.current);
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseover', onOver);
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('mouseup',   onUp);
-    };
-  }, []);
-
-  return (
-    <>
-      <div ref={dotRef}  className="cursor-dot" />
-      <div ref={ringRef} className="cursor-ring" />
-    </>
-  );
-}
-
 /* ============================================================
    Writed. — splash screen
    ============================================================ */
@@ -149,16 +86,11 @@ function App() {
   }
 
   if (!splashDone) {
-    return (
-      <>
-        <CustomCursor />
-        <SplashScreen onDone={() => setSplashDone(true)} />
-      </>
-    );
+    return <SplashScreen onDone={() => setSplashDone(true)} />;
   }
 
   if (!s.onboarded || route.name === "onboarding") {
-    return <>{toastNode}<CustomCursor /><Onboarding onDone={(name, theme, lang) => { store.completeOnboarding(name, theme, lang); setRoute({ name: "dashboard" }); }} /></>;
+    return <>{toastNode}<Onboarding onDone={(name, theme, lang) => { store.completeOnboarding(name, theme, lang); setRoute({ name: "dashboard" }); }} /></>;
   }
 
   let screen;
@@ -169,7 +101,6 @@ function App() {
 
   return (
     <>
-      <CustomCursor />
       {screen}
       {searchOpen && (
         <SearchModal store={store} lang={user.lang} projectId={searchScope}
