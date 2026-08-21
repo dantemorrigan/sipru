@@ -234,6 +234,7 @@ function buildBookDocx(project, opts) {
 }
 
 function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
+  const [closing, close] = useDismiss(onClose);
   const project = store.get().projects.find((p) => p.id === projectId);
   const lang = (store.get().user && store.get().user.lang) || "en";
   const tl = T(lang);
@@ -283,12 +284,12 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
   }
 
   return (
-    <div className="modal-scrim" onMouseDown={onClose}>
+    <div className={"modal-scrim" + closing} onMouseDown={close}>
       <div className="modal export-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="export-side">
           <div className="modal-head">
             <div><div className="eyebrow">{tl("exp_book_eyebrow")}</div><h2 className="modal-title">{project.title}</h2></div>
-            <button className="icon-btn" onClick={onClose}><Icon name="close" size={18} /></button>
+            <button className="icon-btn" onClick={close}><Icon name="close" size={18} /></button>
           </div>
 
           <div className="exp-scroll">
@@ -387,6 +388,7 @@ function buildNoteHTML(note, opts) {
 }
 
 function NoteExportModal({ note, onClose, onToast, lang }) {
+  const [closing, close] = useDismiss(onClose);
   const tl = T(lang || "en");
   const [opts, setOpts] = useState({ margin: "normal", font: "book", leading: 1.7, paperSize: "a4", titlePage: true });
   const set = (patch) => setOpts((o) => ({ ...o, ...patch }));
@@ -426,12 +428,12 @@ function NoteExportModal({ note, onClose, onToast, lang }) {
   }
 
   return (
-    <div className="modal-scrim" onMouseDown={onClose}>
+    <div className={"modal-scrim" + closing} onMouseDown={close}>
       <div className="modal export-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="export-side">
           <div className="modal-head">
             <div><div className="eyebrow">{tl("exp_note_eyebrow")}</div><h2 className="modal-title">{note.title}</h2></div>
-            <button className="icon-btn" onClick={onClose}><Icon name="close" size={18} /></button>
+            <button className="icon-btn" onClick={close}><Icon name="close" size={18} /></button>
           </div>
 
           <div className="exp-scroll">

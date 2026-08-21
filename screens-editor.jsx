@@ -764,6 +764,7 @@ function SnapshotModal({ snapshots, lang, onSave, onDelete, onRestore, onClose }
   const tl = T(lang || "en");
   const [name, setName] = useState("");
   const locale = lang === "ru" ? "ru-RU" : "en-US";
+  const [closing, close] = useDismiss(onClose);
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -772,12 +773,12 @@ function SnapshotModal({ snapshots, lang, onSave, onDelete, onRestore, onClose }
   }, [onClose]);
 
   return (
-    <div className="modal-scrim" onMouseDown={onClose}>
+    <div className={"modal-scrim" + closing} onMouseDown={close}>
       <div className="modal snap-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <div><div className="eyebrow">{tl("snap_title")}</div>
             <h2 className="modal-title">{tl("snap_btn")}</h2></div>
-          <button className="icon-btn" onClick={onClose}><Icon name="close" size={18} /></button>
+          <button className="icon-btn" onClick={close}><Icon name="close" size={18} /></button>
         </div>
 
         <form className="snap-new" onSubmit={(e) => { e.preventDefault(); onSave(name.trim()); setName(""); }}>
@@ -815,8 +816,9 @@ function SnapshotModal({ snapshots, lang, onSave, onDelete, onRestore, onClose }
 function ConfirmRestore({ snap, lang, onConfirm, onCancel }) {
   const tl = T(lang || "en");
   const locale = lang === "ru" ? "ru-RU" : "en-US";
+  const [closing, close] = useDismiss(onCancel);
   return (
-    <div className="modal-scrim" onMouseDown={onCancel}>
+    <div className={"modal-scrim" + closing} onMouseDown={close}>
       <div className="confirm-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="confirm-icon"><Icon name="reset" size={22} /></div>
         <div className="confirm-title">{tl("snap_confirm_title")}</div>
@@ -825,7 +827,7 @@ function ConfirmRestore({ snap, lang, onConfirm, onCancel }) {
         </div>
         <p className="confirm-note mono">{tl("snap_confirm_body")}</p>
         <div className="confirm-actions">
-          <button className="btn btn--ghost" onClick={onCancel}>{tl("confirm_cancel")}</button>
+          <button className="btn btn--ghost" onClick={close}>{tl("confirm_cancel")}</button>
           <button className="btn btn--accent" onClick={onConfirm}><Icon name="reset" size={15} /> {tl("snap_confirm_ok")}</button>
         </div>
       </div>

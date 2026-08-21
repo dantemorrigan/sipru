@@ -32,15 +32,16 @@ function TopBar({ user, store, nav, onTheme, right, hideProfile }) {
 /* ---- Confirm delete dialog ---- */
 function ConfirmDelete({ title, what, onConfirm, onCancel, lang }) {
   const tl = T(lang || "en");
+  const [closing, close] = useDismiss(onCancel);
   return (
-    <div className="modal-scrim" onMouseDown={onCancel}>
+    <div className={"modal-scrim" + closing} onMouseDown={close}>
       <div className="confirm-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="confirm-icon"><Icon name="trash" size={22} /></div>
         <div className="confirm-title">{tl("confirm_delete_q")} {what}?</div>
         <div className="confirm-name">«{title}»</div>
         <p className="confirm-note mono">{tl("confirm_delete_body")}</p>
         <div className="confirm-actions">
-          <button className="btn btn--ghost" onClick={onCancel}>{tl("confirm_cancel")}</button>
+          <button className="btn btn--ghost" onClick={close}>{tl("confirm_cancel")}</button>
           <button className="btn btn--danger" onClick={onConfirm}><Icon name="trash" size={15}/> {tl("confirm_delete_btn")}</button>
         </div>
       </div>

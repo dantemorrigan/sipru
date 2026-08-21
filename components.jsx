@@ -185,6 +185,7 @@ function SearchModal({ store, lang, projectId, onPick, onClose }) {
   const [query, setQuery] = useState("");
   const [sel, setSel] = useState(0);
   const listRef = useRef(null);
+  const [closing, close] = useDismiss(onClose);
 
   /* debounce so a long project isn't rescanned on every keystroke */
   useEffect(() => {
@@ -217,13 +218,13 @@ function SearchModal({ store, lang, projectId, onPick, onClose }) {
   }
 
   return (
-    <div className="modal-scrim search-scrim" onMouseDown={onClose}>
+    <div className={"modal-scrim search-scrim" + closing} onMouseDown={close}>
       <div className="modal search-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="search-bar">
           <Icon name="search" size={18} />
           <input className="search-input" autoFocus value={q} onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown} placeholder={tl(projectId ? "search_placeholder_project" : "search_placeholder")} />
-          <button className="icon-btn" onClick={onClose} title={tl("confirm_cancel")}><Icon name="close" size={17} /></button>
+          <button className="icon-btn" onClick={close} title={tl("confirm_cancel")}><Icon name="close" size={17} /></button>
         </div>
 
         <div className="search-list" ref={listRef}>
@@ -258,6 +259,26 @@ function SearchModal({ store, lang, projectId, onPick, onClose }) {
 
 const FONT_LABEL = { book: "Newsreader", article: "Spectral", mono: "JetBrains Mono" };
 
+/* Lets a modal play its exit animation before it unmounts: the scrim
+   takes `cls` for one animation's length, then the real onClose runs.
+   Desktop keeps the instant close — the exit is a touch affordance. */
+const DISMISS_MS = 190;
+function useDismiss(onClose) {
+  const [closing, setClosing] = useState(false);
+  const timer = useRef(null);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const close = useCallback(() => {
+    let coarse = false;
+    try { coarse = window.matchMedia("(pointer: coarse)").matches; } catch (e) {}
+    if (!coarse) return onClose();
+    if (timer.current) return;              /* already on the way out */
+    setClosing(true);
+    timer.current = setTimeout(onClose, DISMISS_MS);
+  }, [onClose]);
+  return [closing ? " is-closing" : "", close];
+}
+
 Object.assign(window, {
   useStore, Icon, ICONS, Logo, StatsDot, ThemeToggle, timeAgo, plural, wordsLabel, useToast, FONT_LABEL, T, SearchModal,
+  useDismiss,
 });
