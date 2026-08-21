@@ -10,6 +10,30 @@ function Onboarding({ onDone }) {
   const nameRef = useRef(null);
   const tl = T(lang);
 
+  /* The vault step only exists where there is a real filesystem to write
+     to; on the web the app stays on localStorage and the flow is 4 steps. */
+  const vaultStep = !!(window.WritedVault && window.WritedVault.available());
+  const canPick = vaultStep && window.WritedVault.canPickFolder();
+  const [vault, setVault] = useState(null);
+  const [vaultBusy, setVaultBusy] = useState(false);
+  const [vaultErr, setVaultErr] = useState(null);
+
+  /* Mobile has no folder picker, so the location is resolved for the user
+     and simply shown — there is nothing for them to choose. */
+  useEffect(() => {
+    if (!vaultStep || canPick) return;
+    window.WritedVault.defaultMobileDir().then((d) => d && setVault(d)).catch(() => {});
+  }, [vaultStep, canPick]);
+
+  async function chooseVault() {
+    setVaultErr(null); setVaultBusy(true);
+    try {
+      const dir = await window.WritedVault.pick();
+      if (dir) setVault(dir);
+    } catch (e) { setVaultErr(String((e && e.message) || e)); }
+    setVaultBusy(false);
+  }
+
   useEffect(() => { document.documentElement.setAttribute("data-theme", theme); }, [theme]);
   useEffect(() => { if (step === 1) setTimeout(() => nameRef.current && nameRef.current.focus(), 500); }, [step]);
 
@@ -17,12 +41,17 @@ function Onboarding({ onDone }) {
   async function finish() {
     setLeaving(true);
     try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
+    /* Opening the vault before onDone means the very first save already
+       lands on disk — there is no window where the work exists only in
+       localStorage. `adopt` picks up a vault left by a previous install. */
+    if (vault) { try { await window.WritedVault.open(vault, { adopt: true }); } catch (e) {} }
     setTimeout(() => onDone(name.trim() || tl("default_author"), theme, lang), 760);
   }
 
   const dotScale = 1 + Math.min(name.trim().length, 16) * 0.08;
-  const totalSteps = 3;
-  const stepIdx = step + 1; /* 0..3 for display */
+  const lastStep = vaultStep ? 3 : 2;
+  const stepIdx = step + 1;
+  const pips = vaultStep ? [-1, 0, 1, 2, 3] : [-1, 0, 1, 2];
 
   return (
     <div className={"onb" + (leaving ? " onb--leave" : "")}>
@@ -33,8 +62,10 @@ function Onboarding({ onDone }) {
       <div className="onb-top">
         <Logo size={20} alive />
         <div className="onb-steps mono">
-          {[-1, 0, 1, 2].map((i) => <span key={i} className={"onb-pip" + (i <= step ? " on" : "")} />)}
-          <span style={{ marginLeft: 12, color: "var(--ink-faint)" }}>{String(stepIdx + 1).padStart(2, "0")} / 04</span>
+          {pips.map((i) => <span key={i} className={"onb-pip" + (i <= step ? " on" : "")} />)}
+          <span style={{ marginLeft: 12, color: "var(--ink-faint)" }}>
+            {String(stepIdx + 1).padStart(2, "0")} / {String(pips.length).padStart(2, "0")}
+          </span>
         </div>
       </div>
 
@@ -117,10 +148,44 @@ function Onboarding({ onDone }) {
           <p className="onb-hint mono">{tl("onb_hint_2")}</p>
           <div className="onb-actions">
             <button className="btn btn--ghost" onClick={() => go(1)}><Icon name="back" size={15} /> {tl("onb_back")}</button>
+            <button className="btn btn--accent onb-finish" onClick={() => (vaultStep ? go(3) : finish())}>
+              {vaultStep ? tl("onb_next") : tl("onb_finish")} <Icon name="forward" size={15} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3 — vault: where the work actually lives */}
+      {step === 3 && (
+        <div className="onb-stage screen-enter" key="s3">
+          <div className="eyebrow onb-kicker">{tl("onb_kicker_3")}</div>
+          <h2 className="onb-q">{tl("onb_q_3").split("\n").map((l, i) => <span key={i}>{l}<br /></span>)}</h2>
+
+          <div className="onb-vault">
+            {canPick ? (
+              <button className="onb-vault-pick" onClick={chooseVault} disabled={vaultBusy}>
+                <Icon name="folder" size={20} />
+                <span className="onb-vault-pick-t">
+                  {vault ? tl("vault_change") : tl("vault_choose")}
+                </span>
+              </button>
+            ) : null}
+            <div className={"onb-vault-path mono" + (vault ? " on" : "")}>
+              {vault || (canPick ? tl("vault_none") : tl("vault_resolving"))}
+            </div>
+            {vaultErr && <div className="onb-vault-err mono">{vaultErr}</div>}
+          </div>
+
+          <p className="onb-hint mono">{tl(canPick ? "onb_hint_3" : "onb_hint_3_mobile")}</p>
+          <div className="onb-actions">
+            <button className="btn btn--ghost" onClick={() => go(2)}><Icon name="back" size={15} /> {tl("onb_back")}</button>
             <button className="btn btn--accent onb-finish" onClick={finish}>
               {tl("onb_finish")} <Icon name="forward" size={15} />
             </button>
           </div>
+          {canPick && !vault && (
+            <button className="onb-vault-skip mono" onClick={finish}>{tl("vault_skip")}</button>
+          )}
         </div>
       )}
     </div>

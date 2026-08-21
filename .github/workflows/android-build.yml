@@ -86,6 +86,12 @@ jobs:
       - name: Enable adaptive refresh rate
         run: python3 .github/scripts/high_refresh_rate.py
 
+      # An Android uninstall deletes the app's data directory, which is where
+      # the webview keeps localStorage — so without this a reinstall started
+      # from zero. Auto Backup restores it from the user's Drive instead.
+      - name: Enable Android Auto Backup
+        run: python3 .github/scripts/android_backup.py
+
       # Universal APK = arm64 + armv7 in one file (no --split-per-abi), so a
       # single download works on any real phone. Debug-signed via Gradle's
       # built-in debug keystore — no signing setup needed, matching the macOS

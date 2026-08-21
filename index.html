@@ -32,6 +32,8 @@
   <!-- touch-only haptics; delegated from the document, so it must load
        before the app paints its first pressable element -->
   <script src="haptics.js"></script>
+  <!-- durable on-device storage; must load after store.js -->
+  <script src="vault.js"></script>
   <!-- JSX pre-compiled by `npm run build` (no in-browser Babel) -->
   <!-- generated from package.json; the update check compares against it -->
   <script src="build/version.js"></script>

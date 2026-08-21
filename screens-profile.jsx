@@ -10,6 +10,33 @@ function Profile({ store, user, nav, onTheme, onToast }) {
   const fileRef = useRef(null);
   const avatarRef = useRef(null);
 
+  /* Vault state is owned by vault.js, not React — subscribe so the path
+     and sync status stay live while a save is in flight. */
+  const V = window.WritedVault;
+  const vaultOn = !!(V && V.available());
+  const [vs, setVs] = useState(() => (V ? V.status() : null));
+  useEffect(() => (V ? V.subscribe(setVs) : undefined), [V]);
+
+  async function chooseVault() {
+    try {
+      const dir = V.canPickFolder() ? await V.pick() : await V.defaultMobileDir();
+      if (!dir) return;
+      const res = await V.open(dir, { adopt: true });
+      onToast(tl(res && res.restored ? "vault_restored" : "vault_opened"));
+      if (res && res.restored) nav.dashboard();
+    } catch (e) { onToast(String((e && e.message) || e)); }
+  }
+  async function vaultBackup() {
+    try { if (await V.backupToFile()) onToast(tl("vault_backup_ok")); }
+    catch (e) { onToast(String((e && e.message) || e)); }
+  }
+  async function vaultRestore() {
+    try {
+      if (await V.restoreFromFile()) { onToast(tl("vault_restore_ok")); nav.dashboard(); }
+      else onToast(tl("vault_restore_fail"));
+    } catch (e) { onToast(tl("vault_restore_fail")); }
+  }
+
   function onAvatarChange(e) {
     const f = e.target.files[0];
     if (!f) return;
@@ -123,6 +150,33 @@ function Profile({ store, user, nav, onTheme, onToast }) {
               </button>
             </div>
           </div>
+
+          <div className="section-head"><span className="eyebrow">{tl("vault_title")}</span><span className="rule-thin section-rule" /></div>
+          {vaultOn ? (
+            <>
+              <div className="prof-set">
+                <span className="prof-set-l">{tl("vault_folder")}</span>
+                <div className="prof-set-c">
+                  <div className={"vault-path mono" + (vs && vs.path ? " on" : "")}>
+                    {(vs && vs.path) || tl("vault_none")}
+                  </div>
+                  <span className={"vault-dot" + (vs && vs.error ? " err" : vs && vs.ok ? " ok" : "")} />
+                  <span className="vault-state mono">
+                    {tl(vs && vs.error ? "vault_status_err" : vs && vs.ok ? "vault_status_ok" : "vault_status_off")}
+                  </span>
+                </div>
+              </div>
+              <div className="prof-data">
+                <button className="btn btn--ghost" onClick={chooseVault}>
+                  <Icon name="folder" size={16}/> {tl(vs && vs.path ? "vault_change" : "vault_open")}
+                </button>
+                <button className="btn btn--ghost" onClick={vaultBackup}><Icon name="download" size={16}/> {tl("vault_backup")}</button>
+                <button className="btn btn--ghost" onClick={vaultRestore}><Icon name="upload" size={16}/> {tl("vault_restore")}</button>
+              </div>
+            </>
+          ) : (
+            <p className="prof-note mono">{tl("vault_web_note")}</p>
+          )}
 
           <div className="section-head"><span className="eyebrow">{tl("prof_section_data")}</span><span className="rule-thin section-rule" /></div>
           <p className="prof-note mono">{tl("prof_data_note")}</p>
