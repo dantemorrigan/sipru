@@ -98,6 +98,12 @@ jobs:
       - name: Declare storage permissions
         run: python3 .github/scripts/android_storage_permissions.py
 
+      # MANAGE_EXTERNAL_STORAGE has no ordinary runtime dialog — Android only
+      # lets an app open the Settings screen for it. This does that once, on
+      # first launch, which is the closest thing to the app "requesting" it.
+      - name: Request all-files access on first launch
+        run: python3 .github/scripts/android_request_storage_access.py
+
       # Universal APK = arm64 + armv7 in one file (no --split-per-abi), so a
       # single download works on any real phone. Debug-signed via Gradle's
       # built-in debug keystore — no signing setup needed, matching the macOS
