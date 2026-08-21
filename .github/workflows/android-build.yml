@@ -104,6 +104,12 @@ jobs:
       - name: Request all-files access on first launch
         run: python3 .github/scripts/android_request_storage_access.py
 
+      # Tauri's opener plugin cannot reveal files/folders on Android. Inject
+      # a tiny native bridge that opens Android DocumentsUI/File Manager at
+      # the requested Writed. folder; the bridge is Android-only.
+      - name: Enable Android file manager reveal
+        run: python3 .github/scripts/android_file_manager.py
+
       # Universal APK = arm64 + armv7 in one file (no --split-per-abi), so a
       # single download works on any real phone. Debug-signed via Gradle's
       # built-in debug keystore — no signing setup needed, matching the macOS
