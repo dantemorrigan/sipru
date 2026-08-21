@@ -108,7 +108,12 @@ function App() {
       )}
       {exportFor && <ExportModal store={store} projectId={exportFor.pid} initialFormat={exportFor.fmt}
         onClose={() => setExportFor(null)} onToast={toast} />}
-      {s.onboarded && !s.tourDone && route.name !== "profile" && (
+      {/* The guided tour's tooltips anchor to fixed pixel positions next to
+          toolbar buttons — on Android's range of screen sizes and densities
+          they drift off their targets far more often than they land, so the
+          tour is desktop/iOS only. Android goes straight from onboarding
+          (name, theme, vault folder) into a clean, empty app. */}
+      {s.onboarded && !s.tourDone && route.name !== "profile" && !/android/i.test(navigator.userAgent || "") && (
         <Tour store={store} nav={nav} onFinish={() => store.completeTour()} />
       )}
       {/* checks in the background well after first paint; renders nothing

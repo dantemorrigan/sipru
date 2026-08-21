@@ -143,6 +143,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
             </div>
           </div>
 
+          {!/android/i.test(navigator.userAgent || "") && (
           <div className="prof-set">
             <span className="prof-set-l">{tl("prof_lbl_tour")}</span>
             <div className="prof-set-c">
@@ -151,6 +152,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
               </button>
             </div>
           </div>
+          )}
 
           <div className="section-head"><span className="eyebrow">{tl("vault_title")}</span><span className="rule-thin section-rule" /></div>
           {vaultOn ? (
