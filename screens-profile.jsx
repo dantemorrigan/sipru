@@ -22,8 +22,9 @@ function Profile({ store, user, nav, onTheme, onToast }) {
       const dir = V.canPickFolder() ? await V.pick() : await V.defaultMobileDir();
       if (!dir) return;
       const res = await V.open(dir, { adopt: true });
-      onToast(tl(res && res.restored ? "vault_restored" : "vault_opened"));
-      if (res && res.restored) nav.dashboard();
+      if (!res || !res.ok) { onToast(tl("vault_unreadable")); return; }
+      onToast(tl(res.restored ? "vault_restored" : "vault_opened"));
+      if (res.restored) nav.dashboard();
     } catch (e) { onToast(String((e && e.message) || e)); }
   }
   async function vaultBackup() {

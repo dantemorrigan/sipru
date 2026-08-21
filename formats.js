@@ -51,26 +51,78 @@
 
   /* ---------------- Markdown subset → HTML ----------------
      Mirrors exactly what Writed's export produces:
-     #, ##, ###, >, -, 1., ---, paragraphs, plus **bold** / *italic*. */
-  function mdInline(s) {
-    return esc(s)
-      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
-      .replace(/_([^_\n]+)_/g, "<em>$1</em>");
+     #, ##, ###, >, -, 1., ---, paragraphs, plus **bold**, *italic* / _italic_,
+     <u>underline</u>, ~~strike~~ and [link](url) — the editor toolbar's full
+     inline set, so a vault file round-trips through disk without silently
+     dropping formatting.
+
+     A leftover backslash-escape (\*, \_, \~, \[, \]) — written by htmlToMd's
+     mdEscapeText so a literal "*" in prose can't be mistaken for markup — is
+     protected behind a sentinel before the tokenizer runs, so it survives
+     as plain text rather than being read back as emphasis. */
+  const ESCAPABLE = /\\([\\*_~[\]])/g;
+  const SENTINEL_RE = /\x01(\d+)\x02/g;
+  function protectEscapes(s) {
+    return String(s || "").replace(ESCAPABLE, (_, c) => "\x01" + c.charCodeAt(0) + "\x02");
   }
+  function restoreEscapes(html) {
+    return html.replace(SENTINEL_RE, (_, code) => esc(String.fromCharCode(+code)));
+  }
+
+  /* Only these link schemes are ever written into a clickable href — a
+     vault file can be hand-edited outside the app, so this is the same
+     trust boundary as importing any other external document. */
+  function safeHref(href) {
+    const h = String(href || "").trim();
+    return /^(https?:|mailto:)/i.test(h) ? h : null;
+  }
+
+  /* Leftmost-token recursive descent: literal runs between tokens are
+     HTML-escaped as they're appended, and a token's captured inner text is
+     re-entered through mdInline — never a blanket escape of the whole
+     string, which would also mangle the HTML this function itself emits. */
+  /* Bold+italic over exactly the same span comes out of htmlToMd as
+     "***text***" (the natural result of wrapping "*text*" in "**…**"); it
+     has to be matched before the plain "**" case or the third asterisk
+     reads as a stray literal one side and a lone italic marker the other.
+     The link URL allows one level of nested parens — real URLs (Wikipedia
+     disambiguation pages, for one) routinely have them, and a bare "(1)"
+     shouldn't truncate the match at its first close-paren. */
+  const INLINE_TOKEN = /\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|<u>([\s\S]*?)<\/u>|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_/;
+  function mdInline(raw) {
+    let s = String(raw == null ? "" : raw);
+    let out = "";
+    while (s.length) {
+      const m = INLINE_TOKEN.exec(s);
+      if (!m) { out += esc(s); break; }
+      out += esc(s.slice(0, m.index));
+      if (m[1] !== undefined) {
+        const href = safeHref(m[2]);
+        out += href ? ('<a href="' + esc(href) + '">' + mdInline(m[1]) + "</a>") : mdInline(m[1]);
+      } else if (m[3] !== undefined) out += "<strong><em>" + mdInline(m[3]) + "</em></strong>";
+      else if (m[4] !== undefined) out += "<strong>" + mdInline(m[4]) + "</strong>";
+      else if (m[5] !== undefined) out += "<u>" + mdInline(m[5]) + "</u>";
+      else if (m[6] !== undefined) out += "<s>" + mdInline(m[6]) + "</s>";
+      else out += "<em>" + mdInline(m[7] !== undefined ? m[7] : m[8]) + "</em>";
+      s = s.slice(m.index + m[0].length);
+    }
+    return out;
+  }
+  function mdInlineTop(raw) { return restoreEscapes(mdInline(protectEscapes(raw))); }
+
   function mdToHTML(md) {
     const lines = String(md || "").replace(/\r\n?/g, "\n").split("\n");
     let out = "", list = null, para = [], quote = [];
-    const flushPara = () => { if (para.length) { out += "<p>" + para.map(mdInline).join("<br>") + "</p>"; para = []; } };
-    const flushQuote = () => { if (quote.length) { out += "<blockquote>" + quote.map(mdInline).join("<br>") + "</blockquote>"; quote = []; } };
-    const flushList = () => { if (list) { out += "<" + list.tag + ">" + list.items.map((i) => "<li>" + mdInline(i) + "</li>").join("") + "</" + list.tag + ">"; list = null; } };
+    const flushPara = () => { if (para.length) { out += "<p>" + para.map(mdInlineTop).join("<br>") + "</p>"; para = []; } };
+    const flushQuote = () => { if (quote.length) { out += "<blockquote>" + quote.map(mdInlineTop).join("<br>") + "</blockquote>"; quote = []; } };
+    const flushList = () => { if (list) { out += "<" + list.tag + ">" + list.items.map((i) => "<li>" + mdInlineTop(i) + "</li>").join("") + "</" + list.tag + ">"; list = null; } };
     const flushAll = () => { flushPara(); flushQuote(); flushList(); };
 
     lines.forEach((raw) => {
       const line = raw.replace(/\s+$/, "");
       if (!line.trim()) { flushAll(); return; }
       let m;
-      if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { flushAll(); out += "<h" + m[1].length + ">" + mdInline(m[2]) + "</h" + m[1].length + ">"; return; }
+      if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { flushAll(); out += "<h" + m[1].length + ">" + mdInlineTop(m[2]) + "</h" + m[1].length + ">"; return; }
       if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) { flushAll(); out += "<hr>"; return; }
       if ((m = line.match(/^>\s?(.*)$/))) { flushPara(); flushList(); quote.push(m[1]); return; }
       if ((m = line.match(/^\s*[-*+]\s+(.*)$/))) { flushPara(); flushQuote();

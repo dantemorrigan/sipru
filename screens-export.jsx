@@ -91,21 +91,53 @@ function htmlToText(html) {
   const d = document.createElement("div"); d.innerHTML = html || "";
   return (d.textContent || "").replace(/\n{3,}/g, "\n\n").trim();
 }
+/* A literal *, _, ~, [, ] in prose would otherwise be misread as markup by
+   mdToHTML (formats.js) on the way back in — escape it so the vault's md
+   files and this export both round-trip losslessly. mdToHTML strips a
+   matching \ off these five characters and no others. */
+function mdEscapeText(s) {
+  return String(s == null ? "" : s).replace(/[\\*_~[\]]/g, (c) => "\\" + c);
+}
+
+/* Inline serializer: walks bold/italic/underline/strike/link nodes (the
+   editor toolbar's full inline set) into their markdown/HTML-passthrough
+   form. Recursive so nested combinations (a bold link, italic inside a
+   quote) come back through mdToHTML the way they went in — a plain
+   textContent grab, which is what this replaced, silently threw all of
+   that formatting away on every export and every vault write alike. */
+function inlineToMd(node) {
+  let out = "";
+  node.childNodes.forEach((n) => {
+    if (n.nodeType === 3) { out += mdEscapeText(n.textContent); return; }
+    if (n.nodeType !== 1) return;
+    const t = n.tagName.toLowerCase();
+    if (t === "br") { out += "  \n"; return; }
+    const inner = inlineToMd(n);
+    if (t === "strong" || t === "b") out += "**" + inner + "**";
+    else if (t === "em" || t === "i") out += "*" + inner + "*";
+    else if (t === "u") out += "<u>" + inner + "</u>";
+    else if (t === "s" || t === "strike") out += "~~" + inner + "~~";
+    else if (t === "a") out += "[" + inner + "](" + (n.getAttribute("href") || "") + ")";
+    else out += inner;
+  });
+  return out;
+}
+
 function htmlToMd(html) {
   const d = document.createElement("div"); d.innerHTML = html || "";
   let out = "";
   d.childNodes.forEach((n) => {
-    if (n.nodeType === 3) { out += n.textContent; return; }
+    if (n.nodeType === 3) { out += mdEscapeText(n.textContent); return; }
     const t = n.tagName ? n.tagName.toLowerCase() : "";
-    const txt = (n.textContent || "").trim();
-    if (!txt && t !== "hr") return;
+    const txt = inlineToMd(n);
+    if (!txt.trim() && t !== "hr") return;
     if (t === "h1") out += "\n# " + txt + "\n\n";
     else if (t === "h2") out += "\n## " + txt + "\n\n";
     else if (t === "h3") out += "\n### " + txt + "\n\n";
     else if (t === "blockquote") out += "> " + txt.replace(/\n/g, "\n> ") + "\n\n";
     else if (t === "hr") out += "\n---\n\n";
-    else if (t === "ul") n.querySelectorAll("li").forEach((li) => out += "- " + li.textContent.trim() + "\n"), out += "\n";
-    else if (t === "ol") { let i = 1; n.querySelectorAll("li").forEach((li) => out += (i++) + ". " + li.textContent.trim() + "\n"); out += "\n"; }
+    else if (t === "ul") n.querySelectorAll("li").forEach((li) => out += "- " + inlineToMd(li) + "\n"), out += "\n";
+    else if (t === "ol") { let i = 1; n.querySelectorAll("li").forEach((li) => out += (i++) + ". " + inlineToMd(li) + "\n"); out += "\n"; }
     else out += txt + "\n\n";
   });
   return out.replace(/\n{3,}/g, "\n\n").trim();
