@@ -11,8 +11,7 @@
    3. app-private .../Android/data/.../files/Documents/Writed (fallback)
 
    Existing app-private vaults are copied forward to Documents when that
-   location is writable and does not already contain a Writed vault. The old
-   copy is deliberately left intact until the user has verified the new one.
+   location is writable. The old copy is deliberately left intact.
 */
 (function () {
   if (!/android/i.test(navigator.userAgent || "")) return;
@@ -59,7 +58,7 @@
 
   /* The existing Profile button calls defaultMobileDir() on Android. Make
      that action genuinely change the location instead of re-opening the
-     same derived app-private path and navigating back to Dashboard. */
+     same derived app-private path and immediately returning to Dashboard. */
   V.defaultMobileDir = async function () {
     var list = await candidates();
     var current = (V.status() || {}).path || "";
@@ -87,9 +86,11 @@
     } catch (e) { return false; }
   };
 
-  /* Move new installs and existing app-private vaults to user-visible shared
-     storage whenever Android permits it. Never overwrite an existing shared
-     vault automatically, and never delete the old copy. */
+  /* Move app-private vaults to user-visible shared storage whenever Android
+     permits it. If a shared vault already exists, it is the canonical copy:
+     switch to it and restore from it. If it does not exist, preserve the
+     current in-memory state and write a new shared vault. Never delete the
+     old app-private copy automatically. */
   async function migrateToSharedStorage() {
     for (var attempt = 0; attempt < 20; attempt++) {
       var state = V.status() || {};
@@ -100,12 +101,13 @@
         var list = await candidates();
         var target = list.find(function (x) { return x.key === "documents"; });
         if (!target || !(await writable(target.path))) return;
-        if (await hasVault(target.path)) return;
 
         try {
-          /* adopt:false preserves the current local WritedStore and writes
-             that exact state into the new shared vault. */
-          await V.open(target.path, { adopt: false });
+          if (await hasVault(target.path)) {
+            await V.open(target.path, { adopt: true });
+          } else {
+            await V.open(target.path, { adopt: false });
+          }
         } catch (e) {}
         return;
       }
