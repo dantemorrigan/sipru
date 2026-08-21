@@ -14,27 +14,36 @@
    user their text.
 
    On disk:
-     <vault>/.writed-vault.json          ← small: user prefs + schema
+     <vault>/writed-vault.json           ← small: user prefs + schema
      <vault>/<Project Title>/
-       .writed.json                      ← project metadata + snapshots
+       writed-meta.json                  ← project metadata + snapshots
        01 Chapter Title.md               ← chapter text, full formatting
      <vault>/Notes/
-       .writed.json                      ← note metadata + snapshots
+       writed-meta.json                  ← note metadata + snapshots
        Note Title.md
 
    The .md files are the readable, portable copy of *current* text —
-   what a writer opens in Obsidian or a plain text editor. Snapshots
-   (version history) are not worth one file per revision, so they live
-   in the sibling .writed.json instead. Splitting it this way means a
+   what a writer opens in any plain text editor. Snapshots (version
+   history) are not worth one file per revision, so they live in the
+   sibling writed-meta.json instead. Splitting it this way means a
    chapter's own file is never bloated with old versions, and the
    working text is never something only Writed. can read.
    ============================================================ */
 (function () {
   var PATH_KEY = "writed:vault";
-  var VAULT_META = ".writed-vault.json";
-  var ENTITY_META = ".writed.json";
+  /* Deliberately not dotfiles. Tauri's filesystem scope matches allowed
+     paths with a glob that will not cross a leading dot, so a metadata file
+     named ".writed-vault.json" is rejected as a forbidden path even when its
+     whole folder is allowed. Plain names also mean nothing in the vault is
+     hidden from the person who owns it. */
+  var VAULT_META = "writed-vault.json";
+  var ENTITY_META = "writed-meta.json";
   var NOTES_DIR = "Notes";
-  var TRASH_DIR = ".trash";
+  var TRASH_DIR = "Trash";
+  /* Vaults written before the rename above still open. */
+  var LEGACY_VAULT_META = ".writed-vault.json";
+  var LEGACY_ENTITY_META = ".writed.json";
+  var LEGACY_TRASH_DIR = ".trash";
   var SAVE_DEBOUNCE = 900;
 
   var T = window.__TAURI__ || null;
@@ -86,6 +95,17 @@
       if (await exists(path)) return { ok: false, corrupt: true, error: String((e && e.message) || e) };
       return { ok: false, corrupt: false };
     }
+  }
+  /* Reads the current metadata name, falling back to the pre-rename dotfile
+     so an existing vault keeps opening; the next save writes the new name.
+     Reports `path` — whichever of the two it actually read — so a corrupt
+     file is quarantined where it really is, not under a name never on disk. */
+  async function readMeta(dir, name, legacyName) {
+    var res = await readJSON(join(dir, name));
+    if (res.ok || res.corrupt) { res.path = join(dir, name); return res; }
+    res = await readJSON(join(dir, legacyName));
+    res.path = join(dir, legacyName);
+    return res;
   }
   async function writeJSON(path, data) {
     await T.fs.writeTextFile(path, JSON.stringify(data, null, 2));
@@ -224,10 +244,10 @@
 
   async function readProjectFolder(vaultDir, folderName) {
     var pdir = join(vaultDir, folderName);
-    var meta = await readJSON(join(pdir, ENTITY_META));
-    if (!meta.ok) return meta.corrupt ? { corrupt: true, path: join(pdir, ENTITY_META) } : null;
+    var meta = await readMeta(pdir, ENTITY_META, LEGACY_ENTITY_META);
+    if (!meta.ok) return meta.corrupt ? { corrupt: true, path: meta.path } : null;
     var m = meta.data;
-    if (!m || !m.id || !Array.isArray(m.chapters)) return { corrupt: true, path: join(pdir, ENTITY_META) };
+    if (!m || !m.id || !Array.isArray(m.chapters)) return { corrupt: true, path: meta.path };
     var chapters = [];
     for (var i = 0; i < (m.chapters || []).length; i++) {
       var cm = m.chapters[i];
@@ -249,9 +269,9 @@
 
   async function readNotes(vaultDir) {
     var ndir = join(vaultDir, NOTES_DIR);
-    var meta = await readJSON(join(ndir, ENTITY_META));
-    if (!meta.ok) return meta.corrupt ? { corrupt: true, path: join(ndir, ENTITY_META) } : { ok: true, notes: [], files: {} };
-    if (!meta.data || !Array.isArray(meta.data.notes)) return { corrupt: true, path: join(ndir, ENTITY_META) };
+    var meta = await readMeta(ndir, ENTITY_META, LEGACY_ENTITY_META);
+    if (!meta.ok) return meta.corrupt ? { corrupt: true, path: meta.path } : { ok: true, notes: [], files: {} };
+    if (!meta.data || !Array.isArray(meta.data.notes)) return { corrupt: true, path: meta.path };
     var notes = [];
     for (var i = 0; i < (meta.data.notes || []).length; i++) {
       var nm = meta.data.notes[i];
@@ -274,15 +294,17 @@
     var entries;
     try { entries = await T.fs.readDir(vaultDir); } catch (e) { return { kind: "missing" }; }
 
-    var vmeta = await readJSON(join(vaultDir, VAULT_META));
+    var vmeta = await readMeta(vaultDir, VAULT_META, LEGACY_VAULT_META);
     var corrupt = [];
-    if (vmeta.corrupt) corrupt.push(join(vaultDir, VAULT_META));
+    if (vmeta.corrupt) corrupt.push(vmeta.path);
 
     var projects = [];
     var layout = { projectDirs: {}, projectFiles: {}, noteFiles: {} };
     for (var i = 0; i < entries.length; i++) {
       var e = entries[i];
-      if (!e.isDirectory || e.name === NOTES_DIR || e.name === TRASH_DIR || e.name.charAt(0) === ".") continue;
+      if (!e.isDirectory) continue;
+      if (e.name === NOTES_DIR || e.name === TRASH_DIR || e.name === LEGACY_TRASH_DIR) continue;
+      if (e.name.charAt(0) === ".") continue;                /* hidden / OS folders */
       var r = await readProjectFolder(vaultDir, e.name);
       if (!r) continue;                      /* not one of ours — leave it alone */
       if (r.corrupt) { corrupt.push(r.path); continue; }

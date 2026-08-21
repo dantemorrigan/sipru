@@ -39,16 +39,29 @@ function Onboarding({ onDone }) {
 
   const go = (n) => setStep(n);
   async function finish() {
+    /* Open the vault before leaving onboarding, so the first save already
+       lands on disk — there is no window where the work exists only in
+       localStorage. `adopt` picks up a vault left by a previous install.
+       A folder that can't be opened stops the flow here rather than dropping
+       the writer into an app whose storage silently doesn't work. */
+    if (vaultStep) {
+      setVaultErr(null); setVaultBusy(true);
+      let res = null, err = null;
+      try { res = await window.WritedVault.open(vault, { adopt: true }); }
+      catch (e) { err = String((e && e.message) || e); }
+      setVaultBusy(false);
+      if (!res || !res.ok) { setVaultErr(err || tl("vault_unreadable")); return; }
+    }
     setLeaving(true);
     try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
-    /* Opening the vault before onDone means the very first save already
-       lands on disk — there is no window where the work exists only in
-       localStorage. `adopt` picks up a vault left by a previous install. */
-    if (vault) { try { await window.WritedVault.open(vault, { adopt: true }); } catch (e) {} }
     setTimeout(() => onDone(name.trim() || tl("default_author"), theme, lang), 760);
   }
 
   const dotScale = 1 + Math.min(name.trim().length, 16) * 0.08;
+  /* Both are hard requirements, not nudges: the name is what the app calls
+     the writer everywhere after this, and without a vault folder their work
+     would live only in localStorage — the exact loss this app now avoids. */
+  const hasName = name.trim().length > 0;
   const lastStep = vaultStep ? 3 : 2;
   const stepIdx = step + 1;
   const pips = vaultStep ? [-1, 0, 1, 2, 3] : [-1, 0, 1, 2];
@@ -115,13 +128,13 @@ function Onboarding({ onDone }) {
             <input ref={nameRef} className="onb-name" value={name} spellCheck={false}
               placeholder={tl("onb_name_placeholder")} maxLength={40}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && go(2)} />
+              onKeyDown={(e) => e.key === "Enter" && hasName && go(2)} />
             <span className="onb-name-dot" style={{ transform: `scale(${dotScale})` }} />
           </div>
           <p className="onb-hint mono">{tl("onb_hint_1")}</p>
           <div className="onb-actions">
             <button className="btn btn--ghost" onClick={() => go(0)}><Icon name="back" size={15} /> {tl("onb_back")}</button>
-            <button className="btn btn--solid" onClick={() => go(2)}>{tl("onb_next")} <Icon name="forward" size={15} /></button>
+            <button className="btn btn--solid" onClick={() => go(2)} disabled={!hasName}>{tl("onb_next")} <Icon name="forward" size={15} /></button>
           </div>
         </div>
       )}
@@ -179,13 +192,10 @@ function Onboarding({ onDone }) {
           <p className="onb-hint mono">{tl(canPick ? "onb_hint_3" : "onb_hint_3_mobile")}</p>
           <div className="onb-actions">
             <button className="btn btn--ghost" onClick={() => go(2)}><Icon name="back" size={15} /> {tl("onb_back")}</button>
-            <button className="btn btn--accent onb-finish" onClick={finish}>
+            <button className="btn btn--accent onb-finish" onClick={finish} disabled={!vault || vaultBusy}>
               {tl("onb_finish")} <Icon name="forward" size={15} />
             </button>
           </div>
-          {canPick && !vault && (
-            <button className="onb-vault-skip mono" onClick={finish}>{tl("vault_skip")}</button>
-          )}
         </div>
       )}
     </div>

@@ -143,6 +143,45 @@ function htmlToMd(html) {
   return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/* Print-to-PDF.
+
+   On the web a new tab is fine. Inside Tauri window.open() has no browser
+   chrome to come back from — on Android's WebView it can strand the user on
+   a blank screen — so the print-ready document is rendered into a hidden
+   same-origin iframe and printed from there, which keeps the app window
+   underneath and gives the OS print dialog ("Save as PDF" on macOS, the
+   Microsoft Print to PDF printer on Windows).
+
+   Returns false when there is no print pipeline to use, so the caller can
+   fall back to saving the HTML rather than appearing to do nothing. */
+function printHTML(html) {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  /* Off-screen rather than display:none — a hidden frame has no layout, and
+     some engines then print a blank page. */
+  frame.style.cssText = "position:fixed;left:-10000px;top:0;width:820px;height:1160px;border:0;opacity:0;";
+  document.body.appendChild(frame);
+  const cleanup = () => setTimeout(() => frame.remove(), 60000);
+  try {
+    const doc = frame.contentDocument;
+    doc.open(); doc.write(html); doc.close();
+    const go = () => {
+      try {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+      } catch (e) { /* nothing else to try — the HTML fallback already ran */ }
+      cleanup();
+    };
+    /* Give webfonts and layout a beat; onload alone fires before either. */
+    if (doc.readyState === "complete") setTimeout(go, 500);
+    else frame.contentWindow.addEventListener("load", () => setTimeout(go, 500));
+    return true;
+  } catch (e) {
+    frame.remove();
+    return false;
+  }
+}
+
 function downloadBlob(name, mime, content) {
   /* Inside the Tauri app (desktop and Android alike) an <a download> click
      doesn't reach a real save location — Android's WebView in particular
@@ -285,12 +324,10 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
   function doExport(fmt) {
     const base = project.title.replace(/[^\wа-яёА-ЯЁ\- ]+/gi, "").trim() || "book";
     if (fmt === "pdf") {
-      /* window.open()'s print-preview tab is a browser-only affordance —
-         inside Tauri's Android WebView it can leave the user on a blank
-         screen with no way back. Save the print-ready HTML through the
-         same native picker as the other formats instead: the OS dialog
-         always has a working Cancel/Back. */
       if (window.__TAURI__) {
+        if (printHTML(buildBookHTML(project, opts))) { onToast(tl("exp_toast_pdf")); return; }
+        /* No print pipeline available — hand over the print-ready HTML
+           through the native picker rather than doing nothing at all. */
         downloadBlob(base + ".html", "text/html;charset=utf-8", buildBookHTML(project, opts));
         onToast(tl("exp_toast_pdf_tauri"));
         return;
@@ -431,6 +468,7 @@ function NoteExportModal({ note, onClose, onToast, lang }) {
     const base = note.title.replace(/[^\wа-яёА-ЯЁ\- ]+/gi, "").trim() || "note";
     if (fmt === "pdf") {
       if (window.__TAURI__) {
+        if (printHTML(buildNoteHTML(note, opts))) { onToast(tl("exp_toast_pdf")); return; }
         downloadBlob(base + ".html", "text/html;charset=utf-8", buildNoteHTML(note, opts));
         onToast(tl("exp_toast_pdf_tauri"));
         return;
