@@ -16,6 +16,7 @@ pub fn run() {
        with the folder still remembered but no longer writable. This saves
        the granted scopes and restores them at startup. */
     .plugin(tauri_plugin_persisted_scope::init())
+    .plugin(tauri_plugin_opener::init())
     .run(tauri::generate_context!())
     .expect("error while running Writed.");
 }

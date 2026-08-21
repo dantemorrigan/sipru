@@ -1058,3 +1058,13 @@
    user nothing to act on and hides permission problems. */
 .vault-err { font-size: var(--t-xs); color: var(--accent); line-height: 1.6;
   margin-top: 6px; overflow-wrap: anywhere; word-break: break-word; }
+
+/* ---------- mobile vault location choices ---------- */
+.onb-vault-loc { display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  width: 100%; text-align: left; background: var(--sheet); border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: 14px 16px; color: var(--ink); cursor: pointer;
+  transition: border-color .2s var(--ease-out), background-color .2s var(--ease-out); }
+.onb-vault-loc.on { border-color: var(--accent); background: var(--accent-tint); }
+.onb-vault-loc:disabled { opacity: .45; cursor: default; }
+.onb-vault-loc-t { font-size: var(--t-base); font-weight: 500; letter-spacing: -.01em; }
+.onb-vault-loc-n { font-size: var(--t-xs); color: var(--ink-soft); letter-spacing: .03em; }

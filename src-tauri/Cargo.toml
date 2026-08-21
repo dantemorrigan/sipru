@@ -25,6 +25,8 @@ tauri-plugin-fs = "2"
 # picking it — a grant that lives only in memory. This persists the granted
 # scopes across restarts so the vault stays writable after the app reopens.
 tauri-plugin-persisted-scope = "2"
+# "Show in files" — reveals a project folder or note file in the OS file manager.
+tauri-plugin-opener = "2"
 
 # The Android APK ships from `tauri android build --apk --debug`, which uses
 # this profile — and cargo's default dev profile embeds full DWARF debug info,

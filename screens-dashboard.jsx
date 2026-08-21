@@ -513,6 +513,15 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
                 onClick={() => store.updateProject(p.id, { status: p.status === "done" ? "draft" : "done" })}>
                 <Icon name="check" size={14} /> {p.status === "done" ? tl("mark_done") : tl("mark_in_progress")}
               </button>
+              {window.WritedVault && window.WritedVault.canReveal() && (
+                <button className="status-toggle mono" onClick={async () => {
+                  const path = window.WritedVault.locate("project", p.id);
+                  if (!path) return onToast(tl("vault_not_saved_yet"));
+                  if (!(await window.WritedVault.reveal(path))) onToast(tl("vault_reveal_fail"));
+                }}>
+                  <Icon name="folder" size={14} /> {tl("vault_reveal")}
+                </button>
+              )}
               <button className="status-toggle mono proj-delete-btn" onClick={() => setDeleteProjectConfirm(true)}>
                 <Icon name="trash" size={14} /> {tl("delete_project_btn")}
               </button>

@@ -217,6 +217,12 @@
   }
 
   async function writeVaultAt(vaultDir, state) {
+    /* The root has to exist before anything goes in it. Desktop hid this:
+       the picker only ever returns a folder that already exists. On mobile
+       the path is derived, not picked, so nothing had created it — and once
+       a new install starts empty there is no project or note write to create
+       it as a side effect either, so every save failed with ENOENT. */
+    await ensureDir(vaultDir);
     var prev = lastLayout;
     var nextDirs = {}, nextFiles = {};
     var projects = state.projects || [];
@@ -403,11 +409,50 @@
   }
 
   async function defaultMobileDir() {
-    if (!T || !T.path) return null;
-    var base = null;
-    try { base = await T.path.documentDir(); } catch (e) {}
-    if (!base) { try { base = await T.path.appDataDir(); } catch (e) {} }
-    return base ? join(base, "Writed") : null;
+    var opts = await mobileDirOptions();
+    return opts.length ? opts[0].path : null;
+  }
+
+  /* Android has no folder picker, so instead of one path taken on faith the
+     writer gets the handful of places the app can actually write, each one
+     probed for real before it is offered.
+
+     documentDir() on Android resolves inside /Android/data/<pkg>/, which is
+     private to the app and deleted when it is uninstalled. The shared
+     Documents folder outlives an uninstall, but scoped storage blocks raw
+     writes to it on many versions — so it is listed only when the probe
+     below actually succeeds, never promised in advance. */
+  async function mobileDirOptions() {
+    if (!T || !T.path) return [];
+    var out = [];
+    var appDir = null;
+    try { appDir = await T.path.documentDir(); } catch (e) {}
+    if (!appDir) { try { appDir = await T.path.appDataDir(); } catch (e) {} }
+    if (appDir) out.push({ key: "app", path: join(appDir, "Writed") });
+
+    /* .../Android/data/<pkg>/files/Documents → /storage/emulated/0 */
+    var cut = appDir && appDir.indexOf("/Android/data/");
+    if (appDir && cut > 0) {
+      var root = appDir.slice(0, cut);
+      out.push({ key: "shared", path: join(root, "Documents", "Writed") });
+      out.push({ key: "download", path: join(root, "Download", "Writed") });
+    }
+    return out;
+  }
+
+  /* Creates the folder and writes a real file into it, because mkdir alone
+     succeeds in places that later refuse writes. Cleans up after itself. */
+  async function probe(dir) {
+    if (!available() || !dir) return { ok: false, error: "no path" };
+    var marker = join(dir, ".writed-probe");
+    try {
+      await T.fs.mkdir(dir, { recursive: true });
+      await T.fs.writeTextFile(marker, "ok");
+      await T.fs.remove(marker).catch(function () {});
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
   }
 
   /* ---------- explicit backup / restore (single-file, every platform) ---------- */
@@ -446,8 +491,44 @@
     await open(saved, { adopt: false });
   }
 
+  /* Where a project folder / chapter / note actually lives on disk, or null
+     when this session has not written it yet (nothing to reveal). */
+  function locate(kind, id, projectId) {
+    if (!status.path) return null;
+    if (kind === "vault") return status.path;
+    if (kind === "project") {
+      var f = lastLayout.projectDirs[id];
+      return f ? join(status.path, f) : null;
+    }
+    if (kind === "note") {
+      var nf = lastLayout.noteFiles[id];
+      return nf ? join(status.path, NOTES_DIR, nf) : null;
+    }
+    if (kind === "chapter") {
+      var pdir = lastLayout.projectDirs[projectId];
+      var files = lastLayout.projectFiles[projectId] || {};
+      return pdir && files[id] ? join(status.path, pdir, files[id]) : null;
+    }
+    return null;
+  }
+
+  /* Desktop opens the file manager with the item selected. Android and iOS
+     have no such concept — the plugin answers UnsupportedPlatform — so the
+     caller is told plainly rather than being left with a dead button. */
+  async function reveal(path) {
+    if (!path || !T || !T.opener) return false;
+    try { await T.opener.revealItemInDir(path); return true; }
+    catch (e) {
+      try { await T.opener.openPath(path); return true; } catch (e2) {}
+      return false;
+    }
+  }
+
   window.WritedVault = {
     available: available,
+    locate: locate,
+    reveal: reveal,
+    canReveal: function () { return !!(T && T.opener) && !isMobile(); },
     canPickFolder: canPickFolder,
     isMobile: isMobile,
     status: function () { return Object.assign({}, status); },
@@ -455,6 +536,8 @@
     pick: pick,
     open: open,
     defaultMobileDir: defaultMobileDir,
+    mobileDirOptions: mobileDirOptions,
+    probe: probe,
     backupToFile: backupToFile,
     restoreFromFile: restoreFromFile,
     saveNow: flush,

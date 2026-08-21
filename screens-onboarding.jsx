@@ -18,11 +18,27 @@ function Onboarding({ onDone }) {
   const [vaultBusy, setVaultBusy] = useState(false);
   const [vaultErr, setVaultErr] = useState(null);
 
-  /* Mobile has no folder picker, so the location is resolved for the user
-     and simply shown — there is nothing for them to choose. */
+  /* Mobile has no system folder picker, so instead of one path taken on
+     faith the writer picks from the places the app can actually write —
+     each probed for real, because a folder that accepts mkdir can still
+     refuse the first file under scoped storage. */
+  const [locs, setLocs] = useState(null);
   useEffect(() => {
     if (!vaultStep || canPick) return;
-    window.WritedVault.defaultMobileDir().then((d) => d && setVault(d)).catch(() => {});
+    let alive = true;
+    (async () => {
+      const opts = await window.WritedVault.mobileDirOptions().catch(() => []);
+      const checked = [];
+      for (const o of opts) {
+        const res = await window.WritedVault.probe(o.path);
+        checked.push({ ...o, ok: res.ok });
+      }
+      if (!alive) return;
+      setLocs(checked);
+      const first = checked.find((o) => o.ok);
+      if (first) setVault(first.path);
+    })();
+    return () => { alive = false; };
   }, [vaultStep, canPick]);
 
   async function chooseVault() {
@@ -183,13 +199,30 @@ function Onboarding({ onDone }) {
                 </span>
               </button>
             ) : null}
+            {!canPick && (
+              locs === null
+                ? <div className="onb-vault-path mono">{tl("vault_checking")}</div>
+                : locs.map((o) => (
+                    <button key={o.key} type="button" disabled={!o.ok}
+                      className={"onb-vault-loc" + (vault === o.path ? " on" : "")}
+                      onClick={() => { setVaultErr(null); setVault(o.path); }}>
+                      <span className="onb-vault-loc-t">{tl("vault_loc_" + o.key)}</span>
+                      <span className="onb-vault-loc-n mono">
+                        {o.ok ? tl("vault_loc_" + o.key + "_note") : tl("vault_loc_unavailable")}
+                      </span>
+                    </button>
+                  ))
+            )}
             <div className={"onb-vault-path mono" + (vault ? " on" : "")}>
               {vault || (canPick ? tl("vault_none") : tl("vault_resolving"))}
             </div>
             {vaultErr && <div className="onb-vault-err mono">{vaultErr}</div>}
           </div>
 
-          <p className="onb-hint mono">{tl(canPick ? "onb_hint_3" : "onb_hint_3_mobile")}</p>
+          {/* On mobile each option already states its own durability, and
+              they differ — app storage does not survive an uninstall — so a
+              blanket "survives a reinstall" line here would contradict it. */}
+          {canPick && <p className="onb-hint mono">{tl("onb_hint_3")}</p>}
           <div className="onb-actions">
             <button className="btn btn--ghost" onClick={() => go(2)}><Icon name="back" size={15} /> {tl("onb_back")}</button>
             <button className="btn btn--accent onb-finish" onClick={finish} disabled={!vault || vaultBusy}>

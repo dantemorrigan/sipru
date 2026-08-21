@@ -562,6 +562,13 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
             <button className={"modeswitch-b" + (mode==="edit"?" on":"")} onClick={() => switchMode("edit")}><Icon name="edit" size={15} /> {tl("mode_edit")}</button>
             <button className={"modeswitch-b" + (mode==="preview"?" on":"")} onClick={() => switchMode("preview")}><Icon name="eye" size={15} /> {tl("mode_preview")}</button>
           </div>
+          {window.WritedVault && window.WritedVault.canReveal() && (
+            <button className="icon-btn" title={tl("vault_reveal")} onClick={async () => {
+              const p = window.WritedVault.locate(project ? "chapter" : "note", docId, project && project.id);
+              if (!p) return onToast(tl("vault_not_saved_yet"));
+              if (!(await window.WritedVault.reveal(p))) onToast(tl("vault_reveal_fail"));
+            }}><Icon name="folder" size={18} /></button>
+          )}
           <button className="icon-btn" onClick={() => setSnapOpen(true)} title={tl("snap_btn")}><Icon name="history" size={18} /></button>
           <button className={"icon-btn" + (savedFlash ? " icon-btn--flash" : "")} onClick={saveNow} title={tl("ed_save")}><Icon name="save" size={18} /></button>
           {project

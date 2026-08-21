@@ -174,6 +174,13 @@ function Profile({ store, user, nav, onTheme, onToast }) {
                 <button className="btn btn--ghost" onClick={chooseVault}>
                   <Icon name="folder" size={16}/> {tl(vs && vs.path ? "vault_change" : "vault_open")}
                 </button>
+                {V.canReveal() && (
+                  <button className="btn btn--ghost" onClick={async () => {
+                    const path = V.locate("vault");
+                    if (!path) return onToast(tl("vault_none"));
+                    if (!(await V.reveal(path))) onToast(tl("vault_reveal_fail"));
+                  }}><Icon name="folder" size={16}/> {tl("vault_reveal")}</button>
+                )}
                 <button className="btn btn--ghost" onClick={vaultBackup}><Icon name="download" size={16}/> {tl("vault_backup")}</button>
                 <button className="btn btn--ghost" onClick={vaultRestore}><Icon name="upload" size={16}/> {tl("vault_restore")}</button>
               </div>
