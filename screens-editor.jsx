@@ -107,14 +107,16 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       setWords(store.countWords(html));
       depth.current = { u: 0, r: 0 };
       setHist({ undo: false, redo: false });
-      setTimeout(() => ref.current && ref.current.focus(), 60);
+      /* on touch devices, autofocus pops the keyboard before the user has
+         asked to type — only desktop (fine pointer) gets it on open */
+      if (FINE_POINTER) setTimeout(() => ref.current && ref.current.focus(), 60);
     }
   }, [docId]);
 
   useEffect(() => {
     if (mode === "edit" && ref.current) {
       ref.current.innerHTML = saved.current;
-      setTimeout(() => ref.current && ref.current.focus(), 40);
+      if (FINE_POINTER) setTimeout(() => ref.current && ref.current.focus(), 40);
     }
   }, [mode]);
 

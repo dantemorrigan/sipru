@@ -667,17 +667,7 @@
   .export-modal { grid-template-columns: 1fr; height: calc(100dvh - 20px); }
   .export-preview { display: none; }
   .confirm-modal { padding: 36px 28px 32px; }
-  .modal-scrim { padding: 10px 0 0; align-items: flex-end; }
-  .export-modal { border-radius: var(--r-xl) var(--r-xl) 0 0; }
-
-  /* bottom-sheet drag handle on the small confirm/info dialogs — purely
-     decorative, signals "swipe to dismiss". Left off the bigger export/
-     search/snapshot modals, whose own content already reaches the edge. */
-  .confirm-modal::after {
-    content: ""; position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
-    width: 36px; height: 4px; border-radius: var(--r-pill); background: var(--ink-faint); opacity: .5;
-  }
-  .confirm-modal { padding-bottom: 40px; }
+  .modal-scrim { padding: 10px; align-items: center; }
 
   /* export rows: stack label + control vertically so segs get full width to scroll */
   .exp-row { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 0; }
