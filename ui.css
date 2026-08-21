@@ -204,6 +204,16 @@
 .ed-crumb-doc:hover { color: var(--accent); }
 .ed-rename { font-size: var(--t-md); font-weight: 600; font-family: var(--ui); border: none; border-bottom: 2px solid var(--accent);
   background: transparent; color: var(--ink); outline: none; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; }
+/* Desktop: a real field instead of a bare underlined line — soft fill,
+   rounded corners, a border that colors in on focus instead of a flat
+   accent rule underneath. Ancestors clip overflow for the ellipsis'd
+   crumb trail, so this stays inside the original box — no negative
+   margins pushing a ring past that edge and getting cut off. */
+@media (hover: hover) and (pointer: fine) {
+  .ed-rename { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--paper-2);
+    padding: 3px 8px; transition: background-color .18s var(--ease-out), border-color .18s var(--ease-out); }
+  .ed-rename:focus { background: var(--sheet); border-color: var(--accent); }
+}
 .ed-head--renaming .ed-head-r { display: none; }
 .ed-head-r { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .modeswitch { display: inline-flex; border: 1px solid var(--line); margin-right: 4px; }
