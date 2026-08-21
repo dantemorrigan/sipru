@@ -1031,6 +1031,11 @@
   font-size: var(--t-xs); letter-spacing: .04em; cursor: pointer; }
 .onb-vault-skip:hover { color: var(--ink-soft); }
 
+/* A settings row carries its own bottom rule, so a button row placed
+   straight after one would otherwise sit flush against that line. */
+.prof-set + .prof-data { margin-top: 20px; }
+.prof-data + .section-head { margin-top: 36px; }
+
 .vault-path { font-size: var(--t-xs); color: var(--ink-faint); overflow-wrap: anywhere;
   word-break: break-word; line-height: 1.6; }
 .vault-path.on { color: var(--ink-2); }
@@ -1039,4 +1044,7 @@
 .vault-dot.ok { background: var(--accent); }
 .vault-dot.err { background: #c2452d; }
 .vault-state { font-size: var(--t-xs); color: var(--ink-faint); letter-spacing: .05em; white-space: nowrap; }
-.prof-set-c .vault-path { flex: 1; min-width: 0; }
+/* The reason a write failed, spelled out — "ошибка записи" alone gives the
+   user nothing to act on and hides permission problems. */
+.vault-err { font-size: var(--t-xs); color: var(--accent); line-height: 1.6;
+  margin-top: 6px; overflow-wrap: anywhere; word-break: break-word; }

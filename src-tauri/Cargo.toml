@@ -21,6 +21,10 @@ tauri = { version = "2.11.3", features = [] }
 # Tauri) instead of the browser-only <a download> flow.
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+# The vault folder's filesystem permission is granted at runtime, by the user
+# picking it — a grant that lives only in memory. This persists the granted
+# scopes across restarts so the vault stays writable after the app reopens.
+tauri-plugin-persisted-scope = "2"
 
 # The Android APK ships from `tauri android build --apk --debug`, which uses
 # this profile — and cargo's default dev profile embeds full DWARF debug info,

@@ -32,8 +32,6 @@
   <!-- touch-only haptics; delegated from the document, so it must load
        before the app paints its first pressable element -->
   <script src="haptics.js"></script>
-  <!-- durable on-device storage; must load after store.js -->
-  <script src="vault.js"></script>
   <!-- JSX pre-compiled by `npm run build` (no in-browser Babel) -->
   <!-- generated from package.json; the update check compares against it -->
   <script src="build/version.js"></script>
@@ -45,6 +43,11 @@
   <script src="build/screens-profile.js"></script>
   <script src="build/tour.js"></script>
   <script src="build/updater.js"></script>
+  <!-- durable on-device storage. Loads after screens-export.js on purpose:
+       it serializes chapters through that file's htmlToMd, and it reconnects
+       a saved vault the moment it loads — so landing any earlier means the
+       first write of every launch throws before it reaches the .md files. -->
+  <script src="vault.js"></script>
   <script src="build/app.js"></script>
 </body>
 </html>

@@ -15,6 +15,10 @@
     "fs:allow-write-text-file",
     "fs:allow-mkdir",
     "fs:allow-remove",
-    "fs:allow-exists"
+    "fs:allow-exists",
+    "fs:allow-read-dir",
+    "fs:allow-rename",
+    "fs:allow-document-read-recursive",
+    "fs:allow-document-write-recursive"
   ]
 }

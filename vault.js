@@ -124,7 +124,12 @@
 
   /* ---------- writing a vault ---------- */
 
+  /* The HTML→Markdown serializer lives in screens-export.js, so vault.js is
+     ordered after it in index.html. Assert rather than trust that ordering:
+     if it were ever missing, the alternative to failing loudly here is
+     writing every chapter to disk as "undefined" or an empty file. */
   async function writeEntity(dir, filename, content) {
+    if (typeof window.htmlToMd !== "function") throw new Error("markdown serializer unavailable");
     await T.fs.writeTextFile(join(dir, filename), window.htmlToMd(content || "") + "\n");
   }
 
@@ -363,9 +368,14 @@
     return { ok: true, restored: restored, hadData: found.kind === "ok" };
   }
 
+  /* `recursive` is load-bearing, not a hint: picking a folder is what grants
+     this app filesystem access to it, and the dialog plugin forwards this
+     flag straight into fs_scope.allow_directory(path, recursive). Without
+     it the scope is only "path/*" — direct children — so creating a project
+     folder succeeds while writing the .md files *inside* it is denied. */
   async function pick() {
     if (!canPickFolder()) return null;
-    var dir = await T.dialog.open({ directory: true, multiple: false, title: "Writed — vault folder" });
+    var dir = await T.dialog.open({ directory: true, recursive: true, multiple: false, title: "Writed — vault folder" });
     if (!dir) return null;
     return typeof dir === "string" ? dir : (dir.path || null);
   }

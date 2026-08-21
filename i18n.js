@@ -208,7 +208,7 @@
       /* ---- vault ---- */
       onb_kicker_3: "шаг третий",
       onb_q_3: "Где хранить\nваши тексты?",
-      onb_hint_3: "как в Obsidian: тексты лежат обычными файлами в вашей папке и переживают переустановку",
+      onb_hint_3: "тексты лежат обычными .md файлами в вашей папке и переживают переустановку",
       onb_hint_3_mobile: "тексты сохраняются на устройстве и восстанавливаются после переустановки",
       vault_choose: "Выбрать папку",
       vault_change: "Изменить папку",
@@ -555,7 +555,7 @@
       /* ---- vault ---- */
       onb_kicker_3: "step three",
       onb_q_3: "Where should\nyour writing live?",
-      onb_hint_3: "like Obsidian: your work sits as plain files in your own folder and survives a reinstall",
+      onb_hint_3: "your work sits as plain .md files in your own folder and survives a reinstall",
       onb_hint_3_mobile: "your writing is saved on the device and comes back after a reinstall",
       vault_choose: "Choose folder",
       vault_change: "Change folder",

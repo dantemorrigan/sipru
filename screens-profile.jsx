@@ -165,6 +165,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
                   <span className="vault-state mono">
                     {tl(vs && vs.error ? "vault_status_err" : vs && vs.ok ? "vault_status_ok" : "vault_status_off")}
                   </span>
+                  {vs && vs.error && <div className="vault-err mono">{vs.error}</div>}
                 </div>
               </div>
               <div className="prof-data">
