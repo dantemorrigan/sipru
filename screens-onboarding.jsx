@@ -216,6 +216,12 @@ function Onboarding({ onDone }) {
             <div className={"onb-vault-path mono" + (vault ? " on" : "")}>
               {vault || (canPick ? tl("vault_none") : tl("vault_resolving"))}
             </div>
+            {/* A blocked shared location isn't final — Android just needs the
+                writer to flip it on themselves; there is no app-triggerable
+                dialog for this permission, so this is the actual next step. */}
+            {!canPick && locs && locs.some((o) => !o.ok) && (
+              <div className="onb-vault-err mono">{tl("vault_loc_grant_hint")}</div>
+            )}
             {vaultErr && <div className="onb-vault-err mono">{vaultErr}</div>}
           </div>
 

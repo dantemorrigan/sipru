@@ -92,6 +92,12 @@ jobs:
       - name: Enable Android Auto Backup
         run: python3 .github/scripts/android_backup.py
 
+      # Without a declared storage permission the vault's shared Documents/
+      # Downloads locations fail every write under scoped storage, and the
+      # app's Permissions screen has nothing to show at all.
+      - name: Declare storage permissions
+        run: python3 .github/scripts/android_storage_permissions.py
+
       # Universal APK = arm64 + armv7 in one file (no --split-per-abi), so a
       # single download works on any real phone. Debug-signed via Gradle's
       # built-in debug keystore — no signing setup needed, matching the macOS
