@@ -183,7 +183,13 @@ body::before {
 .icon-btn { width: 38px; height: 38px; display: grid; place-items: center;
   border: 1px solid var(--line); background: var(--sheet); color: var(--ink-2);
   border-radius: 0; transition: color .2s var(--ease), background-color .2s var(--ease), border-color .2s var(--ease), opacity .2s var(--ease), transform .2s var(--ease), box-shadow .2s var(--ease); }
-.icon-btn:hover { color: var(--ink); background: var(--paper-3); border-color: var(--ink-faint); }
+/* Gated to real hover: on touch, :hover fires on tap and has no "leave"
+   event to clear it, so a tapped button — like the editor's "more" menu
+   trigger — stays highlighted after the finger lifts while its neighbors
+   don't, looking uneven rather than pressed. */
+@media (hover: hover) and (pointer: fine) {
+  .icon-btn:hover { color: var(--ink); background: var(--paper-3); border-color: var(--ink-faint); }
+}
 .icon-btn.active { color: var(--accent); }
 
 /* focus ring */

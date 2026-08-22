@@ -340,7 +340,9 @@
 
 /* danger icon btn */
 .icon-btn--danger { transition: color .18s, background .18s !important; }
-.icon-btn--danger:hover { color: var(--accent) !important; background: var(--accent-tint) !important; }
+@media (hover: hover) and (pointer: fine) {
+  .icon-btn--danger:hover { color: var(--accent) !important; background: var(--accent-tint) !important; }
+}
 
 /* ---------- book preview ---------- */
 .preview-scroll { flex: 1; overflow-y: auto; background: var(--paper-2); padding: 44px 20px; }
