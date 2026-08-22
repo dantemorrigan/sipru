@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn on Android's Auto Backup so a reinstall restores the user's writing.
 
-Writed. keeps its live data in the webview's localStorage, which lives in the
+Sipru. keeps its live data in the webview's localStorage, which lives in the
 app's private data directory. Uninstalling an Android app deletes that
 directory outright — which is how a reinstall used to wipe every project and
 note. The vault (vault.js) writes a copy to a real folder, but Auto Backup is

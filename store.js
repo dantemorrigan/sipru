@@ -1,8 +1,9 @@
 /* ============================================================
-   Writed. — local data store
+   Sipru — local data store
    ============================================================ */
 (function () {
-  const KEY = "writed:v1";
+  const KEY = "sipru:v1";
+  const LEGACY_KEY = "writed:v1"; /* pre-rename installs still load once */
   const listeners = new Set();
   const uid = (p) => p + Math.random().toString(36).slice(2, 9);
   const now = () => Date.now();
@@ -70,7 +71,7 @@
   let state = load();
   function load() {
     try {
-      const raw = localStorage.getItem(KEY);
+      const raw = localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY);
       if (raw) {
         const parsed = migrate(JSON.parse(raw));
         if (parsed) return parsed;
@@ -248,10 +249,10 @@
       catch (e) {}
       return false;
     },
-    reset() { localStorage.removeItem(KEY); state = migrate(seed()); textCache.clear(); commit(); },
+    reset() { localStorage.removeItem(KEY); localStorage.removeItem(LEGACY_KEY); state = migrate(seed()); textCache.clear(); commit(); },
 
     countWords
   };
 
-  window.WritedStore = Store;
+  window.SipruStore = Store;
 })();

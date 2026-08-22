@@ -41,7 +41,7 @@ jobs:
       # Universal binary = Apple Silicon + Intel in one .app/.dmg.
       # `tauri build` runs the existing `npm run build` (JSX → build/) and
       # the dist-staging script itself, via beforeBuildCommand.
-      - name: Build Writed. for macOS (universal)
+      - name: Build Sipru. for macOS (universal)
         run: npx tauri build --target universal-apple-darwin
         env:
           # No Apple Developer signing/notarization yet — free distribution
@@ -55,16 +55,16 @@ jobs:
           echo "--- .dmg ---"
           find src-tauri/target/universal-apple-darwin/release/bundle/dmg -maxdepth 1
 
-      - name: Upload Writed.app
+      - name: Upload Sipru.app
         uses: actions/upload-artifact@v4
         with:
-          name: Writed-macOS-app
+          name: Sipru-macOS-app
           path: src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
           if-no-files-found: error
 
-      - name: Upload Writed.dmg
+      - name: Upload Sipru.dmg
         uses: actions/upload-artifact@v4
         with:
-          name: Writed-macOS-dmg
+          name: Sipru-macOS-dmg
           path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: error

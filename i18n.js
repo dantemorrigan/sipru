@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — i18n (ru / en)
+   Sipru. — i18n (ru / en)
    ============================================================ */
 (function () {
   const STRINGS = {
@@ -93,11 +93,11 @@
       ed_back: "Назад",
       ed_rename: "Переименовать",
       /* ---- updates ---- */
-      upd_available: "Доступна новая версия Writed",
+      upd_available: "Доступна новая версия Sipru",
       upd_btn: "Обновить",
       upd_downloading: "Загрузка обновления",
       upd_done: "Обновление загружено",
-      upd_open_dmg: "Откройте файл и перетащите Writed. в «Программы»",
+      upd_open_dmg: "Откройте файл и перетащите Sipru. в «Программы»",
       upd_open_apk: "Откройте файл, чтобы установить",
       upd_err: "Не удалось загрузить обновление",
       upd_retry: "Повторить",
@@ -194,7 +194,7 @@
       onb_hero_0_1: "Чистый лист,",
       onb_hero_0_2: "и больше",
       onb_hero_0_3: "ничего",
-      onb_lede_0: "Writed· — редактор для тех, кто пишет вдолгую. Никакого облака, никакого бэкенда. Текст остаётся на вашем устройстве — и только.",
+      onb_lede_0: "Sipru· — редактор для тех, кто пишет вдолгую. Никакого облака, никакого бэкенда. Текст остаётся на вашем устройстве — и только.",
       onb_cta_0: "Начать",
       onb_kicker_1: "шаг первый",
       onb_q_1: "Как к вам\nобращаться?",
@@ -236,13 +236,13 @@
       onb_finish: "Начать писать",
 
       /* ---- tour ---- */
-      tour_intro_eyebrow: "тур по writed",
+      tour_intro_eyebrow: "тур по sipru",
       tour_intro_title: "Знакомство за минуту",
       tour_intro_body: "Покажем главное: где живут проекты и заметки, как устроена книга и что умеет редактор. В любой момент можно пропустить.",
       tour_intro_cta: "Показать",
       tour_dash_eyebrow: "главный экран",
       tour_dash_title: "Живая точка",
-      tour_dash_body: "Слово Writed. всегда возвращает на главную. А клик по самой точке раскрывает вашу статистику — сколько всего написано.",
+      tour_dash_body: "Слово Sipru. всегда возвращает на главную. А клик по самой точке раскрывает вашу статистику — сколько всего написано.",
       tour_create_eyebrow: "с чего начать",
       tour_create_title: "Проекты и заметки",
       tour_create_body: "Проект — это книга с главами и целью по словам. Заметка — одиночный лист для идей и набросков. Оба открываются в одном редакторе.",
@@ -441,11 +441,11 @@
       ed_back: "Back",
       ed_rename: "Rename",
       /* ---- updates ---- */
-      upd_available: "A new version of Writed is available",
+      upd_available: "A new version of Sipru is available",
       upd_btn: "Update",
       upd_downloading: "Downloading update",
       upd_done: "Update downloaded",
-      upd_open_dmg: "Open the file and drag Writed. into Applications",
+      upd_open_dmg: "Open the file and drag Sipru. into Applications",
       upd_open_apk: "Open the file to install",
       upd_err: "Couldn't download the update",
       upd_retry: "Retry",
@@ -542,7 +542,7 @@
       onb_hero_0_1: "A blank page,",
       onb_hero_0_2: "and nothing",
       onb_hero_0_3: "else",
-      onb_lede_0: "Writed· is a writing editor built for the long haul. No cloud, no backend. Your text stays on your device — and only there.",
+      onb_lede_0: "Sipru· is a writing editor built for the long haul. No cloud, no backend. Your text stays on your device — and only there.",
       onb_cta_0: "Get started",
       onb_kicker_1: "step one",
       onb_q_1: "What should\nwe call you?",
@@ -584,13 +584,13 @@
       onb_finish: "Start writing",
 
       /* ---- tour ---- */
-      tour_intro_eyebrow: "tour · writed",
+      tour_intro_eyebrow: "tour · sipru",
       tour_intro_title: "A one-minute tour",
       tour_intro_body: "We'll show you the essentials: where projects and notes live, how a book is structured, and what the editor can do. Skip at any time.",
       tour_intro_cta: "Show me",
       tour_dash_eyebrow: "home screen",
       tour_dash_title: "The living dot",
-      tour_dash_body: "Writed. always takes you home. A tap on the dot opens your stats — how much you've written in total.",
+      tour_dash_body: "Sipru. always takes you home. A tap on the dot opens your stats — how much you've written in total.",
       tour_create_eyebrow: "where to start",
       tour_create_title: "Projects and notes",
       tour_create_body: "A project is a book with chapters and a word goal. A note is a single sheet for ideas and drafts. Both open in the same editor.",

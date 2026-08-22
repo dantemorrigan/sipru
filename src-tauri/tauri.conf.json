@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Writed.",
+  "productName": "Sipru",
   "version": "1.2.0",
-  "identifier": "com.dantemorrigan.writed",
+  "identifier": "com.dantemorrigan.sipru",
   "build": {
     "frontendDist": "dist",
     "beforeBuildCommand": "npm run build && node src-tauri/stage-dist.js"
@@ -11,7 +11,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Writed.",
+        "title": "Sipru",
         "width": 1280,
         "height": 860,
         "minWidth": 900,

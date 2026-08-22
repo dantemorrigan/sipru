@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — vault (durable, on-device storage)
+   Sipru. — vault (durable, on-device storage)
 
    localStorage alone is not storage a writer can trust: an Android
    uninstall wipes it, and a cleared webview profile takes it with it.
@@ -14,35 +14,38 @@
    user their text.
 
    On disk:
-     <vault>/writed-vault.json           ← small: user prefs + schema
+     <vault>/sipru-vault.json            ← small: user prefs + schema
      <vault>/<Project Title>/
-       writed-meta.json                  ← project metadata + snapshots
+       sipru-meta.json                   ← project metadata + snapshots
        01 Chapter Title.md               ← chapter text, full formatting
      <vault>/Notes/
-       writed-meta.json                  ← note metadata + snapshots
+       sipru-meta.json                   ← note metadata + snapshots
        Note Title.md
 
    The .md files are the readable, portable copy of *current* text —
    what a writer opens in any plain text editor. Snapshots (version
    history) are not worth one file per revision, so they live in the
-   sibling writed-meta.json instead. Splitting it this way means a
+   sibling sipru-meta.json instead. Splitting it this way means a
    chapter's own file is never bloated with old versions, and the
-   working text is never something only Writed. can read.
+   working text is never something only Sipru can read.
    ============================================================ */
 (function () {
-  var PATH_KEY = "writed:vault";
+  var PATH_KEY = "sipru:vault";
+  var LEGACY_PATH_KEY = "writed:vault"; /* pre-rename installs still reconnect once */
   /* Deliberately not dotfiles. Tauri's filesystem scope matches allowed
      paths with a glob that will not cross a leading dot, so a metadata file
-     named ".writed-vault.json" is rejected as a forbidden path even when its
+     named ".sipru-vault.json" is rejected as a forbidden path even when its
      whole folder is allowed. Plain names also mean nothing in the vault is
      hidden from the person who owns it. */
-  var VAULT_META = "writed-vault.json";
-  var ENTITY_META = "writed-meta.json";
+  var VAULT_META = "sipru-vault.json";
+  var ENTITY_META = "sipru-meta.json";
   var NOTES_DIR = "Notes";
   var TRASH_DIR = "Trash";
-  /* Vaults written before the rename above still open. */
-  var LEGACY_VAULT_META = ".writed-vault.json";
-  var LEGACY_ENTITY_META = ".writed.json";
+  /* Vaults written before the app was renamed (Writed. → Sipru) still open:
+     each metadata read tries the current name, then the pre-rename plain
+     name, then the original pre-rename dotfile name. */
+  var LEGACY_VAULT_META = ["writed-vault.json", ".writed-vault.json"];
+  var LEGACY_ENTITY_META = ["writed-meta.json", ".writed.json"];
   var LEGACY_TRASH_DIR = ".trash";
   var SAVE_DEBOUNCE = 900;
 
@@ -73,7 +76,7 @@
      Everything below this adapter is one code path. The vault does not know
      or care which platform it is on. */
 
-  function bridge() { return window.WritedAndroidVault || null; }
+  function bridge() { return window.SipruAndroidVault || null; }
 
   var saf = null;      /* the Android bridge, once a vault is connected */
   var safRoot = "";    /* its display path — the prefix vault paths carry */
@@ -171,15 +174,20 @@
       return { ok: false, corrupt: false };
     }
   }
-  /* Reads the current metadata name, falling back to the pre-rename dotfile
-     so an existing vault keeps opening; the next save writes the new name.
-     Reports `path` — whichever of the two it actually read — so a corrupt
-     file is quarantined where it really is, not under a name never on disk. */
-  async function readMeta(dir, name, legacyName) {
+  /* Reads the current metadata name, falling back through each pre-rename
+     name in turn so an existing vault keeps opening; the next save writes
+     the new name. Reports `path` — whichever name it actually read — so a
+     corrupt file is quarantined where it really is, not under a name never
+     on disk. */
+  async function readMeta(dir, name, legacyNames) {
     var res = await readJSON(join(dir, name));
     if (res.ok || res.corrupt) { res.path = join(dir, name); return res; }
-    res = await readJSON(join(dir, legacyName));
-    res.path = join(dir, legacyName);
+    var names = [].concat(legacyNames);
+    for (var i = 0; i < names.length; i++) {
+      res = await readJSON(join(dir, names[i]));
+      res.path = join(dir, names[i]);
+      if (res.ok || res.corrupt) return res;
+    }
     return res;
   }
   async function writeJSON(path, data) {
@@ -324,7 +332,7 @@
 
     lastLayout = { projectDirs: nextDirs, projectFiles: nextFiles, noteFiles: noteFiles };
     await writeJSON(join(vaultDir, VAULT_META), {
-      app: "Writed.", schema: 1, savedAt: Date.now(),
+      app: "Sipru.", schema: 1, savedAt: Date.now(),
       user: state.user, onboarded: state.onboarded, tourDone: state.tourDone,
     });
     return Date.now();
@@ -343,7 +351,7 @@
       var cm = m.chapters[i];
       var raw = null;
       try { raw = await FS.readText(join(pdir, cm.filename)); } catch (e) { raw = ""; }
-      var html = window.WritedFormats.mdToHTML(raw);
+      var html = window.SipruFormats.mdToHTML(raw);
       chapters.push({ id: cm.id, title: cm.title, content: html, updatedAt: cm.updatedAt || Date.now(),
         snapshots: cm.snapshots || [] });
     }
@@ -367,7 +375,7 @@
       var nm = meta.data.notes[i];
       var raw = null;
       try { raw = await FS.readText(join(ndir, nm.filename)); } catch (e) { raw = ""; }
-      notes.push({ id: nm.id, title: nm.title, status: nm.status || "draft", content: window.WritedFormats.mdToHTML(raw),
+      notes.push({ id: nm.id, title: nm.title, status: nm.status || "draft", content: window.SipruFormats.mdToHTML(raw),
         createdAt: nm.createdAt || Date.now(), updatedAt: nm.updatedAt || Date.now(), snapshots: nm.snapshots || [] });
     }
     var files = {};
@@ -434,7 +442,7 @@
     if (status.busy) { queued = true; return; }
     set({ busy: true });
     try {
-      await writeVaultAt(status.path, window.WritedStore.get());
+      await writeVaultAt(status.path, window.SipruStore.get());
       set({ ok: true, error: null, savedAt: Date.now(), busy: false });
     } catch (e) {
       set({ ok: false, error: String((e && e.message) || e), busy: false });
@@ -465,10 +473,10 @@
       return { ok: false, unreadable: true, quarantined: found.quarantined };
     }
 
-    var local = window.WritedStore.get();
+    var local = window.SipruStore.get();
     var restored = false;
     if (found.kind === "ok" && (found.state.projects.length || found.state.notes.length) && (adopt || !local.onboarded)) {
-      restored = window.WritedStore.importAll(JSON.stringify(found.state));
+      restored = window.SipruStore.importAll(JSON.stringify(found.state));
       if (!restored) { set({ ok: false, error: "unreadable vault at " + dir }); return { ok: false, unreadable: true }; }
     }
     /* Seed filename tracking from what's actually on disk — this is what
@@ -481,6 +489,7 @@
       ? { projectDirs: found.layout.projectDirs, projectFiles: found.layout.projectFiles, noteFiles: found.layout.noteFiles }
       : { projectDirs: {}, projectFiles: {}, noteFiles: {} };
     localStorage.setItem(PATH_KEY, dir);
+    localStorage.removeItem(LEGACY_PATH_KEY);
     set({ path: dir, error: null });
     await flush();
     return { ok: true, restored: restored, hadData: found.kind === "ok" };
@@ -498,10 +507,10 @@
      *inside* it is denied.
 
      Android: the picker is an Activity, so its answer arrives on a callback
-     rather than a return value; the bridge calls __writedVaultPicked when
+     rather than a return value; the bridge calls __sipruVaultPicked when
      the writer is done with it. */
   var picking = null;
-  window.__writedVaultPicked = function (label) {
+  window.__sipruVaultPicked = function (label) {
     var fn = picking;
     picking = null;
     if (fn) fn(label || null);
@@ -517,7 +526,7 @@
       });
     }
     if (!canPickFolder()) return null;
-    var dir = await T.dialog.open({ directory: true, recursive: true, multiple: false, title: "Writed — vault folder" });
+    var dir = await T.dialog.open({ directory: true, recursive: true, multiple: false, title: "Sipru — vault folder" });
     if (!dir) return null;
     return typeof dir === "string" ? dir : (dir.path || null);
   }
@@ -526,23 +535,23 @@
 
   async function backupToFile() {
     if (!available()) return false;
-    var name = "writed-backup-" + new Date().toISOString().slice(0, 10) + ".json";
-    var dest = await T.dialog.save({ defaultPath: name, filters: [{ name: "Writed backup", extensions: ["json"] }] });
+    var name = "sipru-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+    var dest = await T.dialog.save({ defaultPath: name, filters: [{ name: "Sipru backup", extensions: ["json"] }] });
     if (!dest) return false;
-    var payload = { app: "Writed.", schema: 1, savedAt: Date.now(), state: window.WritedStore.get() };
+    var payload = { app: "Sipru.", schema: 1, savedAt: Date.now(), state: window.SipruStore.get() };
     await T.fs.writeTextFile(dest, JSON.stringify(payload, null, 2));
     return true;
   }
 
   async function restoreFromFile() {
     if (!available()) return false;
-    var src = await T.dialog.open({ multiple: false, filters: [{ name: "Writed backup", extensions: ["json"] }] });
+    var src = await T.dialog.open({ multiple: false, filters: [{ name: "Sipru backup", extensions: ["json"] }] });
     if (!src) return false;
     var p = typeof src === "string" ? src : (src.path || src);
     var raw = await T.fs.readTextFile(p);
     var data = JSON.parse(raw);
     var state = data && data.state ? data.state : data;
-    var ok = window.WritedStore.importAll(JSON.stringify(state));
+    var ok = window.SipruStore.importAll(JSON.stringify(state));
     if (ok) schedule();
     return ok;
   }
@@ -559,7 +568,7 @@
        instead of in front of a folder the app can no longer write to. */
     var b = bridge();
     if (b) saved = b.root() || null;
-    else { try { saved = localStorage.getItem(PATH_KEY); } catch (e) {} }
+    else { try { saved = localStorage.getItem(PATH_KEY) || localStorage.getItem(LEGACY_PATH_KEY); } catch (e) {} }
     if (!saved) return;
     await open(saved, { adopt: false });
   }
@@ -600,7 +609,7 @@
     }
   }
 
-  window.WritedVault = {
+  window.SipruVault = {
     available: available,
     locate: locate,
     reveal: reveal,
@@ -618,7 +627,7 @@
     saveNow: flush,
     schedule: schedule,
     forget: function () {
-      try { localStorage.removeItem(PATH_KEY); } catch (e) {}
+      try { localStorage.removeItem(PATH_KEY); localStorage.removeItem(LEGACY_PATH_KEY); } catch (e) {}
       if (saf) { saf.forget(); saf = null; safRoot = ""; }
       lastLayout = { projectDirs: {}, projectFiles: {}, noteFiles: {} };
       onDisk = {};
@@ -626,6 +635,6 @@
     },
   };
 
-  if (window.WritedStore) window.WritedStore.subscribe(schedule);
+  if (window.SipruStore) window.SipruStore.subscribe(schedule);
   if (available()) init();
 })();

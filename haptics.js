@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — haptics
+   Sipru. — haptics
    Short, quiet system vibrations on touch devices. Desktop and
    mice get nothing: the whole file no-ops unless the primary
    pointer is coarse.
@@ -47,7 +47,7 @@
     try { navigator.vibrate && navigator.vibrate(p); } catch (e) {}
   }
 
-  if (!COARSE) { window.WritedHaptics = { fire: function () {} }; return; }
+  if (!COARSE) { window.SipruHaptics = { fire: function () {} }; return; }
 
   var PRESSABLE = 'button, a, [role="button"], label, .card, .chap-row, .search-item, .switch, .seg-btn, .tool, .onb-lang-btn, .onb-theme';
 
@@ -65,5 +65,5 @@
     fire("tap");
   }, { passive: true });
 
-  window.WritedHaptics = { fire: fire };
+  window.SipruHaptics = { fire: fire };
 })();

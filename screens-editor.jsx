@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — Editor (focus mode)
+   Sipru. — Editor (focus mode)
    ============================================================ */
 /* Debounced save for ordinary typing + a reliable flush of the very last
    state (page hide, tab switch, unmount, doc/mode change, ⌘S).            */
@@ -580,12 +580,12 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
               <Icon name="more" size={18} />
             </button>
             <div className="ed-more-menu">
-              {window.WritedVault && window.WritedVault.canReveal() && (
+              {window.SipruVault && window.SipruVault.canReveal() && (
                 <button className="icon-btn" title={tl("vault_reveal")} onClick={async () => {
                   setMoreOpen(false);
-                  const p = window.WritedVault.locate(project ? "chapter" : "note", docId, project && project.id);
+                  const p = window.SipruVault.locate(project ? "chapter" : "note", docId, project && project.id);
                   if (!p) return onToast(tl("vault_not_saved_yet"));
-                  if (!(await window.WritedVault.reveal(p))) onToast(tl("vault_reveal_fail"));
+                  if (!(await window.SipruVault.reveal(p))) onToast(tl("vault_reveal_fail"));
                 }}><Icon name="folder" size={18} /> <span className="ed-more-label">{tl("vault_reveal")}</span></button>
               )}
               <button className="icon-btn" onClick={() => { setMoreOpen(false); setSnapOpen(true); }} title={tl("snap_btn")}>

@@ -29,26 +29,26 @@ import sys
 
 # Inserted inside the MainActivity class body.
 MEMBERS = r'''
-  /* ---- Writed. vault (Storage Access Framework) ---- */
+  /* ---- Sipru. vault (Storage Access Framework) ---- */
 
-  private var writedWebView: android.webkit.WebView? = null
+  private var sipruWebView: android.webkit.WebView? = null
 
-  private fun writedPicked(label: String) {
-    val js = "window.__writedVaultPicked(" + org.json.JSONObject.quote(label) + ")"
-    writedWebView?.post { writedWebView?.evaluateJavascript(js, null) }
+  private fun sipruPicked(label: String) {
+    val js = "window.__sipruVaultPicked(" + org.json.JSONObject.quote(label) + ")"
+    sipruWebView?.post { sipruWebView?.evaluateJavascript(js, null) }
   }
 
   override fun onWebViewCreate(webView: android.webkit.WebView) {
     super.onWebViewCreate(webView)
-    writedWebView = webView
-    webView.addJavascriptInterface(WritedVault(this) { writedPicked(it) }, "WritedAndroidVault")
+    sipruWebView = webView
+    webView.addJavascriptInterface(SipruVault(this) { sipruPicked(it) }, "SipruAndroidVault")
   }
 
   override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
     super.onActivityResult(requestCode, resultCode, data)
-    if (requestCode != WritedVault.PICK) return
+    if (requestCode != SipruVault.PICK) return
     val uri = if (resultCode == android.app.Activity.RESULT_OK) data?.data else null
-    if (uri == null) { writedPicked(""); return }
+    if (uri == null) { sipruPicked(""); return }
     try {
       /* Without this the grant dies with the Activity; with it the writer
          picks their folder once, and the app still has it after a reboot. */
@@ -57,12 +57,12 @@ MEMBERS = r'''
         android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
           android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
       )
-      getSharedPreferences(WritedVault.PREFS, android.content.Context.MODE_PRIVATE)
+      getSharedPreferences(SipruVault.PREFS, android.content.Context.MODE_PRIVATE)
         .edit().putString("tree", uri.toString()).apply()
-      WritedVault.cache.clear()
-      writedPicked(WritedVault.labelOf(uri))
+      SipruVault.cache.clear()
+      sipruPicked(SipruVault.labelOf(uri))
     } catch (e: Exception) {
-      writedPicked("")
+      sipruPicked("")
     }
   }
 '''
@@ -71,20 +71,20 @@ MEMBERS = r'''
 BRIDGE = r'''
 
 /* ============================================================
-   Writed. — the vault's Android half.
+   Sipru. — the vault's Android half.
 
    vault.js drives this with vault-relative paths ("Notes/Idea.md"); every
    method resolves one against the granted tree and answers the same shape
    the desktop Tauri filesystem API answers. Methods run on the WebView's
    JS-bridge thread, never the UI thread, so blocking I/O here is correct.
    ============================================================ */
-internal class WritedVault(
+internal class SipruVault(
   private val act: android.app.Activity,
   private val onPicked: (String) -> Unit
 ) {
   companion object {
     const val PICK = 0x57A1
-    const val PREFS = "writed_vault"
+    const val PREFS = "sipru_vault"
 
     /* parent document id -> (display name -> [document id, "d" | "f"]).
        SAF has no path lookup: every segment of every path costs a query
@@ -93,7 +93,7 @@ internal class WritedVault(
     val cache = java.util.concurrent.ConcurrentHashMap<String, java.util.HashMap<String, Array<String>>>()
 
     /* Display only — the writer should see where their book is, not a
-       content:// URI. "primary:Documents/Writed" reads back as the path
+       content:// URI. "primary:Documents/Sipru" reads back as the path
        the Files app shows for the same folder. */
     fun labelOf(tree: android.net.Uri): String {
       return try {
@@ -426,7 +426,7 @@ def main():
     with open(path, encoding="utf-8") as f:
         src = f.read()
 
-    if "WritedAndroidVault" in src:
+    if "SipruAndroidVault" in src:
         print("android_vault: bridge already present — skipping")
         return 0
 

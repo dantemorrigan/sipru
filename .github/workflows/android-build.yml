@@ -76,7 +76,7 @@ jobs:
       # directory is `tauri icon`'s *output* location, not a documented
       # input for mobile init) — confirmed by testing an installed APK.
       # Overwrite the generated res/ files directly with ours.
-      - name: Apply Writed. launcher icon
+      - name: Apply Sipru. launcher icon
         run: |
           cp -rv src-tauri/icons/android/mipmap-* src-tauri/gen/android/app/src/main/res/
           cp -v src-tauri/icons/android/values/ic_launcher_background.xml src-tauri/gen/android/app/src/main/res/values/
@@ -105,7 +105,7 @@ jobs:
       - name: Verify the vault bridge landed
         run: |
           F=$(find src-tauri/gen/android/app/src/main/java -name MainActivity.kt | head -1)
-          grep -q 'WritedAndroidVault' "$F"
+          grep -q 'SipruAndroidVault' "$F"
           grep -q 'ACTION_OPEN_DOCUMENT_TREE' "$F"
           grep -q 'takePersistableUriPermission' "$F"
           echo "vault bridge present in $F"
@@ -119,7 +119,7 @@ jobs:
       # built-in debug keystore — no signing setup needed, matching the macOS
       # build's "no Developer signing, free distribution" approach. The heavy
       # lifting on size is [profile.dev] in Cargo.toml stripping debug info.
-      - name: Build Writed. for Android (universal APK)
+      - name: Build Sipru. for Android (universal APK)
         run: npx tauri android build --apk --debug --target aarch64 armv7
         env:
           NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
@@ -129,12 +129,12 @@ jobs:
       - name: Locate APK output
         run: find src-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk"
 
-      - name: Rename APK to Writed-{version}-Android.apk
+      - name: Rename APK to Sipru-{version}-Android.apk
         run: |
           VERSION=$(node -p "require('./package.json').version")
           SRC=$(find src-tauri/gen/android/app/build/outputs/apk/universal/debug -name "*.apk" | head -1)
           mkdir -p dist-apk
-          cp "$SRC" "dist-apk/Writed-${VERSION}-Android.apk"
+          cp "$SRC" "dist-apk/Sipru-${VERSION}-Android.apk"
           ls -la dist-apk
 
       # Size report: the uploaded artifact is a zip, so its download size hides
@@ -152,9 +152,9 @@ jobs:
           unzip -l "$APK" | grep '\.so$' || true
           du -h "$APK"
 
-      - name: Upload Writed.apk
+      - name: Upload Sipru.apk
         uses: actions/upload-artifact@v4
         with:
-          name: Writed-Android-apk
-          path: dist-apk/Writed-*.apk
+          name: Sipru-Android-apk
+          path: dist-apk/Sipru-*.apk
           if-no-files-found: error

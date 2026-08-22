@@ -1,13 +1,13 @@
 /* ============================================================
-   Writed. — shared atoms (icons, logo, hooks)
+   Sipru. — shared atoms (icons, logo, hooks)
    ============================================================ */
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 /* ---------- store hook ---------- */
 function useStore() {
   const [, force] = useState(0);
-  useEffect(() => WritedStore.subscribe(() => force((n) => n + 1)), []);
-  return WritedStore;
+  useEffect(() => SipruStore.subscribe(() => force((n) => n + 1)), []);
+  return SipruStore;
 }
 
 /* ---------- icons (geometric, 24px, stroke) ---------- */
@@ -77,7 +77,7 @@ function Logo({ size = 22, alive = false, onClick, onDotClick, dotTitle, style }
   return (
     <span className={"brand" + (alive ? " alive" : "")} onClick={onClick}
       style={{ fontSize: size, cursor: onClick ? "pointer" : "default", ...style }}>
-      Writed<span className="dot"
+      Sipru<span className="dot"
         onClick={onDotClick ? (e) => { e.stopPropagation(); onDotClick(e); } : undefined}
         title={onDotClick ? dotTitle : undefined}
       />

@@ -1,8 +1,8 @@
 {
-  "name": "writed",
+  "name": "sipru",
   "version": "1.2.0",
   "private": true,
-  "description": "Writed. — a minimal local-first editor for writers",
+  "description": "Sipru. — a minimal local-first editor for writers",
   "scripts": {
     "build": "node build.js",
     "check": "node build.js --check",

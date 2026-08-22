@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — design system
+   Sipru. — design system
    Helvetica/Swiss minimalism · tactile paper & ink · terminal
    ============================================================ */
 
@@ -136,7 +136,7 @@ body::before {
 /* hover the whole logo → wordmark goes accent, dot goes white */
 .brand:hover .dot { background: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
 .brand.alive .dot { animation: orbit 5s linear infinite; }
-/* elliptical "moon" orbit around the word Writed (em-based → scales with logo size) */
+/* elliptical "moon" orbit around the word Sipru (em-based → scales with logo size) */
 @keyframes orbit {
   0%    { transform: translate(calc(-50% + 2.30em), calc(-50% + 0.00em)); }
   8.33% { transform: translate(calc(-50% + 1.99em), calc(-50% - 0.48em)); }

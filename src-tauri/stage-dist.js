@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. (Tauri) — stages the exact production runtime into
+   Sipru. (Tauri) — stages the exact production runtime into
    src-tauri/dist/, so the desktop bundle embeds only the files
    the app actually loads (not node_modules, .git, source .jsx,
    or the Rust project itself). Regenerated on every build; the

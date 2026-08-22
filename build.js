@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — build step
+   Sipru. — build step
    Transpiles the .jsx sources to plain browser JS in build/.
    No bundling: every file stays a separate classic <script>, so
    the runtime semantics are identical to the sources.
@@ -22,7 +22,7 @@ let stale = [];
    single source of truth for what version is running. */
 {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8"));
-  const code = "window.WRITED_VERSION=" + JSON.stringify(pkg.version) + ";\n";
+  const code = "window.SIPRU_VERSION=" + JSON.stringify(pkg.version) + ";\n";
   const dest = path.join(OUT, "version.js");
   const prev = fs.existsSync(dest) ? fs.readFileSync(dest, "utf8") : null;
   if (prev !== code) {

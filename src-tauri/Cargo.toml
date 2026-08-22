@@ -1,8 +1,8 @@
 [package]
-name = "writed"
+name = "sipru"
 version = "1.2.0"
-description = "Writed. — a minimal local-first editor for writers"
-authors = ["Writed."]
+description = "Sipru. — a minimal local-first editor for writers"
+authors = ["Sipru."]
 license = ""
 repository = "https://github.com/dantemorrigan/writed."
 edition = "2021"

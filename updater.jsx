@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — background update check against writed.ru
+   Sipru — background update check against writed.ru
 
    Deliberately not tauri-plugin-updater: it demands a minisign
    signature per artifact, installs only .app.tar.gz bundles — not
@@ -20,9 +20,9 @@ const UPDATE_ENDPOINT = "https://writed.ru/";
 const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;  /* at most once every 6 hours */
 const UPDATE_SETTLE_MS = 4000;                  /* let the app paint first */
 const UPDATE_TIMEOUT_MS = 10000;
-const UPDATE_STATE_KEY = "writed:update";
+const UPDATE_STATE_KEY = "sipru:update";
 
-/* Kept out of WritedStore on purpose: this is throwaway client state, not
+/* Kept out of SipruStore on purpose: this is throwaway client state, not
    user data, and it must never end up in a backup or an export. */
 function updateState() {
   try { return JSON.parse(localStorage.getItem(UPDATE_STATE_KEY)) || {}; }
@@ -42,7 +42,7 @@ const nativeFS = () => {
 };
 
 /* GitHub release download URLs always carry the tag, e.g.
-   .../releases/download/v1.2.0/Writed-1.2.0-Android.apk */
+   .../releases/download/v1.2.0/Sipru-1.2.0-Android.apk */
 function versionFromUrl(url) {
   const m = /\/releases\/download\/v?([0-9]+(?:\.[0-9]+)*)\//.exec(url || "");
   return m ? m[1] : null;
@@ -94,7 +94,7 @@ function UpdateBanner({ lang }) {
           const url = findPlatformUrl(doc, updatePlatform());
           const version = versionFromUrl(url);
           /* a version the user already dismissed stays dismissed */
-          if (version && url && isNewerVersion(version, window.WRITED_VERSION)
+          if (version && url && isNewerVersion(version, window.SIPRU_VERSION)
               && version !== updateState().dismissed && alive.current) {
             setInfo({ version, url });
           }
@@ -145,7 +145,7 @@ function UpdateBanner({ lang }) {
         bytes = new Uint8Array(await res.arrayBuffer());
       }
 
-      const name = info.url.slice(info.url.lastIndexOf("/") + 1) || "Writed-update";
+      const name = info.url.slice(info.url.lastIndexOf("/") + 1) || "Sipru-update";
       const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : "";
       const path = await tauri.dialog.save({
         defaultPath: name,

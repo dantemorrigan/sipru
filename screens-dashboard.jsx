@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — Dashboard + Project (folder) view
+   Sipru. — Dashboard + Project (folder) view
    ============================================================ */
 
 function TopBar({ user, store, nav, onTheme, right, hideProfile }) {
@@ -113,7 +113,7 @@ function ImportButton({ lang, onFile, onToast, label, className, children }) {
     e.target.value = "";
     if (!f) return;
     try {
-      const parsed = await WritedFormats.importFile(f);
+      const parsed = await SipruFormats.importFile(f);
       onFile(parsed);
       onToast && onToast(tl("import_ok"));
     } catch (err) {
@@ -127,7 +127,7 @@ function ImportButton({ lang, onFile, onToast, label, className, children }) {
         {children || (<><Icon name="upload" size={16} /> {label || tl("import_btn")}</>)}
       </button>
       <input ref={ref} type="file" style={{ display: "none" }}
-        accept={WritedFormats.IMPORT_ACCEPT} onChange={onChange} />
+        accept={SipruFormats.IMPORT_ACCEPT} onChange={onChange} />
     </>
   );
 }
@@ -513,11 +513,11 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
                 onClick={() => store.updateProject(p.id, { status: p.status === "done" ? "draft" : "done" })}>
                 <Icon name="check" size={14} /> {p.status === "done" ? tl("mark_done") : tl("mark_in_progress")}
               </button>
-              {window.WritedVault && window.WritedVault.canReveal() && (
+              {window.SipruVault && window.SipruVault.canReveal() && (
                 <button className="status-toggle mono" onClick={async () => {
-                  const path = window.WritedVault.locate("project", p.id);
+                  const path = window.SipruVault.locate("project", p.id);
                   if (!path) return onToast(tl("vault_not_saved_yet"));
-                  if (!(await window.WritedVault.reveal(path))) onToast(tl("vault_reveal_fail"));
+                  if (!(await window.SipruVault.reveal(path))) onToast(tl("vault_reveal_fail"));
                 }}>
                   <Icon name="folder" size={14} /> {tl("vault_reveal")}
                 </button>

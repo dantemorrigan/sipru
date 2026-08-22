@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — onboarding (first run)
+   Sipru. — onboarding (first run)
    ============================================================ */
 function Onboarding({ onDone }) {
   const [step, setStep] = useState(-1);   /* -1 = language pick */
@@ -14,8 +14,8 @@ function Onboarding({ onDone }) {
      to; on the web the app stays on localStorage and the flow is 4 steps.
      Desktop and Android both get a real system folder picker here, so this
      step is the same step on both. */
-  const vaultStep = !!(window.WritedVault && window.WritedVault.available());
-  const canPick = vaultStep && window.WritedVault.canPickFolder();
+  const vaultStep = !!(window.SipruVault && window.SipruVault.available());
+  const canPick = vaultStep && window.SipruVault.canPickFolder();
   const [vault, setVault] = useState(null);
   const [vaultBusy, setVaultBusy] = useState(false);
   const [vaultErr, setVaultErr] = useState(null);
@@ -23,7 +23,7 @@ function Onboarding({ onDone }) {
   async function chooseVault() {
     setVaultErr(null); setVaultBusy(true);
     try {
-      const dir = await window.WritedVault.pick();
+      const dir = await window.SipruVault.pick();
       if (dir) setVault(dir);
     } catch (e) { setVaultErr(String((e && e.message) || e)); }
     setVaultBusy(false);
@@ -42,7 +42,7 @@ function Onboarding({ onDone }) {
     if (vaultStep) {
       setVaultErr(null); setVaultBusy(true);
       let res = null, err = null;
-      try { res = await window.WritedVault.open(vault, { adopt: true }); }
+      try { res = await window.SipruVault.open(vault, { adopt: true }); }
       catch (e) { err = String((e && e.message) || e); }
       setVaultBusy(false);
       if (!res || !res.ok) { setVaultErr(err || tl("vault_unreadable")); return; }

@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — Book preview + Export builder
+   Sipru. — Book preview + Export builder
    ============================================================ */
 
 function BookPreview({ html, title, edition, lang }) {
@@ -222,7 +222,7 @@ function buildBookHTML(project, opts) {
     : opts.font === "article" ? "'Spectral', Georgia, serif" : "'Newsreader', Georgia, serif";
   let body = "";
   if (opts.titlePage) {
-    body += `<section class="b-title"><div class="b-kicker">WRITED.</div><h1>${project.title}</h1>${project.synopsis ? `<p class="b-syn">${project.synopsis}</p>` : ""}</section>`;
+    body += `<section class="b-title"><div class="b-kicker">SIPRU.</div><h1>${project.title}</h1>${project.synopsis ? `<p class="b-syn">${project.synopsis}</p>` : ""}</section>`;
   }
   if (opts.toc) {
     body += `<section class="b-toc"><h2>${t("toc_title", opts.lang || "ru")}</h2><ol>${chapters.map((c) => `<li><span>${c.title}</span></li>`).join("")}</ol></section>`;
@@ -297,7 +297,7 @@ function buildBookDocx(project, opts) {
       pageBreakBefore: !opts.merge && (i > 0 || opts.toc || opts.titlePage),
     });
   });
-  return WritedFormats.buildDocx({
+  return SipruFormats.buildDocx({
     title: opts.titlePage ? project.title : "",
     subtitle: opts.titlePage ? (project.synopsis || "") : "",
     sections, paperSize: opts.paperSize, margin: opts.margin, font: opts.font,
@@ -340,7 +340,7 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
       onToast(tl("exp_toast_pdf"));
     } else if (fmt === "docx") {
       try {
-        downloadBlob(base + ".docx", WritedFormats.DOCX_MIME, buildBookDocx(project, opts));
+        downloadBlob(base + ".docx", SipruFormats.DOCX_MIME, buildBookDocx(project, opts));
         onToast(tl("exp_toast_docx_real"));
       } catch (e) { onToast(tl("exp_err_docx")); }
     } else if (fmt === "txt") {
@@ -453,7 +453,7 @@ function buildNoteHTML(note, opts) {
       body { padding: 60px 0 80px; }
       .n-wrap { max-width: ${(PAPER[opts.paperSize] || PAPER.a4).em}; margin: 0 auto; padding: 0 ${SCREEN_PADS[opts.margin]}; }
     }
-  </style></head><body><div class="n-wrap">${opts.titlePage ? `<div class="n-head"><div class="n-kicker">WRITED.</div><h1 class="n-title">${note.title}</h1></div>` : ""}${note.content || ""}</div></body></html>`;
+  </style></head><body><div class="n-wrap">${opts.titlePage ? `<div class="n-head"><div class="n-kicker">SIPRU.</div><h1 class="n-title">${note.title}</h1></div>` : ""}${note.content || ""}</div></body></html>`;
 }
 
 function NoteExportModal({ note, onClose, onToast, lang }) {
@@ -481,7 +481,7 @@ function NoteExportModal({ note, onClose, onToast, lang }) {
       onToast(tl("exp_toast_pdf"));
     } else if (fmt === "docx") {
       try {
-        downloadBlob(base + ".docx", WritedFormats.DOCX_MIME, WritedFormats.buildDocx({
+        downloadBlob(base + ".docx", SipruFormats.DOCX_MIME, SipruFormats.buildDocx({
           title: opts.titlePage ? note.title : "",
           sections: [{ html: note.content || "" }],
           paperSize: opts.paperSize, margin: opts.margin, font: opts.font,

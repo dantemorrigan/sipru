@@ -26,7 +26,7 @@ permissions:
 # spawn fails before any step's own code runs, actions/checkout included —
 # an explicit `path:` input on checkout does not help, since the failure
 # happens before checkout's code even starts. Cloning by hand into a fixed
-# path (C:\writed-src) with an explicit working-directory sidesteps the
+# path (C:\sipru-src) with an explicit working-directory sidesteps the
 # broken default workspace entirely.
 jobs:
   build:
@@ -36,8 +36,8 @@ jobs:
         shell: pwsh
         working-directory: C:\
         run: |
-          git clone --no-checkout https://github.com/${{ github.repository }}.git C:\writed-src
-          cd C:\writed-src
+          git clone --no-checkout https://github.com/${{ github.repository }}.git C:\sipru-src
+          cd C:\sipru-src
           git checkout ${{ github.sha }}
 
       # No cache: input — actions/setup-node's cache-dependency-path glob
@@ -56,7 +56,7 @@ jobs:
 
       - name: Install JS dependencies
         shell: pwsh
-        working-directory: C:\writed-src
+        working-directory: C:\sipru-src
         run: npm ci
 
       # NSIS installer, no code signing yet — same free-distribution approach
@@ -65,20 +65,20 @@ jobs:
       # (see bundle.windows.webviewInstallMode in tauri.conf.json), so both
       # are covered. `tauri build` runs `npm run build` + stage-dist.js via
       # beforeBuildCommand.
-      - name: Build Writed. for Windows
+      - name: Build Sipru for Windows
         shell: pwsh
-        working-directory: C:\writed-src
+        working-directory: C:\sipru-src
         run: npx tauri build --target x86_64-pc-windows-msvc --bundles nsis
         env:
           CI: true
 
       - name: Locate installer output
         shell: pwsh
-        run: Get-ChildItem -Recurse C:\writed-src\src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis
+        run: Get-ChildItem -Recurse C:\sipru-src\src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis
 
-      - name: Upload Writed installer
+      - name: Upload Sipru installer
         uses: actions/upload-artifact@v4
         with:
-          name: Writed-Windows-installer
-          path: C:\writed-src\src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\*-setup.exe
+          name: Sipru-Windows-installer
+          path: C:\sipru-src\src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\*-setup.exe
           if-no-files-found: error

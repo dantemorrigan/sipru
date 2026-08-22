@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — custom cursor
+   Sipru. — custom cursor
    ============================================================ */
 const FINE_POINTER = (() => {
   try { return window.matchMedia("(hover: hover) and (pointer: fine)").matches; }
@@ -7,11 +7,11 @@ const FINE_POINTER = (() => {
 })();
 
 /* ============================================================
-   Writed. — splash screen
+   Sipru. — splash screen
    ============================================================ */
 function SplashScreen({ onDone }) {
   const [phase, setPhase] = useState('in');
-  const tl = T((WritedStore.get().user || {}).lang || "en");
+  const tl = T((SipruStore.get().user || {}).lang || "en");
 
   useEffect(() => {
     const t1 = setTimeout(() => setPhase('out'), 900);
@@ -23,7 +23,7 @@ function SplashScreen({ onDone }) {
     <div className={`splash splash--${phase}`}>
       <div className="splash-mark">
         <span className="brand alive" style={{ fontSize: 52 }}>
-          Writed<span className="dot" />
+          Sipru<span className="dot" />
         </span>
         <div className="splash-line" />
         <span className="splash-sub">{tl("app_splash_sub")}</span>
@@ -33,7 +33,7 @@ function SplashScreen({ onDone }) {
 }
 
 /* ============================================================
-   Writed. — app shell + routing
+   Sipru. — app shell + routing
    ============================================================ */
 function App() {
   const store = useStore();

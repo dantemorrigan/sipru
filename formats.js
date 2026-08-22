@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — file formats: import (txt / md / html) + real .docx
+   Sipru. — file formats: import (txt / md / html) + real .docx
    No external dependencies: minimal ZIP writer + Office Open XML.
    ============================================================ */
 (function () {
@@ -50,7 +50,7 @@
   }
 
   /* ---------------- Markdown subset → HTML ----------------
-     Mirrors exactly what Writed's export produces:
+     Mirrors exactly what Sipru's export produces:
      #, ##, ###, >, -, 1., ---, paragraphs, plus **bold**, *italic* / _italic_,
      <u>underline</u>, ~~strike~~ and [link](url) — the editor toolbar's full
      inline set, so a vault file round-trips through disk without silently
@@ -430,7 +430,7 @@
   const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
   Object.assign(window, {
-    WritedFormats: { sanitizeHTML, txtToHTML, mdToHTML, importFile, importKind, IMPORT_ACCEPT,
+    SipruFormats: { sanitizeHTML, txtToHTML, mdToHTML, importFile, importKind, IMPORT_ACCEPT,
       buildDocx, htmlToDocxParas, zip, DOCX_MIME },
   });
 })();

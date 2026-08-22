@@ -1,6 +1,6 @@
-/* Writed. desktop/mobile shell.
+/* Sipru. desktop/mobile shell.
    No custom commands: the app is the same static build served on the web,
-   loaded from disk instead of over HTTP. localStorage, WritedStore and all
+   loaded from disk instead of over HTTP. localStorage, SipruStore and all
    app logic are untouched — the webview provides localStorage natively.
    The dialog + fs plugins back the native "save file" flow used by export
    (screens-export.jsx downloadBlob) and the vault (vault.js) on Android and
@@ -18,5 +18,5 @@ pub fn run() {
     .plugin(tauri_plugin_persisted_scope::init())
     .plugin(tauri_plugin_opener::init())
     .run(tauri::generate_context!())
-    .expect("error while running Writed.");
+    .expect("error while running Sipru.");
 }

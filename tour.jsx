@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — guided tour (first-run coach-marks)
+   Sipru. — guided tour (first-run coach-marks)
    Spotlight + floating tooltip that walks the writer across
    the dashboard, a project and the editor. Drives navigation
    itself; blocks page interaction while active.

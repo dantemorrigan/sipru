@@ -1,5 +1,5 @@
 /* ============================================================
-   Writed. — Profile
+   Sipru. — Profile
    ============================================================ */
 function Profile({ store, user, nav, onTheme, onToast }) {
   const lang = user.lang || "en";
@@ -12,7 +12,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
 
   /* Vault state is owned by vault.js, not React — subscribe so the path
      and sync status stay live while a save is in flight. */
-  const V = window.WritedVault;
+  const V = window.SipruVault;
   const vaultOn = !!(V && V.available());
   const [vs, setVs] = useState(() => (V ? V.status() : null));
   useEffect(() => (V ? V.subscribe(setVs) : undefined), [V]);
@@ -60,7 +60,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
 
   function saveName() { const v = name.trim() || tl("default_author"); store.setUser({ name: v }); onToast(tl("toast_name")); }
   function exportBackup() {
-    downloadBlob("writed-backup-" + new Date().toISOString().slice(0,10) + ".json", "application/json", store.exportAll());
+    downloadBlob("sipru-backup-" + new Date().toISOString().slice(0,10) + ".json", "application/json", store.exportAll());
     onToast(tl("toast_backup_dl"));
   }
   function onImport(e) {
