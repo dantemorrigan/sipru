@@ -59,15 +59,75 @@
   function emit() { listeners.forEach(function (fn) { fn(status); }); }
   function set(patch) { Object.assign(status, patch); emit(); }
 
-  function available() { return !!(T && T.fs && T.dialog); }
+  /* ---------- where the bytes go ----------
 
-  /* tauri-plugin-dialog answers FolderPickerNotImplemented on Android/iOS. */
-  function canPickFolder() {
-    if (!available()) return false;
-    var p = (navigator.userAgent || "").toLowerCase();
-    return !/android|iphone|ipad/.test(p);
+     Desktop writes through Tauri's filesystem plugin to a folder the writer
+     picked in a native dialog. Android has no path that plugin can hand us
+     with the same properties — app-private storage dies with the install,
+     and raw writes under /storage/emulated/0 are refused by scoped storage
+     whatever permission is declared. So Android goes through the Storage
+     Access Framework instead, via the native bridge in MainActivity: the
+     writer grants one folder in the system picker, exactly as they pick one
+     on desktop, and the grant persists across reboots.
+
+     Everything below this adapter is one code path. The vault does not know
+     or care which platform it is on. */
+
+  function bridge() { return window.WritedAndroidVault || null; }
+
+  var saf = null;      /* the Android bridge, once a vault is connected */
+  var safRoot = "";    /* its display path — the prefix vault paths carry */
+
+  function rel(p) {
+    if (safRoot && p.indexOf(safRoot) === 0) p = p.slice(safRoot.length);
+    return p.replace(/^\/+/, "");
   }
-  function isMobile() { return available() && !canPickFolder(); }
+  /* The bridge answers false rather than throwing, so the adapter is what
+     turns a refusal back into the rejection the vault's callers expect. */
+  function no(what, p) { return Promise.reject(new Error(what + ": " + p)); }
+
+  var FS = {
+    exists: function (p) { return saf ? Promise.resolve(saf.exists(rel(p))) : T.fs.exists(p); },
+    readText: function (p) {
+      if (!saf) return T.fs.readTextFile(p);
+      var s = saf.read(rel(p));
+      return s == null ? no("not found", p) : Promise.resolve(s);
+    },
+    writeText: function (p, text) {
+      if (!saf) return T.fs.writeTextFile(p, text);
+      return saf.write(rel(p), text) ? Promise.resolve() : no("cannot write", p);
+    },
+    mkdir: function (p) {
+      if (!saf) return T.fs.mkdir(p, { recursive: true });
+      return saf.mkdirs(rel(p)) ? Promise.resolve() : no("cannot create", p);
+    },
+    remove: function (p) {
+      if (!saf) return T.fs.remove(p);
+      return saf.del(rel(p)) ? Promise.resolve() : no("cannot remove", p);
+    },
+    rename: function (a, b) {
+      if (!saf) return T.fs.rename(a, b);
+      return saf.move(rel(a), rel(b)) ? Promise.resolve() : no("cannot rename", a);
+    },
+    readDir: function (p) {
+      if (!saf) return T.fs.readDir(p);
+      var raw = saf.list(rel(p));
+      if (!raw) return no("not a directory", p);
+      return Promise.resolve(JSON.parse(raw).map(function (e) {
+        return { name: e.name, isDirectory: e.dir };
+      }));
+    },
+  };
+
+  function available() { return !!(T && T.fs && T.dialog) || !!bridge(); }
+
+  /* Desktop opens a native folder dialog; Android opens the SAF tree picker.
+     Only iOS, which has neither, is left without one. */
+  function canPickFolder() {
+    if (bridge()) return true;
+    if (!available()) return false;
+    return !/android|iphone|ipad/.test((navigator.userAgent || "").toLowerCase());
+  }
 
   function join() { return Array.prototype.slice.call(arguments).filter(Boolean).join("/").replace(/\/+/g, "/"); }
 
@@ -86,11 +146,26 @@
     return desired + " " + n;
   }
 
+  /* What is already on disk, keyed by path. A flush after one keystroke
+     then rewrites the one chapter that changed instead of the whole book —
+     which matters most on Android, where every write crosses into the
+     system's document provider. Dropped whenever a vault is opened, so
+     anything edited outside the app is picked back up on the next launch. */
+  var onDisk = {};
+  async function put(path, text) {
+    if (onDisk[path] === text) return;
+    await FS.writeText(path, text);
+    onDisk[path] = text;
+  }
+  /* A path whose file we just moved or deleted is no longer what we think
+     it is, and a later write to it must not be skipped as unchanged. */
+  function stale(path) { delete onDisk[path]; }
+
   async function exists(path) {
-    try { return await T.fs.exists(path); } catch (e) { return false; }
+    try { return await FS.exists(path); } catch (e) { return false; }
   }
   async function readJSON(path) {
-    try { return { ok: true, data: JSON.parse(await T.fs.readTextFile(path)) }; }
+    try { return { ok: true, data: JSON.parse(await FS.readText(path)) }; }
     catch (e) {
       if (await exists(path)) return { ok: false, corrupt: true, error: String((e && e.message) || e) };
       return { ok: false, corrupt: false };
@@ -108,9 +183,9 @@
     return res;
   }
   async function writeJSON(path, data) {
-    await T.fs.writeTextFile(path, JSON.stringify(data, null, 2));
+    await put(path, JSON.stringify(data, null, 2));
   }
-  async function ensureDir(path) { await T.fs.mkdir(path, { recursive: true }).catch(function () {}); }
+  async function ensureDir(path) { await FS.mkdir(path).catch(function () {}); }
 
   /* Move, not delete: a rename we can't complete (cross-device, name
      collision) still leaves the original in place rather than losing it. */
@@ -119,7 +194,7 @@
     if (!(await exists(src))) return;
     var dest = join(vaultDir, TRASH_DIR, Date.now() + "-" + relPath.replace(/[\/\\]/g, "_"));
     await ensureDir(join(vaultDir, TRASH_DIR));
-    try { await T.fs.rename(src, dest); } catch (e) { /* leave it where it was */ }
+    try { await FS.rename(src, dest); stale(src); } catch (e) { /* leave it where it was */ }
   }
 
   async function quarantine(path, raw) {
@@ -129,7 +204,7 @@
        written to work around elsewhere. */
     var dest = path.replace(/\.json$/, "").replace(/\/\.([^\/]*)$/, "/$1")
       + ".corrupt-" + Date.now() + ".json";
-    try { await T.fs.writeTextFile(dest, raw != null ? raw : await T.fs.readTextFile(path)); return dest; }
+    try { await FS.writeText(dest, raw != null ? raw : await FS.readText(path)); return dest; }
     catch (e) { return null; }
   }
 
@@ -143,8 +218,12 @@
     if (!prevName || prevName === desiredName) return prevName || desiredName;
     if (!(await exists(join(dir, prevName)))) return desiredName;
     if (await exists(join(dir, desiredName))) return prevName;
-    try { await T.fs.rename(join(dir, prevName), join(dir, desiredName)); return desiredName; }
-    catch (e) { return prevName; }
+    try {
+      await FS.rename(join(dir, prevName), join(dir, desiredName));
+      stale(join(dir, prevName));
+      stale(join(dir, desiredName));
+      return desiredName;
+    } catch (e) { return prevName; }
   }
 
   /* ---------- writing a vault ---------- */
@@ -155,7 +234,7 @@
      writing every chapter to disk as "undefined" or an empty file. */
   async function writeEntity(dir, filename, content) {
     if (typeof window.htmlToMd !== "function") throw new Error("markdown serializer unavailable");
-    await T.fs.writeTextFile(join(dir, filename), window.htmlToMd(content || "") + "\n");
+    await put(join(dir, filename), window.htmlToMd(content || "") + "\n");
   }
 
   async function writeProject(vaultDir, project, prevLayout) {
@@ -263,7 +342,7 @@
     for (var i = 0; i < (m.chapters || []).length; i++) {
       var cm = m.chapters[i];
       var raw = null;
-      try { raw = await T.fs.readTextFile(join(pdir, cm.filename)); } catch (e) { raw = ""; }
+      try { raw = await FS.readText(join(pdir, cm.filename)); } catch (e) { raw = ""; }
       var html = window.WritedFormats.mdToHTML(raw);
       chapters.push({ id: cm.id, title: cm.title, content: html, updatedAt: cm.updatedAt || Date.now(),
         snapshots: cm.snapshots || [] });
@@ -287,7 +366,7 @@
     for (var i = 0; i < (meta.data.notes || []).length; i++) {
       var nm = meta.data.notes[i];
       var raw = null;
-      try { raw = await T.fs.readTextFile(join(ndir, nm.filename)); } catch (e) { raw = ""; }
+      try { raw = await FS.readText(join(ndir, nm.filename)); } catch (e) { raw = ""; }
       notes.push({ id: nm.id, title: nm.title, status: nm.status || "draft", content: window.WritedFormats.mdToHTML(raw),
         createdAt: nm.createdAt || Date.now(), updatedAt: nm.updatedAt || Date.now(), snapshots: nm.snapshots || [] });
     }
@@ -303,7 +382,7 @@
      connecting to the vault at all. */
   async function readVaultAt(vaultDir) {
     var entries;
-    try { entries = await T.fs.readDir(vaultDir); } catch (e) { return { kind: "missing" }; }
+    try { entries = await FS.readDir(vaultDir); } catch (e) { return { kind: "missing" }; }
 
     var vmeta = await readMeta(vaultDir, VAULT_META, LEGACY_VAULT_META);
     var corrupt = [];
@@ -373,6 +452,12 @@
   async function open(dir, opts) {
     if (!available() || !dir) return { ok: false };
     var adopt = !!(opts && opts.adopt);
+    /* Connect the adapter before the first read: on Android every path
+       below is resolved against the granted tree, and `dir` is the label
+       those paths are prefixed with. */
+    var b = bridge();
+    if (b) { saf = b; safRoot = dir; b.refresh(); }
+    onDisk = {};
     var found = await readVaultAt(dir);
 
     if (found.kind === "partial-corrupt") {
@@ -401,70 +486,40 @@
     return { ok: true, restored: restored, hadData: found.kind === "ok" };
   }
 
-  /* `recursive` is load-bearing, not a hint: picking a folder is what grants
-     this app filesystem access to it, and the dialog plugin forwards this
-     flag straight into fs_scope.allow_directory(path, recursive). Without
-     it the scope is only "path/*" — direct children — so creating a project
-     folder succeeds while writing the .md files *inside* it is denied. */
+  /* The system folder picker, on whichever platform. Both halves answer the
+     same thing — the folder the writer chose, or null if they backed out —
+     so nothing above this line branches on platform.
+
+     Desktop: `recursive` is load-bearing, not a hint. Picking a folder is
+     what grants this app filesystem access to it, and the dialog plugin
+     forwards the flag straight into fs_scope.allow_directory(path,
+     recursive). Without it the scope is only "path/*" — direct children —
+     so creating a project folder succeeds while writing the .md files
+     *inside* it is denied.
+
+     Android: the picker is an Activity, so its answer arrives on a callback
+     rather than a return value; the bridge calls __writedVaultPicked when
+     the writer is done with it. */
+  var picking = null;
+  window.__writedVaultPicked = function (label) {
+    var fn = picking;
+    picking = null;
+    if (fn) fn(label || null);
+  };
+
   async function pick() {
+    var b = bridge();
+    if (b) {
+      if (picking) return null;               /* a picker is already open */
+      return new Promise(function (resolve) {
+        picking = resolve;
+        try { b.pick(); } catch (e) { picking = null; resolve(null); }
+      });
+    }
     if (!canPickFolder()) return null;
     var dir = await T.dialog.open({ directory: true, recursive: true, multiple: false, title: "Writed — vault folder" });
     if (!dir) return null;
     return typeof dir === "string" ? dir : (dir.path || null);
-  }
-
-  async function defaultMobileDir() {
-    var opts = await mobileDirOptions();
-    return opts.length ? opts[0].path : null;
-  }
-
-  /* Android has no folder picker, so instead of one path taken on faith the
-     writer gets the handful of places the app can actually write, each one
-     probed for real before it is offered.
-
-     documentDir() on Android resolves inside /Android/data/<pkg>/, which is
-     private to the app and deleted when it is uninstalled. The shared
-     Documents folder outlives an uninstall, but scoped storage blocks raw
-     writes to it on many versions — so it is listed only when the probe
-     below actually succeeds, never promised in advance. */
-  async function mobileDirOptions() {
-    if (!T || !T.path) return [];
-    var out = [];
-    var appDir = null;
-    try { appDir = await T.path.documentDir(); } catch (e) {}
-    if (!appDir) { try { appDir = await T.path.appDataDir(); } catch (e) {} }
-    if (appDir) out.push({ key: "app", path: join(appDir, "Writed") });
-
-    /* .../Android/data/<pkg>/files/Documents → /storage/emulated/0 */
-    var cut = appDir && appDir.indexOf("/Android/data/");
-    if (appDir && cut > 0) {
-      var root = appDir.slice(0, cut);
-      out.push({ key: "shared", path: join(root, "Documents", "Writed") });
-      out.push({ key: "download", path: join(root, "Download", "Writed") });
-    }
-    return out;
-  }
-
-  /* Creates the folder and writes a real file into it, because mkdir alone
-     succeeds in places that later refuse writes. Cleans up after itself.
-     The marker is deliberately not a dotfile: Tauri's fs scope glob does not
-     cross a leading dot, so ".writed-probe" was rejected as a forbidden path
-     even inside a folder the scope otherwise allows — the exact bug already
-     fixed for the vault's own metadata files, reintroduced here. That made
-     app-private storage, which needs no permission at all, probe as
-     unavailable right alongside the scoped-storage locations that
-     legitimately are. */
-  async function probe(dir) {
-    if (!available() || !dir) return { ok: false, error: "no path" };
-    var marker = join(dir, "writed-probe.tmp");
-    try {
-      await T.fs.mkdir(dir, { recursive: true });
-      await T.fs.writeTextFile(marker, "ok");
-      await T.fs.remove(marker).catch(function () {});
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: String((e && e.message) || e) };
-    }
   }
 
   /* ---------- explicit backup / restore (single-file, every platform) ---------- */
@@ -497,8 +552,14 @@
   async function init() {
     if (!available()) return;
     var saved = null;
-    try { saved = localStorage.getItem(PATH_KEY); } catch (e) {}
-    if (!saved && isMobile()) saved = await defaultMobileDir();
+    /* On Android the grant is the vault, so the bridge — not localStorage —
+       is the authority on whether there still is one. An uninstall keeps
+       the files and drops the grant, and the bridge reports that as "no
+       vault", which is what puts the writer back in front of the picker
+       instead of in front of a folder the app can no longer write to. */
+    var b = bridge();
+    if (b) saved = b.root() || null;
+    else { try { saved = localStorage.getItem(PATH_KEY); } catch (e) {} }
     if (!saved) return;
     await open(saved, { adopt: false });
   }
@@ -524,11 +585,14 @@
     return null;
   }
 
-  /* Desktop opens the file manager with the item selected. Android and iOS
-     have no such concept — the plugin answers UnsupportedPlatform — so the
-     caller is told plainly rather than being left with a dead button. */
+  /* Desktop opens the file manager with the item selected; Android opens
+     DocumentsUI at the folder holding it. iOS has neither — the opener
+     plugin answers UnsupportedPlatform — so the caller is told plainly
+     rather than being left with a dead button. */
   async function reveal(path) {
-    if (!path || !T || !T.opener) return false;
+    if (!path) return false;
+    if (saf) return saf.reveal(rel(path));
+    if (!T || !T.opener) return false;
     try { await T.opener.revealItemInDir(path); return true; }
     catch (e) {
       try { await T.opener.openPath(path); return true; } catch (e2) {}
@@ -540,23 +604,24 @@
     available: available,
     locate: locate,
     reveal: reveal,
-    canReveal: function () { return !!(T && T.opener) && !isMobile(); },
+    canReveal: function () {
+      if (bridge()) return true;
+      return !!(T && T.opener) && !/android|iphone|ipad/.test((navigator.userAgent || "").toLowerCase());
+    },
     canPickFolder: canPickFolder,
-    isMobile: isMobile,
     status: function () { return Object.assign({}, status); },
     subscribe: function (fn) { listeners.add(fn); return function () { listeners.delete(fn); }; },
     pick: pick,
     open: open,
-    defaultMobileDir: defaultMobileDir,
-    mobileDirOptions: mobileDirOptions,
-    probe: probe,
     backupToFile: backupToFile,
     restoreFromFile: restoreFromFile,
     saveNow: flush,
     schedule: schedule,
     forget: function () {
       try { localStorage.removeItem(PATH_KEY); } catch (e) {}
+      if (saf) { saf.forget(); saf = null; safRoot = ""; }
       lastLayout = { projectDirs: {}, projectFiles: {}, noteFiles: {} };
+      onDisk = {};
       set({ path: null, ok: false, error: null, savedAt: 0 });
     },
   };

@@ -19,7 +19,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
 
   async function chooseVault() {
     try {
-      const dir = V.canPickFolder() ? await V.pick() : await V.defaultMobileDir();
+      const dir = await V.pick();
       if (!dir) return;
       const res = await V.open(dir, { adopt: true });
       if (!res || !res.ok) { onToast(tl("vault_unreadable")); return; }

@@ -11,35 +11,14 @@ function Onboarding({ onDone }) {
   const tl = T(lang);
 
   /* The vault step only exists where there is a real filesystem to write
-     to; on the web the app stays on localStorage and the flow is 4 steps. */
+     to; on the web the app stays on localStorage and the flow is 4 steps.
+     Desktop and Android both get a real system folder picker here, so this
+     step is the same step on both. */
   const vaultStep = !!(window.WritedVault && window.WritedVault.available());
   const canPick = vaultStep && window.WritedVault.canPickFolder();
   const [vault, setVault] = useState(null);
   const [vaultBusy, setVaultBusy] = useState(false);
   const [vaultErr, setVaultErr] = useState(null);
-
-  /* Mobile has no system folder picker, so instead of one path taken on
-     faith the writer picks from the places the app can actually write —
-     each probed for real, because a folder that accepts mkdir can still
-     refuse the first file under scoped storage. */
-  const [locs, setLocs] = useState(null);
-  useEffect(() => {
-    if (!vaultStep || canPick) return;
-    let alive = true;
-    (async () => {
-      const opts = await window.WritedVault.mobileDirOptions().catch(() => []);
-      const checked = [];
-      for (const o of opts) {
-        const res = await window.WritedVault.probe(o.path);
-        checked.push({ ...o, ok: res.ok });
-      }
-      if (!alive) return;
-      setLocs(checked);
-      const first = checked.find((o) => o.ok);
-      if (first) setVault(first.path);
-    })();
-    return () => { alive = false; };
-  }, [vaultStep, canPick]);
 
   async function chooseVault() {
     setVaultErr(null); setVaultBusy(true);
@@ -191,44 +170,21 @@ function Onboarding({ onDone }) {
           <h2 className="onb-q">{tl("onb_q_3").split("\n").map((l, i) => <span key={i}>{l}<br /></span>)}</h2>
 
           <div className="onb-vault">
-            {canPick ? (
+            {canPick && (
               <button className="onb-vault-pick" onClick={chooseVault} disabled={vaultBusy}>
                 <Icon name="folder" size={20} />
                 <span className="onb-vault-pick-t">
                   {vault ? tl("vault_change") : tl("vault_choose")}
                 </span>
               </button>
-            ) : null}
-            {!canPick && (
-              locs === null
-                ? <div className="onb-vault-path mono">{tl("vault_checking")}</div>
-                : locs.map((o) => (
-                    <button key={o.key} type="button" disabled={!o.ok}
-                      className={"onb-vault-loc" + (vault === o.path ? " on" : "")}
-                      onClick={() => { setVaultErr(null); setVault(o.path); }}>
-                      <span className="onb-vault-loc-t">{tl("vault_loc_" + o.key)}</span>
-                      <span className="onb-vault-loc-n mono">
-                        {o.ok ? tl("vault_loc_" + o.key + "_note") : tl("vault_loc_unavailable")}
-                      </span>
-                    </button>
-                  ))
             )}
             <div className={"onb-vault-path mono" + (vault ? " on" : "")}>
-              {vault || (canPick ? tl("vault_none") : tl("vault_resolving"))}
+              {vault || tl("vault_none")}
             </div>
-            {/* A blocked shared location isn't final — Android just needs the
-                writer to flip it on themselves; there is no app-triggerable
-                dialog for this permission, so this is the actual next step. */}
-            {!canPick && locs && locs.some((o) => !o.ok) && (
-              <div className="onb-vault-err mono">{tl("vault_loc_grant_hint")}</div>
-            )}
             {vaultErr && <div className="onb-vault-err mono">{vaultErr}</div>}
           </div>
 
-          {/* On mobile each option already states its own durability, and
-              they differ — app storage does not survive an uninstall — so a
-              blanket "survives a reinstall" line here would contradict it. */}
-          {canPick && <p className="onb-hint mono">{tl("onb_hint_3")}</p>}
+          <p className="onb-hint mono">{tl("onb_hint_3")}</p>
           <div className="onb-actions">
             <button className="btn btn--ghost" onClick={() => go(2)}><Icon name="back" size={15} /> {tl("onb_back")}</button>
             <button className="btn btn--accent onb-finish" onClick={finish} disabled={!vault || vaultBusy}>

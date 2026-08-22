@@ -92,23 +92,27 @@ jobs:
       - name: Enable Android Auto Backup
         run: python3 .github/scripts/android_backup.py
 
-      # Without a declared storage permission the vault's shared Documents/
-      # Downloads locations fail every write under scoped storage, and the
-      # app's Permissions screen has nothing to show at all.
-      - name: Declare storage permissions
-        run: python3 .github/scripts/android_storage_permissions.py
+      # The vault itself. Tauri's filesystem plugin cannot reach a folder on
+      # Android that is both user-visible and durable, so the vault runs on
+      # the Storage Access Framework instead: the writer grants one folder in
+      # the system picker, exactly as they pick one on desktop. This injects
+      # the native half, and fails the build rather than skipping — an APK
+      # without the bridge is an APK with no vault at all, which is how the
+      # previous approach shipped storage-less without anyone noticing.
+      - name: Install the Android vault bridge
+        run: python3 .github/scripts/android_vault.py
 
-      # MANAGE_EXTERNAL_STORAGE has no ordinary runtime dialog — Android only
-      # lets an app open the Settings screen for it. This does that once, on
-      # first launch, which is the closest thing to the app "requesting" it.
-      - name: Request all-files access on first launch
-        run: python3 .github/scripts/android_request_storage_access.py
-
-      # Tauri's opener plugin cannot reveal files/folders on Android. Inject
-      # a tiny native bridge that opens Android DocumentsUI/File Manager at
-      # the requested Writed. folder; the bridge is Android-only.
-      - name: Enable Android file manager reveal
-        run: python3 .github/scripts/android_file_manager.py
+      - name: Verify the vault bridge landed
+        run: |
+          F=$(find src-tauri/gen/android/app/src/main/java -name MainActivity.kt | head -1)
+          grep -q 'WritedAndroidVault' "$F"
+          grep -q 'ACTION_OPEN_DOCUMENT_TREE' "$F"
+          grep -q 'takePersistableUriPermission' "$F"
+          echo "vault bridge present in $F"
+          # SAF asks for no storage permission at all; a lingering one would
+          # be a regression back to the approach this replaced.
+          ! grep -q 'MANAGE_EXTERNAL_STORAGE' src-tauri/gen/android/app/src/main/AndroidManifest.xml
+          echo "no storage permissions declared"
 
       # Universal APK = arm64 + armv7 in one file (no --split-per-abi), so a
       # single download works on any real phone. Debug-signed via Gradle's
