@@ -630,14 +630,21 @@
      else (reveal, history, export, delete) collapses behind "more" so the
      document title has room instead of six icons squeezing it to a sliver. */
   .ed-more { display: inline-flex; position: relative; }
-  .ed-more-btn { display: inline-flex; }
+  /* Overriding .icon-btn's base `display: grid` here drops its
+     `place-items: center` along with it — replace both, or the dots
+     render off-center instead of in the middle of the square. */
+  .ed-more-btn { display: inline-flex; align-items: center; justify-content: center; }
   .ed-more-menu { display: none; position: absolute; top: calc(100% + 8px); right: 0;
     flex-direction: column; gap: 2px; min-width: 200px; padding: 6px;
     background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-md);
     box-shadow: 0 12px 32px rgba(0,0,0,.18); z-index: 50; }
   .ed-more--open .ed-more-menu { display: flex; }
-  .ed-more-menu .icon-btn { width: 100%; height: auto; justify-content: flex-start;
-    gap: 10px; padding: 10px 12px; border-radius: calc(var(--r-md) - 4px); }
+  /* .icon-btn is `display: grid; place-items: center` for its single-icon
+     desktop case — that centers icon and label as overlapping auto-placed
+     grid items instead of a row, which is what was sliding the label out
+     of place. Row flex, explicitly, for these two-child menu buttons. */
+  .ed-more-menu .icon-btn { display: flex; align-items: center; width: 100%; height: auto;
+    justify-content: flex-start; gap: 10px; padding: 10px 12px; border-radius: calc(var(--r-md) - 4px); }
   .ed-more-label { display: inline; font-size: var(--t-sm); font-weight: 500; }
 
   /* Body: normal flex, toolbar is fixed */
