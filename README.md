@@ -2,7 +2,7 @@
 
 Минималистичный редактор для писателей — бумага и чернила, швейцарская типографика, ноль отвлечений.
 
-**→ [sipru. live](https://dantemorrigan.github.io/writed./)**
+**→ [sipru. live](https://dantemorrigan.github.io/sipru./)**
 
 ---
 
@@ -141,7 +141,7 @@ python3 -m http.server 8000
 ## Структура файлов
 
 ```
-./
+sipru./
 ├── index.html              # Точка входа, подключает vendor/ и build/
 ├── app.jsx                 # Корень приложения, роутинг, сплеш, курсор
 ├── store.js                # Стор: localStorage, CRUD, снимки, цели, поиск, бэкап

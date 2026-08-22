@@ -18,10 +18,10 @@ on:
 permissions:
   contents: read
 
-# The repo is named "writed." (trailing dot). The runner always spawns every
+# The repo is named "sipru." (trailing dot). The runner always spawns every
 # step — including uses: steps like actions/checkout — with its working
 # directory forced to GITHUB_WORKSPACE, which on Windows defaults to
-# D:\a\writed.\writed. (both segments taken from the repo name). Windows
+# D:\a\sipru.\sipru. (both segments taken from the repo name). Windows
 # silently can't resolve a path component ending in a dot, so that step
 # spawn fails before any step's own code runs, actions/checkout included —
 # an explicit `path:` input on checkout does not help, since the failure
