@@ -74,6 +74,18 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const [restoreTarget, setRestoreTarget] = useState(null);
   const [hist, setHist] = useState({ undo: false, redo: false });
   const [linkPopup, setLinkPopup] = useState(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
+  /* Only load-bearing on mobile, where the header has no room to lay these
+     out inline — see .ed-more-menu in ui.css. Desktop keeps the buttons
+     inline via `display: contents` and never opens this. */
+  useEffect(() => {
+    if (!moreOpen) return;
+    function onDown(e) { if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false); }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("touchstart", onDown); };
+  }, [moreOpen]);
   const depth = useRef({ u: 0, r: 0 });
   /* React nulls `ref` on unmount, but a detached DOM node still holds its
      content — keeping our own handle lets the final save read live HTML
@@ -562,20 +574,32 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
             <button className={"modeswitch-b" + (mode==="edit"?" on":"")} onClick={() => switchMode("edit")}><Icon name="edit" size={15} /> {tl("mode_edit")}</button>
             <button className={"modeswitch-b" + (mode==="preview"?" on":"")} onClick={() => switchMode("preview")}><Icon name="eye" size={15} /> {tl("mode_preview")}</button>
           </div>
-          {window.WritedVault && window.WritedVault.canReveal() && (
-            <button className="icon-btn" title={tl("vault_reveal")} onClick={async () => {
-              const p = window.WritedVault.locate(project ? "chapter" : "note", docId, project && project.id);
-              if (!p) return onToast(tl("vault_not_saved_yet"));
-              if (!(await window.WritedVault.reveal(p))) onToast(tl("vault_reveal_fail"));
-            }}><Icon name="folder" size={18} /></button>
-          )}
-          <button className="icon-btn" onClick={() => setSnapOpen(true)} title={tl("snap_btn")}><Icon name="history" size={18} /></button>
           <button className={"icon-btn" + (savedFlash ? " icon-btn--flash" : "")} onClick={saveNow} title={tl("ed_save")}><Icon name="save" size={18} /></button>
-          {project
-            ? <button className="icon-btn" onClick={() => nav.export(project.id)} title={tl("ed_export_book")}><Icon name="export" size={18} /></button>
-            : <button className="icon-btn" onClick={() => { persistNow(); setNoteExport(true); }} title={tl("ed_export_note")}><Icon name="export" size={18} /></button>
-          }
-          <button className="icon-btn icon-btn--danger" onClick={() => setConfirmDelete(true)} title={tl("ed_delete_doc")}><Icon name="trash" size={18} /></button>
+          <div className={"ed-more" + (moreOpen ? " ed-more--open" : "")} ref={moreRef}>
+            <button className="icon-btn ed-more-btn" onClick={() => setMoreOpen((o) => !o)} title={tl("ed_more")}>
+              <Icon name="more" size={18} />
+            </button>
+            <div className="ed-more-menu">
+              {window.WritedVault && window.WritedVault.canReveal() && (
+                <button className="icon-btn" title={tl("vault_reveal")} onClick={async () => {
+                  setMoreOpen(false);
+                  const p = window.WritedVault.locate(project ? "chapter" : "note", docId, project && project.id);
+                  if (!p) return onToast(tl("vault_not_saved_yet"));
+                  if (!(await window.WritedVault.reveal(p))) onToast(tl("vault_reveal_fail"));
+                }}><Icon name="folder" size={18} /> <span className="ed-more-label">{tl("vault_reveal")}</span></button>
+              )}
+              <button className="icon-btn" onClick={() => { setMoreOpen(false); setSnapOpen(true); }} title={tl("snap_btn")}>
+                <Icon name="history" size={18} /> <span className="ed-more-label">{tl("snap_btn")}</span></button>
+              {project
+                ? <button className="icon-btn" onClick={() => { setMoreOpen(false); nav.export(project.id); }} title={tl("ed_export_book")}>
+                    <Icon name="export" size={18} /> <span className="ed-more-label">{tl("ed_export_book")}</span></button>
+                : <button className="icon-btn" onClick={() => { setMoreOpen(false); persistNow(); setNoteExport(true); }} title={tl("ed_export_note")}>
+                    <Icon name="export" size={18} /> <span className="ed-more-label">{tl("ed_export_note")}</span></button>
+              }
+              <button className="icon-btn icon-btn--danger" onClick={() => { setMoreOpen(false); setConfirmDelete(true); }} title={tl("ed_delete_doc")}>
+                <Icon name="trash" size={18} /> <span className="ed-more-label">{tl("ed_delete_doc")}</span></button>
+            </div>
+          </div>
           <ThemeToggle theme={user.theme} onChange={onTheme} lang={lang} />
         </div>
       </header>

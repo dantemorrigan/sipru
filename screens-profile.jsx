@@ -143,7 +143,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
             </div>
           </div>
 
-          {!/android/i.test(navigator.userAgent || "") && (
+          {!/android|iphone|ipad/i.test(navigator.userAgent || "") && (
           <div className="prof-set">
             <span className="prof-set-l">{tl("prof_lbl_tour")}</span>
             <div className="prof-set-c">

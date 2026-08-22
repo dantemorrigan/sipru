@@ -216,6 +216,13 @@
 }
 .ed-head--renaming .ed-head-r { display: none; }
 .ed-head-r { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+/* The overflow menu is a no-op wrapper on desktop, where there is room for
+   every button inline — `contents` drops it out of layout entirely, so it
+   costs nothing until the mobile rule below turns it into a real dropdown. */
+.ed-more { display: contents; }
+.ed-more-btn { display: none; }
+.ed-more-menu { display: contents; }
+.ed-more-label { display: none; }
 .modeswitch { display: inline-flex; border: 1px solid var(--line); margin-right: 4px; }
 .modeswitch-b { display: inline-flex; align-items: center; gap: 7px; background: transparent; border: none;
   padding: 8px 14px; font-size: var(--t-sm); font-weight: 500; color: var(--ink-soft); transition: color .2s, background-color .2s, border-color .2s, opacity .2s, transform .2s, box-shadow .2s; }
@@ -609,6 +616,27 @@
     padding-top: calc(env(safe-area-inset-top, 0px) + 10px); }
   .ed-head-r { gap: 4px; }
   .modeswitch { display: none; }
+
+  /* The touch equivalent of the hover-only field styling above: a real
+     input instead of a bare underline, since a phone never gets the
+     hover state that rule is gated on. */
+  .ed-rename { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--paper-2);
+    padding: 5px 9px; }
+  .ed-rename:focus { background: var(--sheet); border-color: var(--accent); }
+
+  /* Overflow menu: save + more + theme stay in the header; everything
+     else (reveal, history, export, delete) collapses behind "more" so the
+     document title has room instead of six icons squeezing it to a sliver. */
+  .ed-more { display: inline-flex; position: relative; }
+  .ed-more-btn { display: inline-flex; }
+  .ed-more-menu { display: none; position: absolute; top: calc(100% + 8px); right: 0;
+    flex-direction: column; gap: 2px; min-width: 200px; padding: 6px;
+    background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-md);
+    box-shadow: 0 12px 32px rgba(0,0,0,.18); z-index: 50; }
+  .ed-more--open .ed-more-menu { display: flex; }
+  .ed-more-menu .icon-btn { width: 100%; height: auto; justify-content: flex-start;
+    gap: 10px; padding: 10px 12px; border-radius: calc(var(--r-md) - 4px); }
+  .ed-more-label { display: inline; font-size: var(--t-sm); font-weight: 500; }
 
   /* Body: normal flex, toolbar is fixed */
   .ed-body { flex-direction: column; }
