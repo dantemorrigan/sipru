@@ -711,10 +711,22 @@
   .editor-root.focus .ed-tools { display: none; }
 
   /* modals */
-  .export-modal { grid-template-columns: 1fr; height: calc(100dvh - 20px); }
-  .export-preview { display: none; }
+  /* Stacked, not side-by-side: settings (its own capped, scrollable area),
+     then the live preview filling whatever's left, then the export row
+     pinned at the bottom. `display: contents` on .export-side unwraps it
+     so modal-head/exp-scroll/exp-actions become direct flex children here,
+     free to reorder around .export-preview via `order` even though they
+     live one level deeper in the markup (needed for desktop's sidebar). */
+  .export-modal { display: flex; flex-direction: column; height: auto;
+    max-height: calc(100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+  .export-side { display: contents; }
+  .modal-head { order: 1; flex-shrink: 0; }
+  .exp-scroll { order: 2; flex: 0 1 auto; max-height: 42vh; }
+  .export-preview { order: 3; display: flex; flex: 1 1 auto; min-height: 140px; padding: 12px; }
+  .export-preview-inner { min-height: 0; }
+  .exp-actions { order: 4; flex-shrink: 0; }
   .confirm-modal { padding: 36px 28px 32px; }
-  .modal-scrim { padding: 10px; align-items: center; }
+  .modal-scrim { padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) 10px; align-items: center; }
 
   /* export rows: stack label + control vertically so segs get full width to scroll */
   .exp-row { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 0; }
