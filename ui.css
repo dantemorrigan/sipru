@@ -919,8 +919,16 @@
   /* Header: compact — hide modeswitch (moved to toolbar) */
   .ed-head { padding: 10px 14px; gap: 8px;
     padding-top: calc(env(safe-area-inset-top, 0px) + 10px); }
+  .ed-head-l { gap: 2px; }
   .ed-head-r { gap: 4px; }
   .modeswitch { display: none; }
+  /* The project name ate into the one thing that actually needs the
+     room here — back already returns to the project, so it isn't the
+     only way to see which book this is. */
+  .ed-crumb-proj, .ed-crumb-sep { display: none; }
+  /* Two icon buttons this close together were easy to miss or mis-tap;
+     a hair more room between them and a bigger target fixes both. */
+  .ed-head-l .icon-btn { flex: 0 0 auto; width: 40px; height: 40px; }
 
   /* The touch equivalent of the hover-only field styling above: a real
      input instead of a bare underline, since a phone never gets the
