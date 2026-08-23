@@ -206,6 +206,178 @@ function splitNotes(html) {
   return { html: d.innerHTML, notes };
 }
 
+/* ============================================================
+   Book export preview — real pages, not a flowing column.
+
+   The exported PDF/HTML/DOCX are still built by buildBookHTML/buildBookDocx
+   below and are untouched by this: those remain the flat, print-CSS-driven
+   documents they always were. This is only what the export modal *shows*
+   while you set it up — and it reuses the editor's own pagination engine
+   (paginateArea / PageLayer from editor-page.jsx) so a footnote lands on
+   the physical page it's actually on, exactly like the editor itself.
+   ============================================================ */
+const EXPORT_FONT_MAP = { book: "var(--book)", article: "var(--book-alt)", mono: "var(--mono)" };
+const PAPER_MM = {
+  a4:     { w: 210,   h: 297 },
+  letter: { w: 215.9, h: 279.4 },
+  a5:     { w: 148,   h: 210 },
+  b5:     { w: 176,   h: 250 },
+  a6:     { w: 105,   h: 148 },
+};
+const MARGIN_MM = { narrow: 14, normal: 22, wide: 32 };
+
+/* Sheet size and margins come from the export's own choices (they can
+   differ from the project's own page setup); typography — indent,
+   alignment, spacing — still comes from the project's page setup, exactly
+   as buildBookHTML already uses it below. Headers/footers are left off:
+   the actual HTML/PDF export doesn't draw them either (only the .docx
+   export does), so the preview doesn't promise a running head it can't
+   deliver. */
+function exportPageGeom(opts) {
+  const base = PAPER_MM[opts.paperSize] || PAPER_MM.a4;
+  const m = MARGIN_MM[opts.margin] != null ? MARGIN_MM[opts.margin] : MARGIN_MM.normal;
+  const pg = opts.page || {};
+  return {
+    size: "custom", orient: "portrait", w: base.w, h: base.h,
+    mt: m, mr: m, mb: m, ml: m,
+    fontSize: 12, leading: opts.leading || 1.7,
+    align: pg.align || "justify", indent: pg.indent != null ? pg.indent : 1.5,
+    padL: pg.padL || 0, padR: pg.padR || 0,
+    spaceBefore: pg.spaceBefore || 0, spaceAfter: pg.spaceAfter != null ? pg.spaceAfter : 0.6,
+    hyphens: pg.hyphens !== false,
+    hdr: { on: false, l: "", c: "", r: "" }, ftr: { on: false, l: "", c: "", r: "" },
+    firstBare: true, mirror: false, numFrom: 1, zoom: 1,
+  };
+}
+
+/* A static, single-page sheet — the title page and the table of contents
+   don't paginate, they just need to look like the same kind of page. */
+function StaticSheet({ geom, children }) {
+  return (
+    <div className="ed-paper exp-sheet" style={{ width: geom.pageW, height: geom.pageH }}>
+      <div className="ed-pagelayer">
+        <div className="ed-pagebox" style={{ top: 0, width: geom.pageW, height: geom.pageH }} />
+      </div>
+      <div className="exp-sheet-body" style={{ top: geom.mt, left: geom.ml, width: geom.contentW, height: geom.contentH }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* One chapter, paginated for real: same iterative footnote-reservation
+   pass the editor runs (a footnote pushes into the page it's rendered on,
+   which can change how much text fits above it, which can change which
+   page the footnote lands on — converges in a couple of passes). */
+function PaginatedChapter({ html, geom, title }) {
+  const areaRef = useRef(null);
+  const reserveRef = useRef([]);
+  const passRef = useRef(0);
+  const [pages, setPages] = useState([[]]);
+
+  function repaginate() {
+    const area = areaRef.current;
+    if (!area) return;
+    const notes = footnoteList(area);
+    const byId = {};
+    notes.forEach((f) => { byId[f.id] = f; });
+    const res = paginateArea(area, geom, reserveRef.current);
+    setPages(res.notes.map((ids) => ids.map((id) => byId[id]).filter(Boolean)));
+  }
+
+  useEffect(() => {
+    if (areaRef.current) areaRef.current.innerHTML = html || "";
+    reserveRef.current = [];
+    passRef.current = 0;
+    repaginate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html, geom]);
+
+  function onFootnoteHeights(hs) {
+    const prev = reserveRef.current;
+    let changed = false;
+    for (let i = 0; i < hs.length; i++) {
+      const v = hs[i] ? hs[i] + Math.round(12 * geom.scale) : 0;
+      if (Math.abs((prev[i] || 0) - v) > 2) { prev[i] = v; changed = true; }
+    }
+    if (prev.length > hs.length) { prev.length = hs.length; changed = true; }
+    if (changed && passRef.current < 3) { passRef.current++; repaginate(); }
+    else passRef.current = 0;
+  }
+
+  const pageCount = pages.length;
+  const paperH = pageCount * (geom.pageH + geom.gap) - geom.gap;
+  const paperStyle = {
+    width: geom.pageW, height: paperH,
+    "--pg-font": geom.fontPx + "px", "--pg-lead": geom.leading,
+    "--pg-align": geom.align === "justify" ? "justify" : geom.align,
+    "--pg-indent": geom.indent + "em", "--pg-padl": geom.padL + "em", "--pg-padr": geom.padR + "em",
+    "--pg-before": geom.spaceBefore + "em", "--pg-after": geom.spaceAfter + "em",
+    "--pg-hyphens": geom.hyphens ? "auto" : "manual",
+  };
+
+  return (
+    <div className="ed-paper" style={paperStyle}>
+      <PageLayer pages={pages} geom={geom} pg={geom.pg} ctx={{}} onFootnote={() => {}} onMeasure={onFootnoteHeights} />
+      <div ref={areaRef} className="ed-area exp-area"
+        style={{ top: geom.mt, left: geom.ml, width: geom.contentW }} />
+    </div>
+  );
+}
+
+function BookPagedPreview({ project, opts, lang }) {
+  const tl = T(lang || "en");
+  const scrollRef = useRef(null);
+  const [avail, setAvail] = useState(0);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => { if (el.clientWidth) setAvail(Math.max(160, el.clientWidth - 48)); };
+    measure();
+    let ro = null;
+    if (window.ResizeObserver) { ro = new ResizeObserver(measure); ro.observe(el); }
+    else window.addEventListener("resize", measure);
+    return () => { if (ro) ro.disconnect(); else window.removeEventListener("resize", measure); };
+  }, []);
+
+  const pgBase = useMemo(() => exportPageGeom(opts), [opts.paperSize, opts.margin, opts.leading, JSON.stringify(opts.page)]);
+  const geom = useMemo(() => {
+    const g = pageGeometry(pgBase, avail);
+    g.leading = pgBase.leading; g.align = pgBase.align; g.indent = pgBase.indent;
+    g.padL = pgBase.padL; g.padR = pgBase.padR; g.spaceBefore = pgBase.spaceBefore; g.spaceAfter = pgBase.spaceAfter;
+    g.hyphens = pgBase.hyphens; g.pg = pgBase;
+    return g;
+  }, [pgBase, avail]);
+
+  const chapters = project.chapters.filter((c) => opts.include[c.id] !== false);
+  const fontVar = EXPORT_FONT_MAP[opts.font] || EXPORT_FONT_MAP.book;
+
+  return (
+    <div className="exp-pages" ref={scrollRef} style={{ "--ed-font": fontVar }}>
+      {opts.titlePage && (
+        <StaticSheet geom={geom}>
+          <div className="exp-title-page">
+            <div className="b-kicker">SIPRU.</div>
+            <h1>{project.title}</h1>
+            {project.synopsis && <p className="b-syn">{project.synopsis}</p>}
+          </div>
+        </StaticSheet>
+      )}
+      {opts.toc && (
+        <StaticSheet geom={geom}>
+          <div className="exp-toc-page">
+            <h2>{tl("toc_title")}</h2>
+            <ol>{chapters.map((c) => <li key={c.id}>{c.title}</li>)}</ol>
+          </div>
+        </StaticSheet>
+      )}
+      {chapters.map((c) => <PaginatedChapter key={c.id} html={c.content || ""} geom={geom} title={c.title} />)}
+      {!chapters.length && <div className="exp-pages-empty mono">{tl("exp_of")}</div>}
+    </div>
+  );
+}
+
 /* Print-to-PDF.
 
    On the web a new tab is fine. Inside Tauri window.open() has no browser
@@ -525,9 +697,9 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
           </div>
         </div>
 
-        <div className="export-preview">
-          <div className="export-preview-inner">
-            <iframe className="book-iframe" title="preview" srcDoc={previewHTML} />
+        <div className="export-preview export-preview--pages">
+          <div className="export-preview-inner export-preview-inner--pages">
+            <BookPagedPreview project={project} opts={eopts} lang={lang} />
           </div>
         </div>
       </div>

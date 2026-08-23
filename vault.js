@@ -57,7 +57,7 @@
   /* What we wrote last flush — the only files/folders a later flush is
      ever allowed to rename or trash, so a folder the user drops into the
      vault by hand is never touched. */
-  var lastLayout = { projectDirs: {}, projectFiles: {}, noteFiles: {} };
+  var lastLayout = { projectDirs: {}, projectFiles: {}, noteFiles: {}, projectParts: {} };
 
   function emit() { listeners.forEach(function (fn) { fn(status); }); }
   function set(patch) { Object.assign(status, patch); emit(); }
@@ -234,6 +234,26 @@
     } catch (e) { return prevName; }
   }
 
+  /* Same idea as resolveName, but for a chapter file that may need to move
+     across a subfolder boundary — into a part, out of one, or from one
+     part into another — not just be renamed in place. prevRel/desiredRel
+     are paths relative to `dir` (a project folder), and may contain one
+     "/" for a part subfolder. */
+  async function resolveRelPath(dir, prevRel, desiredRel) {
+    if (!prevRel || prevRel === desiredRel) return prevRel || desiredRel;
+    var prevFull = join(dir, prevRel), nextFull = join(dir, desiredRel);
+    if (!(await exists(prevFull))) return desiredRel;
+    if (await exists(nextFull)) return prevRel;
+    var slash = desiredRel.lastIndexOf("/");
+    if (slash >= 0) await ensureDir(join(dir, desiredRel.slice(0, slash)));
+    try {
+      await FS.rename(prevFull, nextFull);
+      stale(prevFull);
+      stale(nextFull);
+      return desiredRel;
+    } catch (e) { return prevRel; }
+  }
+
   /* ---------- writing a vault ---------- */
 
   /* The HTML→Markdown serializer lives in screens-export.js, so vault.js is
@@ -252,17 +272,58 @@
     var pdir = join(vaultDir, folder);
     await ensureDir(pdir);
 
+    /* Parts are real subfolders, exactly as they appear in the outline —
+       a book's structure should be as visible on disk as it is in the app.
+       A chapter with no part still sits directly in the project folder,
+       unchanged from before parts existed. */
+    var parts = project.parts || [];
+    var prevParts = (prevLayout.projectParts && prevLayout.projectParts[project.id]) || {};
+    var partDir = {};
+    var takenPartNames = new Set();
+    for (var pi = 0; pi < parts.length; pi++) {
+      var pt = parts[pi];
+      var desiredPart = uniqueName(
+        String(pi + 1).padStart(2, "0") + " " + safeName(pt.title, "Part " + (pi + 1)), takenPartNames);
+      var partName = await resolveName(pdir, prevParts[pt.id], desiredPart);
+      takenPartNames.add(partName);
+      partDir[pt.id] = partName;
+      await ensureDir(join(pdir, partName));
+    }
+
+    /* A part folder renamed above already took its chapter files with it
+       (renaming a directory moves its contents) — so a chapter's tracked
+       previous path needs the same adjustment before it's compared against
+       disk, or it looks like a brand new file and the real one is left
+       behind, orphaned. */
+    var partRenamed = {};
+    for (var pr = 0; pr < parts.length; pr++) {
+      var rpid = parts[pr].id;
+      if (prevParts[rpid] && prevParts[rpid] !== partDir[rpid]) partRenamed[prevParts[rpid]] = partDir[rpid];
+    }
+    function adjustPrevRel(rel) {
+      if (!rel) return rel;
+      var slash = rel.indexOf("/");
+      if (slash < 0) return rel;
+      var head = rel.slice(0, slash);
+      return partRenamed[head] ? partRenamed[head] + rel.slice(slash) : rel;
+    }
+
     var prevMeta = prevLayout.projectFiles[project.id] || {};
-    var takenNames = new Set();
+    var takenByDir = {};
     var chapterMeta = [];
     var chapters = project.chapters || [];
     for (var i = 0; i < chapters.length; i++) {
       var c = chapters[i];
       var num = String(i + 1).padStart(2, "0");
+      var sub = (c.partId && partDir[c.partId]) || "";
+      var taken = takenByDir[sub] || (takenByDir[sub] = new Set());
       var base = num + " " + safeName(c.title, "Chapter " + (i + 1));
-      var desired = uniqueName(base, takenNames) + ".md";
-      takenNames.add(desired.slice(0, -3));
-      var filename = await resolveName(pdir, prevMeta[c.id], desired);
+      var desiredName = uniqueName(base, taken) + ".md";
+      taken.add(desiredName.slice(0, -3));
+      var desiredRel = sub ? join(sub, desiredName) : desiredName;
+      var filename = await resolveRelPath(pdir, adjustPrevRel(prevMeta[c.id]), desiredRel);
+      var slash = filename.lastIndexOf("/");
+      if (slash >= 0) await ensureDir(join(pdir, filename.slice(0, slash)));
       await writeEntity(pdir, filename, c.content);
       chapterMeta.push({ id: c.id, title: c.title, filename: filename, updatedAt: c.updatedAt,
         snapshots: c.snapshots || [], status: c.status || "draft", partId: c.partId || null });
@@ -270,6 +331,12 @@
     /* trash files that belonged to a chapter which no longer exists */
     for (var id in prevMeta) {
       if (!chapters.some(function (c) { return c.id === id; })) await trash(vaultDir, join(folder, prevMeta[id]));
+    }
+    /* a part folder whose part is gone has already had every chapter moved
+       back out of it above — what's left is trashed, not deleted, exactly
+       like everything else this module removes */
+    for (var pid in prevParts) {
+      if (!partDir[pid]) await trash(vaultDir, join(folder, prevParts[pid]));
     }
 
     await writeJSON(join(pdir, ENTITY_META), {
@@ -283,7 +350,7 @@
 
     var fileMap = {};
     chapterMeta.forEach(function (c) { fileMap[c.id] = c.filename; });
-    return { folder: folder, files: fileMap };
+    return { folder: folder, files: fileMap, parts: partDir };
   }
 
   async function writeNotes(vaultDir, notes, prevFiles) {
@@ -321,12 +388,13 @@
        it as a side effect either, so every save failed with ENOENT. */
     await ensureDir(vaultDir);
     var prev = lastLayout;
-    var nextDirs = {}, nextFiles = {};
+    var nextDirs = {}, nextFiles = {}, nextParts = {};
     var projects = state.projects || [];
     for (var i = 0; i < projects.length; i++) {
       var res = await writeProject(vaultDir, projects[i], prev);
       nextDirs[projects[i].id] = res.folder;
       nextFiles[projects[i].id] = res.files;
+      nextParts[projects[i].id] = res.parts;
     }
     /* trash whole project folders that no longer exist in state */
     for (var pid in prev.projectDirs) {
@@ -335,7 +403,7 @@
 
     var noteFiles = await writeNotes(vaultDir, state.notes || [], prev.noteFiles);
 
-    lastLayout = { projectDirs: nextDirs, projectFiles: nextFiles, noteFiles: noteFiles };
+    lastLayout = { projectDirs: nextDirs, projectFiles: nextFiles, noteFiles: noteFiles, projectParts: nextParts };
     await writeJSON(join(vaultDir, VAULT_META), {
       app: "Sipru.", schema: 1, savedAt: Date.now(),
       user: state.user, onboarded: state.onboarded, tourDone: state.tourDone,
@@ -362,8 +430,16 @@
     }
     var files = {};
     (m.chapters || []).forEach(function (cm) { files[cm.id] = cm.filename; });
+    /* A part's folder name is just the subfolder its chapters' files
+       actually sit under — no separate bookkeeping needed to read it back,
+       the filenames already say it. */
+    var partFolders = {};
+    (m.chapters || []).forEach(function (cm) {
+      var slash = (cm.filename || "").lastIndexOf("/");
+      if (cm.partId && slash >= 0) partFolders[cm.partId] = cm.filename.slice(0, slash);
+    });
     return {
-      ok: true, folder: folderName, files: files,
+      ok: true, folder: folderName, files: files, parts: partFolders,
       project: { id: m.id, title: m.title, status: m.status || "draft", synopsis: m.synopsis || "",
         createdAt: m.createdAt || Date.now(), updatedAt: m.updatedAt || Date.now(),
         goal: m.goal || null, chapters: chapters,
@@ -404,7 +480,7 @@
     if (vmeta.corrupt) corrupt.push(vmeta.path);
 
     var projects = [];
-    var layout = { projectDirs: {}, projectFiles: {}, noteFiles: {} };
+    var layout = { projectDirs: {}, projectFiles: {}, noteFiles: {}, projectParts: {} };
     for (var i = 0; i < entries.length; i++) {
       var e = entries[i];
       if (!e.isDirectory) continue;
@@ -416,6 +492,7 @@
       projects.push(r.project);
       layout.projectDirs[r.project.id] = r.folder;
       layout.projectFiles[r.project.id] = r.files;
+      layout.projectParts[r.project.id] = r.parts;
     }
     var notesRes = await readNotes(vaultDir);
     if (notesRes.corrupt) corrupt.push(notesRes.path);
@@ -493,8 +570,9 @@
        just falls out of the next flush's project list and gets trashed,
        never overwritten in place. */
     lastLayout = found.kind === "ok"
-      ? { projectDirs: found.layout.projectDirs, projectFiles: found.layout.projectFiles, noteFiles: found.layout.noteFiles }
-      : { projectDirs: {}, projectFiles: {}, noteFiles: {} };
+      ? { projectDirs: found.layout.projectDirs, projectFiles: found.layout.projectFiles,
+          noteFiles: found.layout.noteFiles, projectParts: found.layout.projectParts }
+      : { projectDirs: {}, projectFiles: {}, noteFiles: {}, projectParts: {} };
     localStorage.setItem(PATH_KEY, dir);
     localStorage.removeItem(LEGACY_PATH_KEY);
     set({ path: dir, error: null });
@@ -636,7 +714,7 @@
     forget: function () {
       try { localStorage.removeItem(PATH_KEY); localStorage.removeItem(LEGACY_PATH_KEY); } catch (e) {}
       if (saf) { saf.forget(); saf = null; safRoot = ""; }
-      lastLayout = { projectDirs: {}, projectFiles: {}, noteFiles: {} };
+      lastLayout = { projectDirs: {}, projectFiles: {}, noteFiles: {}, projectParts: {} };
       onDisk = {};
       set({ path: null, ok: false, error: null, savedAt: 0 });
     },
