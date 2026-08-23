@@ -233,6 +233,11 @@ const MARGIN_MM = { narrow: 14, normal: 22, wide: 32 };
    the actual HTML/PDF export doesn't draw them either (only the .docx
    export does), so the preview doesn't promise a running head it can't
    deliver. */
+/* A page this small can't carry book-size type — real pocket editions
+   set A6/A5 in a noticeably smaller point size, which is also what keeps
+   an ordinary paragraph from being taller than the page itself. */
+const PAPER_FONT_PT = { a4: 12, letter: 12, b5: 11.5, a5: 10.5, a6: 8.5 };
+
 function exportPageGeom(opts) {
   const base = PAPER_MM[opts.paperSize] || PAPER_MM.a4;
   const m = MARGIN_MM[opts.margin] != null ? MARGIN_MM[opts.margin] : MARGIN_MM.normal;
@@ -240,7 +245,7 @@ function exportPageGeom(opts) {
   return {
     size: "custom", orient: "portrait", w: base.w, h: base.h,
     mt: m, mr: m, mb: m, ml: m,
-    fontSize: 12, leading: opts.leading || 1.7,
+    fontSize: PAPER_FONT_PT[opts.paperSize] || 12, leading: opts.leading || 1.7,
     align: pg.align || "justify", indent: pg.indent != null ? pg.indent : 1.5,
     padL: pg.padL || 0, padR: pg.padR || 0,
     spaceBefore: pg.spaceBefore || 0, spaceAfter: pg.spaceAfter != null ? pg.spaceAfter : 0.6,
@@ -508,7 +513,7 @@ function buildBookHTML(project, opts) {
   <style>
     @page { size: ${(PAPER[opts.paperSize] || PAPER.a4).size}; margin: ${MARGINS[opts.margin]}; }
     * { box-sizing: border-box; }
-    body { font-family: ${fontStack}; font-size: 12pt; line-height: ${opts.leading}; color: #1f1d18; background: #fff; margin: 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-wrap: break-word; word-break: break-word; }
+    body { font-family: ${fontStack}; font-size: ${PAPER_FONT_PT[opts.paperSize] || 12}pt; line-height: ${opts.leading}; color: #1f1d18; background: #fff; margin: 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-wrap: break-word; word-break: break-word; }
     .b-kicker { font-family: 'JetBrains Mono', monospace; letter-spacing: .42em; font-size: 9pt; color: #c2542f; text-transform: uppercase; }
     .b-title h1 { font-size: 30pt; line-height: 1.06; margin: 18px 0 16px; font-weight: 600; letter-spacing: -.015em; }
     .b-syn { font-style: italic; color: #6b6457; font-size: 13pt; margin: 0 auto; max-width: 30em; }
@@ -716,7 +721,7 @@ function buildNoteHTML(note, opts) {
   <style>
     @page { size: ${(PAPER[opts.paperSize] || PAPER.a4).size}; margin: ${MARGINS[opts.margin]}; }
     * { box-sizing: border-box; }
-    body { font-family: ${fontStack}; font-size: 12pt; line-height: ${opts.leading}; color: #1f1d18; background: #fff; margin: 0; -webkit-font-smoothing: antialiased; overflow-wrap: break-word; word-break: break-word; }
+    body { font-family: ${fontStack}; font-size: ${PAPER_FONT_PT[opts.paperSize] || 12}pt; line-height: ${opts.leading}; color: #1f1d18; background: #fff; margin: 0; -webkit-font-smoothing: antialiased; overflow-wrap: break-word; word-break: break-word; }
     h1 { font-size: 21pt; font-weight: 600; margin: 0 0 .8em; letter-spacing: -.01em; }
     h2 { font-size: 15pt; font-weight: 600; margin: 1.3em 0 .4em; }
     h3 { font-size: 12.5pt; font-weight: 600; margin: 1.1em 0 .3em; }

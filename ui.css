@@ -151,7 +151,8 @@
 .chap-list { list-style: none; margin: 0; padding: 0; }
 .chap { display: grid; grid-template-columns: 24px 38px 1fr auto auto 28px 24px; align-items: center; gap: 16px;
   padding: 17px 14px; border-bottom: 1px solid var(--line); cursor: pointer;
-  transition: background .2s, padding .2s; position: relative; }
+  transition: background .2s, padding .2s; position: relative;
+  animation: rowIn .16s var(--ease-out) both; }
 .chap:hover { background: var(--paper-2); }
 .chap.over { box-shadow: inset 0 2px 0 var(--accent); }
 .chap.dragging { opacity: .4; }
@@ -257,7 +258,8 @@
 /* the two toolbar menus */
 .ed-menu { position: absolute; top: calc(100% + 9px); left: 0; z-index: 60; min-width: 216px;
   display: flex; flex-direction: column; gap: 1px; padding: 6px;
-  background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-3); }
+  background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-3);
+  transform-origin: top left; animation: menuIn .14s var(--ease-out) both; }
 .ed-insert-menu { left: auto; right: 0; }
 .ed-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px;
   border: none; background: transparent; color: var(--ink-2); font-family: var(--ui); font-size: var(--t-sm);
@@ -301,6 +303,13 @@
 }
 
 /* ---- the page: a stack of real sheets ---- */
+/* Edit ⇄ preview swap: .ed-scroll never unmounts (just display:none/block),
+   and toggling display cancels a running CSS animation and restarts it
+   fresh the next time the element is shown — a plain, unconditional
+   `animation` here is enough for a crossfade with no JS involved.
+   .preview-scroll (BookPreview) genuinely mounts fresh each time, so the
+   same animation plays there for the same reason. */
+.ed-scroll, .preview-scroll { animation: modeFadeIn .16s var(--ease-out); }
 .ed-scroll { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth;
   padding: 34px 0 0; background: var(--paper-2); }
 .ed-paper { position: relative; margin: 0 auto; }
@@ -425,7 +434,8 @@
 
 .ed-outline { flex: 0 0 300px; width: 300px; min-height: 0; z-index: 22;
   display: flex; flex-direction: column;
-  background: var(--paper); border-right: 1px solid var(--line); }
+  background: var(--paper); border-right: 1px solid var(--line);
+  animation: ol-in .18s var(--ease-out); }
 .ol-head { display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 11px 8px 11px 14px; border-bottom: 1px solid var(--line-2); color: var(--ink-soft); }
 .ol-head-l { display: flex; align-items: center; gap: 9px; min-width: 0; }
@@ -442,7 +452,8 @@
 
 .ol-row { position: relative; display: flex; align-items: center; gap: 6px; border-radius: var(--r-sm);
   padding: 6px 5px 6px calc(5px + var(--ol-depth, 0) * 14px); cursor: pointer; color: var(--ink-2);
-  transition: background-color .15s var(--ease), color .15s var(--ease); }
+  transition: background-color .15s var(--ease), color .15s var(--ease);
+  animation: rowIn .16s var(--ease-out) both; }
 .ol-row:hover { background: var(--paper-2); }
 .ol-row.on { background: var(--accent-tint); color: var(--ink); }
 .ol-row--part { margin-top: 10px; font-weight: 600; color: var(--ink-soft); }
@@ -477,7 +488,8 @@
 .ol-menu-wrap { position: relative; flex: 0 0 auto; }
 .ol-menu { position: absolute; right: 0; top: calc(100% + 5px); z-index: 70; min-width: 186px;
   display: flex; flex-direction: column; gap: 1px; padding: 5px;
-  background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-3); }
+  background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-3);
+  transform-origin: top right; animation: menuIn .14s var(--ease-out) both; }
 .ol-menu button { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border: none;
   background: transparent; color: var(--ink-2); font-family: var(--ui); font-size: var(--t-sm);
   text-align: left; border-radius: var(--r-sm); }
@@ -503,7 +515,8 @@
    ============================================================ */
 .ed-setup { flex: 0 0 300px; width: 300px; min-height: 0; z-index: 22;
   display: flex; flex-direction: column;
-  background: var(--paper); border-left: 1px solid var(--line); }
+  background: var(--paper); border-left: 1px solid var(--line);
+  animation: pset-in .18s var(--ease-out); }
 .pset-head { display: flex; align-items: center; justify-content: space-between; gap: 6px;
   padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line-2); }
 .pset-tabs { display: flex; gap: 2px; }
@@ -645,6 +658,11 @@
 .modal { background: var(--sheet); border: 1px solid var(--line); position: relative; box-shadow: 0 40px 100px -30px rgba(0,0,0,.6); animation: paletteIn .22s var(--ease-out); }
 @keyframes scrimIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes paletteIn { from { opacity: 0; transform: translateY(-10px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes menuIn { from { opacity: 0; transform: translateY(-4px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes modeFadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes rowIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes ol-in { from { transform: translateX(-14px); opacity: .4; } to { transform: none; opacity: 1; } }
+@keyframes pset-in { from { transform: translateX(14px); opacity: .4; } to { transform: none; opacity: 1; } }
 .export-modal { display: grid; grid-template-columns: 440px 1fr; width: min(1100px, 96vw); height: min(800px, calc(100dvh - 32px)); overflow: hidden; }
 .export-side { display: flex; flex-direction: column; border-right: 1px solid var(--line); min-height: 0; }
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 24px 26px 18px; border-bottom: 1px solid var(--line); }
@@ -901,11 +919,14 @@
      `place-items: center` along with it — replace both, or the dots
      render off-center instead of in the middle of the square. */
   .ed-more-btn { display: inline-flex; align-items: center; justify-content: center; }
-  .ed-more-menu { display: none; position: absolute; top: calc(100% + 8px); right: 0;
+  .ed-more-menu { display: flex; position: absolute; top: calc(100% + 8px); right: 0;
     flex-direction: column; gap: 2px; min-width: 200px; padding: 6px;
     background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-md);
-    box-shadow: 0 12px 32px rgba(0,0,0,.18); z-index: 50; }
-  .ed-more--open .ed-more-menu { display: flex; }
+    box-shadow: 0 12px 32px rgba(0,0,0,.18); z-index: 50;
+    opacity: 0; visibility: hidden; transform: translateY(-4px) scale(.97); transform-origin: top right;
+    transition: opacity .15s var(--ease-out), transform .15s var(--ease-out), visibility 0s linear .15s; }
+  .ed-more--open .ed-more-menu { opacity: 1; visibility: visible; transform: none;
+    transition: opacity .15s var(--ease-out), transform .15s var(--ease-out); }
   /* .icon-btn is `display: grid; place-items: center` for its single-icon
      desktop case — that centers icon and label as overlapping auto-placed
      grid items instead of a row, which is what was sliding the label out
@@ -963,10 +984,8 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
     box-shadow: var(--shadow-3);
   }
-  .ed-outline { left: 0; animation: ol-in .22s var(--ease-out); }
-  .ed-setup { right: 0; left: auto; animation: pset-in .22s var(--ease-out); }
-  @keyframes ol-in { from { transform: translateX(-14px); opacity: .4; } to { transform: none; opacity: 1; } }
-  @keyframes pset-in { from { transform: translateX(14px); opacity: .4; } to { transform: none; opacity: 1; } }
+  .ed-outline { left: 0; }
+  .ed-setup { right: 0; left: auto; }
   .ol-row { padding-top: 9px; padding-bottom: 9px; }
   .ol-grip, .ol-more { opacity: 1; }
 
@@ -1398,3 +1417,39 @@
 .book-page hr.scene-sep::after { content: "· · ·"; color: var(--ink-faint); letter-spacing: .3em; }
 .book-page .al-c { text-align: center; } .book-page .al-r { text-align: right; }
 .book-page .al-l { text-align: left; } .book-page .al-j { text-align: justify; }
+
+/* ============================================================
+   Animation pass — system-wide micro-interactions
+   Short (120–220ms), opacity/transform only, no new JS timers.
+   ============================================================ */
+
+/* Mouse press feedback — the touch-only block further up already covers
+   coarse pointers with its own (larger) tuned values; this gives a fine
+   pointer the same "gives, then springs back" feedback on click. */
+@media (hover: hover) and (pointer: fine) {
+  .btn, .tool, .seg-btn, .sortmenu-btn, .ol-add, .pset-seg-b, .modeswitch-b,
+  .chap-open, .prof-set .btn, .onb-lang-btn, .icon-btn {
+    transition: color .16s var(--ease-out), background-color .16s var(--ease-out),
+      border-color .16s var(--ease-out), box-shadow .16s var(--ease-out), transform .1s var(--ease-out);
+  }
+  .btn:active, .seg-btn:active, .sortmenu-btn:active, .ol-add:active,
+  .pset-seg-b:active, .modeswitch-b:active, .prof-set .btn:active, .onb-lang-btn:active {
+    transform: scale(.97);
+  }
+  .tool:active:not(:disabled) { transform: scale(.92); }
+}
+
+/* Toast exit — a graceful fade instead of an instant unmount. */
+.toast.is-leaving { animation: toastOut .16s var(--ease-out) both; }
+@keyframes toastOut { to { opacity: 0; transform: translate(-50%, 6px); } }
+
+/* Motion is decoration here — when the OS asks for less of it, the press
+   states stay (they are feedback) and the travel goes away. */
+@media (prefers-reduced-motion: reduce) {
+  .ed-menu, .ol-menu, .ed-more-menu, .ed-outline, .ed-setup,
+  .ed-scroll, .preview-scroll, .chap, .ol-row, .toast {
+    animation-duration: .01ms !important;
+    animation-delay: 0s !important;
+  }
+  .ed-more-menu { transition-duration: .01ms !important; }
+}

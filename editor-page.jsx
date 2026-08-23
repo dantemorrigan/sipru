@@ -139,6 +139,11 @@ function paginateArea(area, geom, reserved) {
     const pageEnd = pageTop + room;
 
     const straddles = top + h > pageEnd && h <= room;
+    /* A block taller than a whole page can't be helped onto one, but it
+       still deserves a clean start — pushed to the top of a fresh page
+       rather than left straddling wherever it happened to land, which is
+       what made it look like it collided with the page below it. */
+    const oversized = h > avail(0) && top > pageTop && top + h > pageEnd;
     /* keep-with-next: a heading needs room for its own box plus the first
        line or two of whatever follows it */
     let stranded = false;
@@ -146,7 +151,7 @@ function paginateArea(area, geom, reserved) {
       const lead = Math.min(heights[i + 1], Math.round(geom.fontPx * 3.2));
       stranded = top + h + lead > pageEnd && h + lead <= room;
     }
-    if (forceBreak || top >= pageEnd || straddles || stranded) {
+    if (forceBreak || top >= pageEnd || straddles || stranded || oversized) {
       page++;
       const next = page * cycle;
       if (next > top) { pushes[i] = next - top; acc += next - top; top = next; }

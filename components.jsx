@@ -166,15 +166,22 @@ const wordsLabel = (n, lang) => wordsLabelT(n, lang || "ru");
 function useToast() {
   const [toast, setToast] = useState(null);
   const show = useCallback((msg) => {
-    setToast({ msg, id: Math.random() });
+    setToast({ msg, id: Math.random(), closing: false });
   }, []);
+  /* Visible for a while, then a brief fade before it actually unmounts —
+     an instant disappearance read as a glitch, not a dismissal. */
   useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2600);
+    if (!toast || toast.closing) return;
+    const t = setTimeout(() => setToast((cur) => (cur ? { ...cur, closing: true } : cur)), 2600);
     return () => clearTimeout(t);
-  }, [toast]);
+  }, [toast && toast.id]);
+  useEffect(() => {
+    if (!toast || !toast.closing) return;
+    const t = setTimeout(() => setToast(null), 160);
+    return () => clearTimeout(t);
+  }, [toast && toast.closing]);
   const node = toast ? (
-    <div className="toast" key={toast.id}>{toast.msg}</div>
+    <div className={"toast" + (toast.closing ? " is-leaving" : "")} key={toast.id}>{toast.msg}</div>
   ) : null;
   return [node, show];
 }
