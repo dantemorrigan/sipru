@@ -218,39 +218,28 @@ function splitNotes(html) {
    the physical page it's actually on, exactly like the editor itself.
    ============================================================ */
 const EXPORT_FONT_MAP = { book: "var(--book)", article: "var(--book-alt)", mono: "var(--mono)" };
-const PAPER_MM = {
+const PAGE_MM = {
   a4:     { w: 210,   h: 297 },
-  letter: { w: 215.9, h: 279.4 },
   a5:     { w: 148,   h: 210 },
   b5:     { w: 176,   h: 250 },
   a6:     { w: 105,   h: 148 },
+  letter: { w: 215.9, h: 279.4 },
+  legal:  { w: 215.9, h: 355.6 },
 };
-const MARGIN_MM = { narrow: 14, normal: 22, wide: 32 };
+function pageDimsMM(pg) {
+  const base = (pg && pg.size === "custom") ? { w: pg.w || 210, h: pg.h || 297 } : (PAGE_MM[pg && pg.size] || PAGE_MM.a4);
+  return (pg && pg.orient === "landscape") ? { w: base.h, h: base.w } : base;
+}
 
-/* Sheet size and margins come from the export's own choices (they can
-   differ from the project's own page setup); typography — indent,
-   alignment, spacing — still comes from the project's page setup, exactly
-   as buildBookHTML already uses it below. Headers/footers are left off:
-   the actual HTML/PDF export doesn't draw them either (only the .docx
-   export does), so the preview doesn't promise a running head it can't
-   deliver. */
-/* A page this small can't carry book-size type — real pocket editions
-   set A6/A5 in a noticeably smaller point size, which is also what keeps
-   an ordinary paragraph from being taller than the page itself. */
-const PAPER_FONT_PT = { a4: 12, letter: 12, b5: 11.5, a5: 10.5, a6: 8.5 };
-
-function exportPageGeom(opts) {
-  const base = PAPER_MM[opts.paperSize] || PAPER_MM.a4;
-  const m = MARGIN_MM[opts.margin] != null ? MARGIN_MM[opts.margin] : MARGIN_MM.normal;
-  const pg = opts.page || {};
+/* The export always uses the project's own page setup (size, margins,
+   typography) — the same one shown in the editor's Page Setup panel.
+   Headers/footers are left off: the actual HTML/PDF export doesn't draw
+   them either (only the .docx export does), so the preview doesn't
+   promise a running head it can't deliver. */
+function exportPageGeom(pg) {
+  const p = pg || {};
   return {
-    size: "custom", orient: "portrait", w: base.w, h: base.h,
-    mt: m, mr: m, mb: m, ml: m,
-    fontSize: PAPER_FONT_PT[opts.paperSize] || 12, leading: opts.leading || 1.7,
-    align: pg.align || "justify", indent: pg.indent != null ? pg.indent : 1.5,
-    padL: pg.padL || 0, padR: pg.padR || 0,
-    spaceBefore: pg.spaceBefore || 0, spaceAfter: pg.spaceAfter != null ? pg.spaceAfter : 0.6,
-    hyphens: pg.hyphens !== false,
+    ...p,
     hdr: { on: false, l: "", c: "", r: "" }, ftr: { on: false, l: "", c: "", r: "" },
     firstBare: true, mirror: false, numFrom: 1, zoom: 1,
   };
@@ -347,7 +336,7 @@ function BookPagedPreview({ project, opts, lang }) {
     return () => { if (ro) ro.disconnect(); else window.removeEventListener("resize", measure); };
   }, []);
 
-  const pgBase = useMemo(() => exportPageGeom(opts), [opts.paperSize, opts.margin, opts.leading, JSON.stringify(opts.page)]);
+  const pgBase = useMemo(() => exportPageGeom(opts.page), [JSON.stringify(opts.page)]);
   const geom = useMemo(() => {
     const g = pageGeometry(pgBase, avail);
     g.leading = pgBase.leading; g.align = pgBase.align; g.indent = pgBase.indent;
@@ -480,22 +469,17 @@ function chapterBody(html) {
   return body + '<ol class="b-notes">' + notes.map((n) => "<li>" + escText(n) + "</li>").join("") + "</ol>";
 }
 
-const MARGINS = { narrow: "14mm", normal: "22mm", wide: "32mm" };
-const SCREEN_PADS = { narrow: "12px", normal: "28px", wide: "60px" };
-const PAPER = {
-  a4:     { label: "A4",     size: "210mm 297mm", em: "38em" },
-  letter: { label: "Letter", size: "8.5in 11in",  em: "40em" },
-  a5:     { label: "A5",     size: "148mm 210mm", em: "28em" },
-  b5:     { label: "B5",     size: "176mm 250mm", em: "33em" },
-  a6:     { label: "A6",     size: "105mm 148mm", em: "22em" },
-};
-
+/* The sheet, margins and typography here all come from the project's own
+   page setup (opts.page) — the same one shown in the editor's Page Setup
+   panel. There is no separate "layout" choice in the export modal any
+   more; export always renders exactly what the editor is set up to. */
 function buildBookHTML(project, opts) {
   const chapters = project.chapters.filter((c) => opts.include[c.id] !== false);
-  /* The book's own typography (first line, alignment, paragraph spacing)
-     comes from page setup; the sheet and margins stay the export modal's
-     explicit choice, exactly as before. */
-  const pg = opts.page || null;
+  const pg = opts.page || {};
+  const d = pageDimsMM(pg);
+  const mt = pg.mt != null ? pg.mt : 20, mr = pg.mr != null ? pg.mr : 18, mb = pg.mb != null ? pg.mb : 20, ml = pg.ml != null ? pg.ml : 18;
+  const screenEm = Math.round(d.w / 5.4) + "em";
+  const screenPad = Math.round(Math.min(ml, mr) * 2.6) + "px";
   const fontStack = opts.font === "mono"
     ? "'JetBrains Mono', monospace"
     : opts.font === "article" ? "'Spectral', Georgia, serif" : "'Newsreader', Georgia, serif";
@@ -507,14 +491,14 @@ function buildBookHTML(project, opts) {
     body += `<section class="b-toc"><h2>${t("toc_title", opts.lang || "ru")}</h2><ol>${chapters.map((c) => `<li><span>${c.title}</span></li>`).join("")}</ol></section>`;
   }
   chapters.forEach((c, i) => {
-    body += `<section class="b-chap${opts.merge ? " merged" : ""}">${chapterBody(c.content || "")}</section>`;
+    body += `<section class="b-chap">${chapterBody(c.content || "")}</section>`;
   });
   return `<!doctype html><html><head><meta charset="utf-8"><title>${project.title}</title>
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,600;1,400&family=Spectral:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
   <style>
-    @page { size: ${(PAPER[opts.paperSize] || PAPER.a4).size}; margin: ${MARGINS[opts.margin]}; }
+    @page { size: ${d.w}mm ${d.h}mm; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm; }
     * { box-sizing: border-box; }
-    body { font-family: ${fontStack}; font-size: ${PAPER_FONT_PT[opts.paperSize] || 12}pt; line-height: ${opts.leading}; color: #1f1d18; background: #fff; margin: 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-wrap: break-word; word-break: break-word; }
+    body { font-family: ${fontStack}; font-size: ${pg.fontSize || 12}pt; line-height: ${pg.leading || 1.7}; color: #1f1d18; background: #fff; margin: 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-wrap: break-word; word-break: break-word; }
     .b-kicker { font-family: 'JetBrains Mono', monospace; letter-spacing: .42em; font-size: 9pt; color: #c2542f; text-transform: uppercase; }
     .b-title h1 { font-size: 30pt; line-height: 1.06; margin: 18px 0 16px; font-weight: 600; letter-spacing: -.015em; }
     .b-syn { font-style: italic; color: #6b6457; font-size: 13pt; margin: 0 auto; max-width: 30em; }
@@ -523,7 +507,7 @@ function buildBookHTML(project, opts) {
     h1 { font-size: 21pt; font-weight: 600; margin: 0 0 .8em; letter-spacing: -.01em; }
     h2 { font-size: 15pt; font-weight: 600; margin: 1.3em 0 .4em; }
     h3 { font-size: 12.5pt; font-weight: 600; margin: 1.1em 0 .3em; }
-    p { margin: 0 0 ${pg ? pg.spaceAfter : 0}em; text-indent: ${pg ? pg.indent : 1.5}em; text-align: ${pg ? (pg.align === "justify" ? "justify" : pg.align) : "justify"}; }
+    p { margin: 0 0 ${pg.spaceAfter != null ? pg.spaceAfter : 0.6}em; text-indent: ${pg.indent != null ? pg.indent : 1.5}em; text-align: ${(pg.align || "justify") === "justify" ? "justify" : pg.align}; }
     h1 + p, h2 + p, h3 + p, blockquote + p, ul + p, ol + p, hr + p, p:first-child { text-indent: 0; }
     blockquote { margin: 1.1em 1.6em; font-style: italic; color: #555; }
     ul, ol { padding-left: 1.5em; margin: .4em 0; } li { margin-bottom: .3em; text-align: left; }
@@ -533,20 +517,20 @@ ${BLOCK_CSS}
     /* on-screen preview: a single clean, centred book column */
     @media screen {
       body { padding: 60px 0 80px; }
-      body > section { max-width: ${(PAPER[opts.paperSize] || PAPER.a4).em}; margin: 0 auto; padding: 0 ${SCREEN_PADS[opts.margin]}; }
-      .b-title { text-align: center; padding-bottom: 46px; margin-bottom: 46px; border-bottom: ${opts.merge ? "none" : "1px solid #e9e3d5"}; }
-      .b-toc { padding-bottom: 40px; margin-bottom: ${opts.merge ? "24px" : "40px"}; border-bottom: ${opts.merge ? "none" : "1px solid #e9e3d5"}; }
-      .b-chap + .b-chap { margin-top: ${opts.merge ? "0" : "44px"}; }
-      .b-chap h1 { padding-top: ${opts.merge ? "0" : "26px"}; }
+      body > section { max-width: ${screenEm}; margin: 0 auto; padding: 0 ${screenPad}; }
+      .b-title { text-align: center; padding-bottom: 46px; margin-bottom: 46px; border-bottom: 1px solid #e9e3d5; }
+      .b-toc { padding-bottom: 40px; margin-bottom: 40px; border-bottom: 1px solid #e9e3d5; }
+      .b-chap + .b-chap { margin-top: 44px; }
+      .b-chap h1 { padding-top: 26px; }
       .b-chap:first-of-type h1 { padding-top: 0; }
     }
     /* print / PDF: real pagination */
     @media print {
       .b-title { text-align: center; padding-top: 34vh; page-break-after: always; }
       .b-toc { page-break-after: always; padding-top: 12%; }
-      .b-chap { ${opts.merge ? "page-break-before: avoid; break-before: avoid;" : "page-break-before: always; break-before: page;"} }
+      .b-chap { page-break-before: always; break-before: page; }
       .b-chap:first-of-type { page-break-before: avoid; break-before: avoid; }
-      h1 { ${opts.merge ? "" : "padding-top: 6%;"} }
+      h1 { padding-top: 6%; }
     }
   </style></head><body>${body}</body></html>`;
 }
@@ -568,19 +552,19 @@ function buildBookDocx(project, opts) {
     sections.push({
       heading: t("toc_title", opts.lang || "en"),
       html: "<ol>" + chapters.map((c) => "<li>" + c.title.replace(/[<>&]/g, " ") + "</li>").join("") + "</ol>",
-      pageBreakBefore: opts.titlePage && !opts.merge,
+      pageBreakBefore: opts.titlePage,
     });
   }
   chapters.forEach((c, i) => {
     sections.push({
       html: c.content || "",
-      pageBreakBefore: !opts.merge && (i > 0 || opts.toc || opts.titlePage),
+      pageBreakBefore: i > 0 || opts.toc || opts.titlePage,
     });
   });
   return SipruFormats.buildDocx({
     title: opts.titlePage ? project.title : "",
     subtitle: opts.titlePage ? (project.synopsis || "") : "",
-    sections, paperSize: opts.paperSize, margin: opts.margin, font: opts.font,
+    sections, font: opts.font,
     page: opts.page || null, bookTitle: project.title, author: opts.author || "",
   });
 }
@@ -594,9 +578,7 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
      just be the same choice with extra steps. */
   const defaultFont = (store.get().user && store.get().user.editorFont) || "book";
   const [opts, setOpts] = useState(() => ({
-    merge: false, titlePage: true, toc: true,
-    margin: "normal", font: defaultFont, leading: 1.7,
-    paperSize: "a4", lang,
+    titlePage: true, toc: true, font: defaultFont, lang,
     include: {},
   }));
   const set = (patch) => setOpts((o) => ({ ...o, ...patch }));
@@ -648,7 +630,7 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
             <div><div className="eyebrow">{tl("exp_book_eyebrow")}</div><h2 className="modal-title">{project.title}</h2></div>
             <div className="modal-head-actions">
               <button className="pset-reset" onClick={() => set({
-                merge: false, titlePage: true, toc: true, margin: "normal", font: defaultFont, leading: 1.7, paperSize: "a4",
+                titlePage: true, toc: true, font: defaultFont,
               })} title={tl("exp_reset")}><Icon name="reset" size={13} /> {tl("exp_reset")}</button>
               <button className="icon-btn" onClick={close}><Icon name="close" size={18} /></button>
             </div>
@@ -673,29 +655,12 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
 
             <div className="exp-grp">
               <div className="exp-grp-h mono">{tl("exp_section_structure")}</div>
-              {[["titlePage","exp_title_page"],["toc","exp_toc"],["merge","exp_merge"]].map(([k,lk]) => (
+              {[["titlePage","exp_title_page"],["toc","exp_toc"]].map(([k,lk]) => (
                 <label key={k} className="exp-toggle">
                   <span className={"switch" + (opts[k] ? " on" : "")} onClick={() => set({ [k]: !opts[k] })}><span /></span>
                   {tl(lk)}
                 </label>
               ))}
-            </div>
-
-            <div className="exp-grp">
-              <div className="exp-grp-h mono">{tl("exp_section_typeset")}</div>
-              <div className="exp-row"><span className="exp-lbl">{tl("exp_paper")}</span>
-                <div className="seg seg--sm">{Object.entries(PAPER).map(([k, p]) => (
-                  <button key={k} className={"seg-btn"+(opts.paperSize===k?" on":"")} onClick={() => set({paperSize:k})}>{p.label}</button>))}</div>
-              </div>
-              <div className="exp-row"><span className="exp-lbl">{tl("exp_margins")}</span>
-                <div className="seg seg--sm">{[["narrow","exp_margin_narrow"],["normal","exp_margin_normal"],["wide","exp_margin_wide"]].map(([k,lk]) => (
-                  <button key={k} className={"seg-btn"+(opts.margin===k?" on":"")} onClick={() => set({margin:k})}>{tl(lk)}</button>))}</div>
-              </div>
-              <div className="exp-row"><span className="exp-lbl">{tl("exp_leading")}</span>
-                <input type="range" min="1.3" max="2.2" step="0.1" value={opts.leading}
-                  onChange={(e) => set({ leading: parseFloat(e.target.value) })} className="exp-range" />
-                <span className="mono exp-val">{opts.leading.toFixed(1)}</span>
-              </div>
             </div>
           </div>
 
@@ -721,12 +686,17 @@ function buildNoteHTML(note, opts) {
   const fontStack = opts.font === "mono"
     ? "'JetBrains Mono', monospace"
     : opts.font === "article" ? "'Spectral', Georgia, serif" : "'Newsreader', Georgia, serif";
+  const pg = opts.page || {};
+  const d = pageDimsMM(pg);
+  const mt = pg.mt != null ? pg.mt : 20, mr = pg.mr != null ? pg.mr : 18, mb = pg.mb != null ? pg.mb : 20, ml = pg.ml != null ? pg.ml : 18;
+  const screenEm = Math.round(d.w / 5.4) + "em";
+  const screenPad = Math.round(Math.min(ml, mr) * 2.6) + "px";
   return `<!doctype html><html><head><meta charset="utf-8"><title>${note.title}</title>
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,600;1,400&family=Spectral:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
   <style>
-    @page { size: ${(PAPER[opts.paperSize] || PAPER.a4).size}; margin: ${MARGINS[opts.margin]}; }
+    @page { size: ${d.w}mm ${d.h}mm; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm; }
     * { box-sizing: border-box; }
-    body { font-family: ${fontStack}; font-size: ${PAPER_FONT_PT[opts.paperSize] || 12}pt; line-height: ${opts.leading}; color: #1f1d18; background: #fff; margin: 0; -webkit-font-smoothing: antialiased; overflow-wrap: break-word; word-break: break-word; }
+    body { font-family: ${fontStack}; font-size: ${pg.fontSize || 12}pt; line-height: ${pg.leading || 1.7}; color: #1f1d18; background: #fff; margin: 0; -webkit-font-smoothing: antialiased; overflow-wrap: break-word; word-break: break-word; }
     h1 { font-size: 21pt; font-weight: 600; margin: 0 0 .8em; letter-spacing: -.01em; }
     h2 { font-size: 15pt; font-weight: 600; margin: 1.3em 0 .4em; }
     h3 { font-size: 12.5pt; font-weight: 600; margin: 1.1em 0 .3em; }
@@ -741,31 +711,32 @@ ${BLOCK_CSS}
     .n-title { font-size: 26pt; font-weight: 600; letter-spacing: -.015em; line-height: 1.1; margin: 0; }
     @media screen {
       body { padding: 60px 0 80px; }
-      .n-wrap { max-width: ${(PAPER[opts.paperSize] || PAPER.a4).em}; margin: 0 auto; padding: 0 ${SCREEN_PADS[opts.margin]}; }
+      .n-wrap { max-width: ${screenEm}; margin: 0 auto; padding: 0 ${screenPad}; }
     }
   </style></head><body><div class="n-wrap">${opts.titlePage ? `<div class="n-head"><div class="n-kicker">SIPRU.</div><h1 class="n-title">${note.title}</h1></div>` : ""}${chapterBody(note.content || "")}</div></body></html>`;
 }
 
-function NoteExportModal({ note, onClose, onToast, lang, defaultFont }) {
+function NoteExportModal({ note, onClose, onToast, lang, defaultFont, page }) {
   const [closing, close] = useDismiss(onClose);
   const tl = T(lang || "en");
-  const [opts, setOpts] = useState({ margin: "normal", font: defaultFont || "book", leading: 1.7, paperSize: "a4", titlePage: true });
+  const [opts, setOpts] = useState({ font: defaultFont || "book", titlePage: true });
   const set = (patch) => setOpts((o) => ({ ...o, ...patch }));
+  const eopts = { ...opts, page };
 
-  const previewHTML = useMemo(() => buildNoteHTML(note, opts), [note, opts]);
+  const previewHTML = useMemo(() => buildNoteHTML(note, eopts), [note, opts, page]);
 
   function doExport(fmt) {
     const base = note.title.replace(/[^\wа-яёА-ЯЁ\- ]+/gi, "").trim() || "note";
     if (fmt === "pdf") {
       if (window.__TAURI__) {
-        if (printHTML(buildNoteHTML(note, opts))) { onToast(tl("exp_toast_pdf")); return; }
-        downloadBlob(base + ".html", "text/html;charset=utf-8", buildNoteHTML(note, opts));
+        if (printHTML(buildNoteHTML(note, eopts))) { onToast(tl("exp_toast_pdf")); return; }
+        downloadBlob(base + ".html", "text/html;charset=utf-8", buildNoteHTML(note, eopts));
         onToast(tl("exp_toast_pdf_tauri"));
         return;
       }
       const w = window.open("", "_blank");
       if (!w) { onToast(tl("exp_err_popup")); return; }
-      w.document.write(buildNoteHTML(note, opts));
+      w.document.write(buildNoteHTML(note, eopts));
       w.document.close();
       setTimeout(() => { w.focus(); w.print(); }, 700);
       onToast(tl("exp_toast_pdf"));
@@ -774,7 +745,7 @@ function NoteExportModal({ note, onClose, onToast, lang, defaultFont }) {
         downloadBlob(base + ".docx", SipruFormats.DOCX_MIME, SipruFormats.buildDocx({
           title: opts.titlePage ? note.title : "",
           sections: [{ html: note.content || "" }],
-          paperSize: opts.paperSize, margin: opts.margin, font: opts.font,
+          font: opts.font, page: page || null,
         }));
         onToast(tl("exp_toast_docx_real"));
       } catch (e) { onToast(tl("exp_err_docx")); }
@@ -795,7 +766,7 @@ function NoteExportModal({ note, onClose, onToast, lang, defaultFont }) {
             <div><div className="eyebrow">{tl("exp_note_eyebrow")}</div><h2 className="modal-title">{note.title}</h2></div>
             <div className="modal-head-actions">
               <button className="pset-reset" onClick={() => set({
-                margin: "normal", font: defaultFont || "book", leading: 1.7, paperSize: "a4", titlePage: true,
+                font: defaultFont || "book", titlePage: true,
               })} title={tl("exp_reset")}><Icon name="reset" size={13} /> {tl("exp_reset")}</button>
               <button className="icon-btn" onClick={close}><Icon name="close" size={18} /></button>
             </div>
@@ -808,22 +779,6 @@ function NoteExportModal({ note, onClose, onToast, lang, defaultFont }) {
                 <span className={"switch" + (opts.titlePage ? " on" : "")} onClick={() => set({ titlePage: !opts.titlePage })}><span /></span>
                 {tl("exp_note_title_opt")}
               </label>
-            </div>
-            <div className="exp-grp">
-              <div className="exp-grp-h mono">{tl("exp_section_layout")}</div>
-              <div className="exp-row"><span className="exp-lbl">{tl("exp_paper")}</span>
-                <div className="seg seg--sm">{Object.entries(PAPER).map(([k, p]) => (
-                  <button key={k} className={"seg-btn"+(opts.paperSize===k?" on":"")} onClick={() => set({paperSize:k})}>{p.label}</button>))}</div>
-              </div>
-              <div className="exp-row"><span className="exp-lbl">{tl("exp_margins")}</span>
-                <div className="seg seg--sm">{[["narrow","exp_margin_narrow"],["normal","exp_margin_normal"],["wide","exp_margin_wide"]].map(([k,lk]) => (
-                  <button key={k} className={"seg-btn"+(opts.margin===k?" on":"")} onClick={() => set({margin:k})}>{tl(lk)}</button>))}</div>
-              </div>
-              <div className="exp-row"><span className="exp-lbl">{tl("exp_leading")}</span>
-                <input type="range" min="1.3" max="2.2" step="0.1" value={opts.leading}
-                  onChange={(e) => set({ leading: parseFloat(e.target.value) })} className="exp-range" />
-                <span className="mono exp-val">{opts.leading.toFixed(1)}</span>
-              </div>
             </div>
           </div>
 

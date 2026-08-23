@@ -556,7 +556,7 @@
     else { mgT = mgR = mgB = mgL = PAGE_MARGINS.normal; }
     if (pg) {
       const d = (pg.size === "custom") ? { w: pg.w, h: pg.h }
-        : ({ a4: { w: 210, h: 297 }, a5: { w: 148, h: 210 },
+        : ({ a4: { w: 210, h: 297 }, a5: { w: 148, h: 210 }, b5: { w: 176, h: 250 }, a6: { w: 105, h: 148 },
              letter: { w: 215.9, h: 279.4 }, legal: { w: 215.9, h: 355.6 } }[pg.size] || { w: 210, h: 297 });
       const dim = pg.orient === "landscape" ? { w: d.h, h: d.w } : d;
       size = { w: Math.round(dim.w * MM_TO_TW), h: Math.round(dim.h * MM_TO_TW) };

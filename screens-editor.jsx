@@ -1141,6 +1141,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           onToast={onToast || (() => {})}
           lang={lang}
           defaultFont={user.editorFont}
+          page={page}
         />
       )}
       {fnEdit && (

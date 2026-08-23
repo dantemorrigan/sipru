@@ -21,10 +21,12 @@ const PAGE_GAP_MM = 8;            /* the visible gutter between two sheets */
 const PAGE_SIZES = {
   a4:     { w: 210,   h: 297 },
   a5:     { w: 148,   h: 210 },
+  b5:     { w: 176,   h: 250 },
+  a6:     { w: 105,   h: 148 },
   letter: { w: 215.9, h: 279.4 },
   legal:  { w: 215.9, h: 355.6 },
 };
-const PAGE_SIZE_ORDER = ["a4", "a5", "letter", "legal", "custom"];
+const PAGE_SIZE_ORDER = ["a4", "a5", "b5", "a6", "letter", "legal", "custom"];
 
 function pageDims(pg) {
   const base = pg.size === "custom"
