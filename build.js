@@ -9,8 +9,8 @@ const path = require("path");
 const esbuild = require("esbuild");
 
 const SRC = ["components.jsx", "screens-onboarding.jsx", "screens-dashboard.jsx",
-  "screens-editor.jsx", "screens-export.jsx", "screens-profile.jsx", "tour.jsx",
-  "updater.jsx", "app.jsx"];
+  "editor-page.jsx", "editor-outline.jsx", "screens-editor.jsx", "screens-export.jsx",
+  "screens-profile.jsx", "tour.jsx", "updater.jsx", "app.jsx"];
 const OUT = path.join(__dirname, "build");
 const check = process.argv.includes("--check");
 

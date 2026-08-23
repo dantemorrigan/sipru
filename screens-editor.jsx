@@ -53,6 +53,11 @@ function useDocSave(docId, store, getHTML) {
 
 const FONT_MAP = { book: "var(--book)", article: "var(--book-alt)", mono: "var(--mono)" };
 
+/* The editor remounts on every document change (App keys it by id), so
+   whether the outline is open lives just outside the component — jumping
+   between chapters from the outline must not close the outline. */
+let OUTLINE_STICKY = false;
+
 function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const lang = user.lang || "en";
   const tl = T(lang);
@@ -76,6 +81,31 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const [linkPopup, setLinkPopup] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef(null);
+  /* ---- the page: geometry, pagination, structure ---- */
+  const paperRef = useRef(null);
+  const [avail, setAvail] = useState(0);
+  const [pages, setPages] = useState([[]]);
+  const [outlineOpen, setOutlineOpenState] = useState(OUTLINE_STICKY);
+  const setOutlineOpen = useCallback((v) => setOutlineOpenState((o) => {
+    const next = typeof v === "function" ? v(o) : v;
+    OUTLINE_STICKY = next;
+    if (!next && window.clearOutlineEditing) window.clearOutlineEditing();
+    return next;
+  }), []);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [insertOpen, setInsertOpen] = useState(false);
+  const [styleOpen, setStyleOpen] = useState(false);
+  const [blockStyle, setBlockStyle] = useState("p");
+  const [fnEdit, setFnEdit] = useState(null);
+  const [curScene, setCurScene] = useState("");
+  const [curPage, setCurPage] = useState(1);
+  const insertRef = useRef(null);
+  const styleRef = useRef(null);
+  const reserveRef = useRef([]);
+  const passRef = useRef(0);
+  const pgTimer = useRef(null);
+  const pendingScene = useRef(null);
+  const scrollRaf = useRef(0);
   /* Only load-bearing on mobile, where the header has no room to lay these
      out inline — see .ed-more-menu in ui.css. Desktop keeps the buttons
      inline via `display: contents` and never opens this. */
@@ -93,7 +123,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const nodeRef = useRef(null);
   const wordTimer = useRef(null);
   const { schedule: doSave, flush: flushSave } =
-    useDocSave(docId, store, useCallback(() => (nodeRef.current ? nodeRef.current.innerHTML : null), []));
+    useDocSave(docId, store, useCallback(() => serializeArea(nodeRef.current), []));
 
   useEffect(() => {
     const vv = window.visualViewport;
@@ -120,14 +150,24 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       depth.current = { u: 0, r: 0 };
       setHist({ undo: false, redo: false });
       /* on touch devices, autofocus pops the keyboard before the user has
-         asked to type — only desktop (fine pointer) gets it on open */
-      if (FINE_POINTER) setTimeout(() => ref.current && ref.current.focus(), 60);
+         asked to type — only desktop (fine pointer) gets it on open.
+         Opening a chapter from the outline while renaming another one must
+         not yank the caret out of that field, so a focused control inside
+         the outline keeps it. */
+      if (FINE_POINTER) setTimeout(() => {
+        const ae = document.activeElement;
+        if (ae && ae.closest && ae.closest(".ed-outline")) return;
+        if (ref.current) ref.current.focus();
+      }, 60);
+      reserveRef.current = [];
+      schedulePaginate(true);
     }
   }, [docId]);
 
   useEffect(() => {
     if (mode === "edit" && ref.current) {
       ref.current.innerHTML = saved.current;
+      schedulePaginate(true);
       if (FINE_POINTER) setTimeout(() => ref.current && ref.current.focus(), 40);
     }
   }, [mode]);
@@ -135,7 +175,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   function switchMode(m) {
     if (m === mode) return;
     if (mode === "edit" && ref.current) {
-      saved.current = ref.current.innerHTML;
+      saved.current = serializeArea(ref.current);
       flushSave();
       store.updateDoc(docId, { content: saved.current });
     }
@@ -168,6 +208,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       }
       st.block = block;
       setActive(st);
+      setBlockStyle(blockStyleOf(topBlock(ref.current)) || "p");
     } catch (e) {}
   }
   /* queryCommandState (×6) forces a synchronous selection/style recalc in
@@ -210,6 +251,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
      which also collapses a burst of typing into one React re-render. */
   function commitChange() {
     doSave(null);
+    schedulePaginate(false);
     depth.current.u++; depth.current.r = 0;
     setHist((h) => (h.undo && !h.redo) ? h : { undo: true, redo: false });
     clearTimeout(wordTimer.current);
@@ -433,16 +475,18 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     } else {
       if (cmd === "undo") { d.u = Math.max(0, d.u - 1); d.r++; }
       else { d.r = Math.max(0, d.r - 1); d.u++; }
-      const html = el.innerHTML;
+      const html = serializeArea(el);
       saved.current = html;
       setWords(store.countWords(html));
       doSave(html);
     }
     setHist({ undo: d.u > 0, redo: d.r > 0 });
     refreshActive();
+    schedulePaginate(true);
   }
 
   function onKeyDown(e) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); insertPageBreak(); return; }
     if (!(e.metaKey || e.ctrlKey)) return;
     const k = (e.key || "").toLowerCase();
     if (k === "z") { e.preventDefault(); runHistory(e.shiftKey ? "redo" : "undo"); }
@@ -465,7 +509,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   }
   function persistNow() {
     if (!ref.current) return null;
-    const html = ref.current.innerHTML;
+    const html = serializeArea(ref.current);
     flushSave();
     store.updateDoc(docId, { content: html });
     saved.current = html;
@@ -502,6 +546,247 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     else nav.dashboard();
   }
 
+  /* ------------------------------------------------------------------
+     The page
+
+     Settings live per project (a book is laid out as one object) and per
+     note; the geometry below is derived from them and from how much room
+     the column actually has, so a phone shows the same page — to scale —
+     as the desktop does.
+     ------------------------------------------------------------------ */
+  const page = store.getPage(docId);
+  const pgKey = JSON.stringify(page);
+  const geom = useMemo(() => pageGeometry(page, avail), [pgKey, avail]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => {
+      if (!el.clientWidth) return;
+      const pad = window.innerWidth < 700 ? 20 : 96;
+      setAvail(Math.max(160, el.clientWidth - pad));
+    };
+    measure();
+    let ro = null;
+    if (window.ResizeObserver) { ro = new ResizeObserver(measure); ro.observe(el); }
+    else window.addEventListener("resize", measure);
+    return () => { if (ro) ro.disconnect(); else window.removeEventListener("resize", measure); };
+  }, [mode]);
+
+  /* One pass = clear the pushes, read every block, apply the new pushes.
+     Everything that can change the flow funnels through here. */
+  function repaginate() {
+    const area = nodeRef.current;
+    if (!area || mode !== "edit") return;
+    const notes = footnoteList(area);
+    const byId = {};
+    notes.forEach((f) => { byId[f.id] = f; });
+    const res = paginateArea(area, geom, reserveRef.current);
+    setPages(res.notes.map((ids) => ids.map((id) => byId[id]).filter(Boolean)));
+  }
+  function schedulePaginate(now) {
+    clearTimeout(pgTimer.current);
+    passRef.current = 0;
+    if (now) { repaginate(); return; }
+    pgTimer.current = setTimeout(repaginate, 90);
+  }
+  useEffect(() => () => { clearTimeout(pgTimer.current); cancelAnimationFrame(scrollRaf.current); }, []);
+  useEffect(() => { schedulePaginate(true); }, [geom, mode, docId]);
+
+  /* Footnotes take room away from the text on the page they belong to, and
+     how much is only knowable once they are rendered — so the measurement
+     feeds back into the next pass, converging in one or two rounds. */
+  function onFootnoteHeights(hs) {
+    const prev = reserveRef.current;
+    let changed = false;
+    for (let i = 0; i < hs.length; i++) {
+      const v = hs[i] ? hs[i] + Math.round(12 * geom.scale) : 0;
+      if (Math.abs((prev[i] || 0) - v) > 2) { prev[i] = v; changed = true; }
+    }
+    if (prev.length > hs.length) { prev.length = hs.length; changed = true; }
+    if (changed && passRef.current < 3) { passRef.current++; repaginate(); }
+    else passRef.current = 0;
+  }
+
+  const pageCount = pages.length;
+  const paperH = pageCount * (geom.pageH + geom.gap) - geom.gap;
+
+  /* ---- scenes: the outline follows the caret and the scroll ---- */
+  function onScroll() {
+    if (scrollRaf.current) return;
+    scrollRaf.current = requestAnimationFrame(() => {
+      scrollRaf.current = 0;
+      const area = nodeRef.current, sc = scrollRef.current;
+      if (!area || !sc) return;
+      const cyc = geom.pageH + geom.gap;
+      const at = Math.max(1, Math.min(pages.length, Math.floor((sc.scrollTop + cyc * 0.35) / cyc) + 1));
+      setCurPage((p) => (p === at ? p : at));
+      const seps = sceneEls(area);
+      if (!seps.length) { setCurScene((c) => (c ? "" : c)); return; }
+      const line = sc.getBoundingClientRect().top + 140;
+      let cur = "";
+      for (let i = 0; i < seps.length; i++) {
+        if (seps[i].getBoundingClientRect().top <= line) cur = seps[i].getAttribute("data-id") || "";
+        else break;
+      }
+      setCurScene((c) => (c === cur ? c : cur));
+    });
+  }
+  function jumpToScene(cid, sid) {
+    if (cid !== docId) { pendingScene.current = sid; nav.doc(cid); return; }
+    const area = nodeRef.current, sc = scrollRef.current;
+    const el = area && area.querySelector('hr.scene-sep[data-id="' + String(sid).replace(/["\\]/g, "") + '"]');
+    if (!el || !sc) return;
+    sc.scrollTo({ top: sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 90,
+      behavior: "smooth" });
+    setCurScene(sid);
+    if (!FINE_POINTER) setOutlineOpen(false);
+  }
+  useEffect(() => {
+    if (!pendingScene.current) return;
+    const sid = pendingScene.current;
+    pendingScene.current = null;
+    const t = setTimeout(() => jumpToScene(docId, sid), 160);
+    return () => clearTimeout(t);
+  }, [docId]);
+
+  /* An outline edit rewrites the chapter's HTML underneath us — reload the
+     live editor so the two can never drift apart. */
+  function onOutlineContent(cid, html) {
+    if (cid !== docId || !ref.current) return;
+    saved.current = html;
+    ref.current.innerHTML = html;
+    setWords(store.countWords(html));
+    depth.current = { u: 0, r: 0 };
+    setHist({ undo: false, redo: false });
+    schedulePaginate(true);
+  }
+
+  /* ---- inserts: page break, scene, footnote ---- */
+  function insertBlock(node) {
+    const area = ref.current;
+    if (!area) return;
+    area.focus();
+    const cur = topBlock(area);
+    if (cur) cur.parentNode.insertBefore(node, cur.nextSibling);
+    else area.appendChild(node);
+    const p = document.createElement("p");
+    p.innerHTML = "<br>";
+    node.parentNode.insertBefore(p, node.nextSibling);
+    caretTo(p, false);
+    commitChange();
+    schedulePaginate(true);
+  }
+  function insertPageBreak() {
+    const hr = document.createElement("hr");
+    hr.className = "page-break";
+    insertBlock(hr);
+  }
+  function insertScene() {
+    insertBlock(makeSceneEl(tl("ol_new_scene"), "draft"));
+  }
+  function insertFootnote() {
+    const area = ref.current;
+    if (!area) return;
+    area.focus();
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const id = "f_" + Math.random().toString(36).slice(2, 9);
+    const sup = document.createElement("sup");
+    sup.className = "fn";
+    sup.setAttribute("data-fn", id);
+    sup.textContent = "1";
+    const r = sel.getRangeAt(0);
+    r.collapse(false);
+    r.insertNode(sup);
+    let tail = sup.nextSibling;
+    if (!tail || tail.nodeType !== 3) {
+      tail = document.createTextNode("\u00A0");
+      sup.parentNode.insertBefore(tail, sup.nextSibling);
+    }
+    const after = document.createRange();
+    after.setStart(tail, Math.min(1, tail.length)); after.collapse(true);
+    sel.removeAllRanges(); sel.addRange(after);
+    setFnText(area, id, "");
+    commitChange();
+    schedulePaginate(true);
+    setTimeout(() => openFootnote(id), 0);
+  }
+  function openFootnote(id) {
+    const area = ref.current;
+    if (!area) return;
+    const mark = area.querySelector('sup.fn[data-fn="' + String(id).replace(/["\\]/g, "") + '"]');
+    const rect = mark ? mark.getBoundingClientRect()
+      : { left: window.innerWidth / 2, width: 0, bottom: Math.min(220, window.innerHeight / 2) };
+    setFnEdit({ id, n: mark ? mark.textContent : "", text: fnText(area, id),
+      anchor: { x: rect.left + rect.width / 2, y: rect.bottom } });
+  }
+  function applyFootnote(id, text) {
+    const area = ref.current;
+    if (!area) return;
+    setFnText(area, id, text);
+    commitChange();
+    schedulePaginate(true);
+  }
+  function deleteFootnote(id) {
+    const area = ref.current;
+    if (!area) return;
+    const mark = area.querySelector('sup.fn[data-fn="' + String(id).replace(/["\\]/g, "") + '"]');
+    if (mark) mark.remove();
+    setFnEdit(null);
+    commitChange();
+    schedulePaginate(true);
+  }
+  function onAreaClick(e) {
+    const mark = e.target && e.target.closest ? e.target.closest("sup.fn") : null;
+    if (mark) {
+      e.preventDefault();
+      openFootnote(mark.getAttribute("data-fn"));
+    }
+  }
+
+  /* ---- block-level style & alignment ---- */
+  function setStyle(name) {
+    const area = ref.current;
+    if (!area) return;
+    area.focus();
+    applyBlockStyle(area, name, tl);
+    setStyleOpen(false);
+    commitChange();
+    refreshActive();
+    schedulePaginate(true);
+  }
+  const ALIGN_CLASSES = ["al-l", "al-c", "al-r", "al-j"];
+  function setAlign(cls) {
+    const area = ref.current;
+    if (!area) return;
+    const cur = topBlock(area);
+    if (!cur) return;
+    const had = cur.classList.contains(cls);
+    ALIGN_CLASSES.forEach((c) => cur.classList.remove(c));
+    if (!had && cls) cur.classList.add(cls);
+    if (!cur.getAttribute("class")) cur.removeAttribute("class");
+    commitChange();
+    schedulePaginate(true);
+  }
+
+  /* ---- page settings ---- */
+  function setPage(patch) {
+    store.setPage(docId, patch);
+  }
+
+  /* the two toolbar menus close on an outside press, like the header one */
+  useEffect(() => {
+    if (!insertOpen && !styleOpen) return;
+    function onDown(e) {
+      if (insertOpen && insertRef.current && !insertRef.current.contains(e.target)) setInsertOpen(false);
+      if (styleOpen && styleRef.current && !styleRef.current.contains(e.target)) setStyleOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("touchstart", onDown); };
+  }, [insertOpen, styleOpen]);
+
   useEffect(() => {
     if (!apiRef) return;
     apiRef.current = {
@@ -529,6 +814,13 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           case "preview": switchMode("preview"); break;
           case "edit": switchMode("edit"); break;
           case "focus": setFocusMode((f) => !f); break;
+          case "outline": setOutlineOpen((o) => !o); break;
+          case "pagesetup": setSetupOpen((o) => !o); break;
+          case "pagebreak": insertPageBreak(); break;
+          case "footnote": insertFootnote(); break;
+          case "scene": insertScene(); break;
+          case "epigraph": setStyle("epigraph"); break;
+          case "notestyle": setStyle("note"); break;
           case "chapter": if (project) { const id = store.addChapter(project.id, rest); nav.doc(id); } break;
           case "export": if (project) nav.export(project.id, rest); break;
           default: return false;
@@ -543,20 +835,45 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 
   if (!doc) return <div className="app-shell"><div className="empty mono">{tl("doc_not_found")}</div></div>;
 
-  const tools = [
-    { g: [["bold","bold"],["italic","italic"],["underline","underline"],["strike","strike"]] },
-    { g: [["h1","h1"],["h2","h2"],["h3","h3"]] },
-    { g: [["quote","quote"],["ul","ul"],["ol","ol"],["hr","hr"]] },
-    { g: [["link","link"]] },
-  ];
+  /* The compact contextual toolbar — inline marks only. Anything a writer
+     reaches for once an hour lives behind "···" instead. */
+  const marks = [["bold", "bold"], ["italic", "italic"], ["underline", "underline"], ["strike", "strike"]];
+  const lists = [["quote", "quote"], ["ul", "ul"], ["ol", "ol"], ["link", "link"]];
+  const aligns = [["al-l", "al_left"], ["al-c", "al_center"], ["al-r", "al_right"], ["al-j", "al_just"]];
 
-  const FONT_MAP_FAMILY = { book: "var(--book)", article: "var(--book-alt)", mono: "var(--mono)" };
+  const headCtx = { title: project ? project.title : doc.title, chapter: doc.title, author: user.name || "" };
+  const paperStyle = {
+    width: geom.pageW, height: paperH,
+    "--ed-font": editorFontVar,
+    "--pg-font": geom.fontPx + "px",
+    "--pg-lead": page.leading,
+    "--pg-align": page.align === "justify" ? "justify" : page.align,
+    "--pg-indent": page.indent + "em",
+    "--pg-padl": page.padL + "em",
+    "--pg-padr": page.padR + "em",
+    "--pg-before": page.spaceBefore + "em",
+    "--pg-after": page.spaceAfter + "em",
+    "--pg-hyphens": page.hyphens ? "auto" : "manual",
+    "--pg-scale": geom.scale,
+  };
+
+  function runTool(cmd) {
+    if (cmd === "quote") block("blockquote");
+    else if (cmd === "strike") exec("strikeThrough");
+    else if (cmd === "ul") exec("insertUnorderedList");
+    else if (cmd === "ol") exec("insertOrderedList");
+    else if (cmd === "link") openLinkPopup();
+    else exec(cmd);
+    schedulePaginate(false);
+  }
 
   return (
-    <div className={"editor-root" + (focusMode ? " focus" : "")}>
+    <div className={"editor-root" + (focusMode ? " focus" : "") + (outlineOpen ? " with-outline" : "") + (setupOpen ? " with-setup" : "")}>
       <header className={"ed-head" + (renaming ? " ed-head--renaming" : "")}>
         <div className="ed-head-l">
           <button className="icon-btn" onClick={() => project ? nav.project(project.id) : nav.dashboard()} title={tl("ed_back")}><Icon name="back" size={18} /></button>
+          <button className={"icon-btn" + (outlineOpen ? " icon-btn--on" : "")} title={tl("ol_title")}
+            onClick={() => setOutlineOpen((o) => !o)}><Icon name="panel" size={18} /></button>
           <div className="ed-crumb">
             {project && <span className="ed-crumb-proj" onClick={() => nav.project(project.id)}>{project.title}</span>}
             {project && <span className="ed-crumb-sep mono">/</span>}
@@ -604,82 +921,137 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
         </div>
       </header>
 
-      <div className="ed-body">
-        <aside className={"ed-tools" + (mode !== "edit" ? " ed-tools--preview" : "")}
-          style={kbOffset > 0 ? { bottom: kbOffset } : undefined}>
-          {mode === "edit" && (
-            <div className="ed-tools-grp">
+      <div className={"ed-bar" + (mode !== "edit" ? " ed-bar--preview" : "")}
+        style={kbOffset > 0 ? { bottom: kbOffset } : undefined}>
+        {mode === "edit" && (
+          <>
+            <div className="ed-bar-grp">
               <button className="tool" title={tl("ed_undo")} disabled={!hist.undo}
-                onMouseDown={(e) => { e.preventDefault(); runHistory("undo"); }}>
-                <Icon name="undo" size={19} />
-              </button>
+                onMouseDown={(e) => { e.preventDefault(); runHistory("undo"); }}><Icon name="undo" size={18} /></button>
               <button className="tool" title={tl("ed_redo")} disabled={!hist.redo}
-                onMouseDown={(e) => { e.preventDefault(); runHistory("redo"); }}>
-                <Icon name="redo" size={19} />
-              </button>
+                onMouseDown={(e) => { e.preventDefault(); runHistory("redo"); }}><Icon name="redo" size={18} /></button>
             </div>
-          )}
-          {mode === "edit" && tools.map((grp, gi) => (
-            <div className="ed-tools-grp" key={gi}>
-              {grp.g.map(([icon, cmd]) => (
-                <button key={cmd} className={"tool" + (active[cmd] || active.block===cmd ? " on" : "")}
-                  title={cmd === "link" ? tl("ed_link") : cmd} onMouseDown={(e) => { e.preventDefault();
-                    if (["h1","h2","h3","quote"].includes(cmd)) block(cmd==="quote"?"blockquote":cmd);
-                    else if (cmd==="strike") exec("strikeThrough");
-                    else if (cmd==="ul") exec("insertUnorderedList");
-                    else if (cmd==="ol") exec("insertOrderedList");
-                    else if (cmd==="hr") exec("insertHorizontalRule");
-                    else if (cmd==="link") openLinkPopup();
-                    else exec(cmd); }}>
-                  <Icon name={icon} size={19} />
-                </button>
-              ))}
-            </div>
-          ))}
-          {mode === "edit" && (
-            <div className="ed-tools-grp ed-tools-fonts">
-              {["book","article","mono"].map((f) => (
-                <button key={f} className={"tool tool--font" + (user.editorFont===f?" on":"")}
-                  title={FONT_LABEL[f]}
-                  style={{ fontFamily: FONT_MAP_FAMILY[f], fontSize: 13, letterSpacing: f==="mono"?"-0.03em":"0.01em" }}
-                  onMouseDown={(e) => { e.preventDefault(); store.setUser({ editorFont: f }); }}>
-                  Aa
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="ed-tools-grp ed-tools-modes">
-            <button className={"tool tool--focusdot" + (focusMode?" on":"")} title={tl("focus_mode_btn")}
-              onClick={() => setFocusMode((f)=>!f)}>
-              <span className={"brand-dot-btn" + (focusMode?" active":"")} />
-            </button>
-          </div>
-          <div className="ed-tools-grp ed-tools-modetab">
-            <button className={"tool" + (mode==="edit"?" on":"")} title={tl("mode_edit")}
-              onMouseDown={(e) => { e.preventDefault(); switchMode("edit"); }}>
-              <Icon name="edit" size={18} />
-            </button>
-            <button className={"tool" + (mode==="preview"?" on":"")} title={tl("mode_preview")}
-              onMouseDown={(e) => { e.preventDefault(); switchMode("preview"); }}>
-              <Icon name="eye" size={18} />
-            </button>
-          </div>
-        </aside>
 
-        <div className="ed-scroll" ref={scrollRef}
+            <div className="ed-bar-grp ed-stylepick" ref={styleRef}>
+              <button className="ed-style-btn" onClick={() => { setStyleOpen((o) => !o); setInsertOpen(false); }}
+                title={tl("style_title")}>
+                <span className="ed-style-cur">{tl("style_" + (blockStyle || "p"))}</span>
+                <Icon name="chevron" size={13} />
+              </button>
+              {styleOpen && (
+                <div className="ed-menu ed-style-menu">
+                  {BLOCK_STYLES.map((k) => (
+                    <button key={k} className={blockStyle === k ? "on" : ""}
+                      onMouseDown={(e) => { e.preventDefault(); setStyle(k); }}>
+                      <span className={"style-pv style-pv--" + k}>Aa</span>
+                      <span className="style-name">{tl("style_" + k)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="ed-bar-grp">
+              {marks.map(([icon, cmd]) => (
+                <button key={cmd} className={"tool" + (active[cmd] ? " on" : "")} title={tl("tool_" + cmd)}
+                  onMouseDown={(e) => { e.preventDefault(); runTool(cmd); }}><Icon name={icon} size={18} /></button>
+              ))}
+            </div>
+
+            <div className="ed-bar-grp">
+              {lists.map(([icon, cmd]) => (
+                <button key={cmd} className={"tool" + (active[cmd] || active.block === (cmd === "quote" ? "blockquote" : cmd) ? " on" : "")}
+                  title={tl("tool_" + cmd)}
+                  onMouseDown={(e) => { e.preventDefault(); runTool(cmd); }}><Icon name={icon} size={18} /></button>
+              ))}
+            </div>
+
+            <div className="ed-bar-grp ed-insert" ref={insertRef}>
+              <button className={"tool" + (insertOpen ? " on" : "")} title={tl("ins_title")}
+                onClick={() => { setInsertOpen((o) => !o); setStyleOpen(false); }}><Icon name="more" size={18} /></button>
+              {insertOpen && (
+                <div className="ed-menu ed-insert-menu">
+                  <div className="ed-menu-lbl mono">{tl("ins_title")}</div>
+                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertFootnote(); }}>
+                    <Icon name="note" size={15} /> <span>{tl("ins_footnote")}</span></button>
+                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertPageBreak(); }}>
+                    <Icon name="book" size={15} /> <span>{tl("ins_pagebreak")}</span>
+                    <kbd className="mono">{FINE_POINTER ? "⌘⏎" : ""}</kbd></button>
+                  {project && (
+                    <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertScene(); }}>
+                      <Icon name="panel" size={15} /> <span>{tl("ins_scene")}</span></button>
+                  )}
+                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); exec("insertHorizontalRule"); }}>
+                    <Icon name="hr" size={15} /> <span>{tl("ins_hr")}</span></button>
+                  <div className="ed-menu-lbl mono">{tl("ins_align")}</div>
+                  <div className="ed-menu-aligns">
+                    {aligns.map(([cls, key]) => (
+                      <button key={cls} className="ed-align-b" title={tl(key)}
+                        onMouseDown={(e) => { e.preventDefault(); setAlign(cls); }}>
+                        <span className={"align-pv align-pv--" + cls} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        <div className="ed-bar-end">
+          {mode === "edit" && (
+            <button className={"tool" + (setupOpen ? " on" : "")} title={tl("pset_title")}
+              onClick={() => setSetupOpen((o) => !o)}><Icon name="settings" size={18} /></button>
+          )}
+          <button className={"tool tool--focusdot" + (focusMode ? " on" : "")} title={tl("focus_mode_btn")}
+            onClick={() => setFocusMode((f) => !f)}>
+            <span className={"brand-dot-btn" + (focusMode ? " active" : "")} />
+          </button>
+          <div className="ed-bar-modes">
+            <button className={"tool" + (mode === "edit" ? " on" : "")} title={tl("mode_edit")}
+              onMouseDown={(e) => { e.preventDefault(); switchMode("edit"); }}><Icon name="edit" size={17} /></button>
+            <button className={"tool" + (mode === "preview" ? " on" : "")} title={tl("mode_preview")}
+              onMouseDown={(e) => { e.preventDefault(); switchMode("preview"); }}><Icon name="eye" size={17} /></button>
+          </div>
+        </div>
+      </div>
+
+      <div className="ed-body">
+        {outlineOpen && (
+          <>
+            <div className="ed-scrim" onMouseDown={() => setOutlineOpen(false)} />
+            <OutlinePanel store={store} project={project} docId={docId} lang={lang} nav={nav}
+              onClose={() => setOutlineOpen(false)} onSceneJump={jumpToScene} currentSceneId={curScene}
+              onChapterContent={onOutlineContent} onToast={onToast} />
+          </>
+        )}
+
+        <div className="ed-scroll" ref={scrollRef} onScroll={onScroll}
           style={{ display: mode === "edit" ? "" : "none" }}>
-          <div className="sheet" style={{ "--ed-font": editorFontVar }}>
-            <div className="sheet-edge" />
+          <div className="ed-paper" ref={paperRef} style={paperStyle}>
+            <PageLayer pages={pages} geom={geom} pg={page} ctx={headCtx}
+              onFootnote={openFootnote} onMeasure={onFootnoteHeights} />
             <div ref={(el) => { ref.current = el; if (el) nodeRef.current = el; }}
               className="ed-area" contentEditable suppressContentEditableWarning
-              spellCheck={true} data-placeholder={tl("editor_placeholder")}
-              onInput={onInput} onKeyDown={onKeyDown} onKeyUp={onKeyUp}
+              spellCheck={true} lang={lang} data-placeholder={tl("editor_placeholder")}
+              style={{ top: geom.mt, left: geom.ml, width: geom.contentW }}
+              onInput={onInput} onKeyDown={onKeyDown} onKeyUp={onKeyUp} onClick={onAreaClick}
               onMouseUp={refreshActive} onFocus={refreshActive} />
           </div>
-          <div style={{ height: "120px" }} />
+          <div className="ed-tail" />
         </div>
+
         {mode === "preview" && (
           <BookPreview html={saved.current || doc.content} title={doc.title} edition={edition} lang={lang} />
+        )}
+
+        {setupOpen && mode === "edit" && (
+          <>
+            <div className="ed-scrim ed-scrim--setup" onMouseDown={() => setSetupOpen(false)} />
+            <PageSetupPanel page={page} lang={lang} editorFont={user.editorFont}
+              onFont={(f) => store.setUser({ editorFont: f })}
+              onChange={setPage} onClose={() => setSetupOpen(false)} />
+          </>
         )}
       </div>
 
@@ -689,6 +1061,8 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           {savedFlash && <span className="ed-foot-saved">{tl("saved_flash")}</span>}
         </div>
         <div className="ed-count mono">
+          <span className="ed-pageno">{tl("foot_page")} {curPage} / {pageCount}</span>
+          <span className="ed-foot-sep">·</span>
           <span className={"wc" + (savedFlash?" wc--saved":"")}>{wordsLabel(words, lang)}</span>
           {words > 0 && <><span className="ed-foot-sep">·</span><span>≈ {readMins} {tl("read_min")}</span></>}
         </div>
@@ -735,6 +1109,12 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           lang={lang}
         />
       )}
+      {fnEdit && (
+        <FootnotePopup n={fnEdit.n} text={fnEdit.text} anchor={fnEdit.anchor} lang={lang}
+          onApply={(text) => applyFootnote(fnEdit.id, text)}
+          onDelete={() => deleteFootnote(fnEdit.id)}
+          onClose={() => setFnEdit(null)} />
+      )}
       {linkPopup && (
         <LinkPopup href={linkPopup.href} anchor={linkPopup.anchor} lang={lang}
           onApply={applyLink} onClose={() => setLinkPopup(null)} />
@@ -759,7 +1139,8 @@ function LinkPopup({ href, anchor, lang, onApply, onClose }) {
     let left = anchor.x - w / 2;
     left = Math.max(margin, Math.min(left, window.innerWidth - w - margin));
     let top = anchor.y + 10;
-    if (top + h + margin > window.innerHeight) top = Math.max(margin, anchor.y - h - 10);
+    if (top + h + margin > window.innerHeight) top = anchor.y - h - 10;
+    top = Math.max(margin, Math.min(top, window.innerHeight - h - margin));
     setStyle({ left, top, opacity: 1 });
   }, [anchor]);
   return (

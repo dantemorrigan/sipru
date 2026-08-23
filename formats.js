@@ -5,9 +5,21 @@
 (function () {
 
   /* ---------------- shared ---------------- */
-  const BLOCKS = ["p","br","h1","h2","h3","blockquote","ul","ol","li","hr"];
-  const INLINE = ["strong","b","em","i","u","s","strike"];
+  const BLOCKS = ["p","br","h1","h2","h3","blockquote","ul","ol","li","hr",
+    "figure","figcaption","aside"];
+  const INLINE = ["strong","b","em","i","u","s","strike","sup"];
   const ALLOWED = new Set(BLOCKS.concat(INLINE));
+  /* The only attributes that ever survive a sanitise: the handful of marker
+     classes and data-* keys the editor uses to tell its own block types
+     apart. Everything else — style, href, on*, id — is still dropped. */
+  const CLASS_OK = new Set(["epigraph","note","page-break","scene-sep","fn","fn-defs",
+    "al-l","al-c","al-r","al-j"]);
+  const DATA_OK = ["data-fn","data-t","data-s","data-id"];
+  function keepMarkers(src, el) {
+    const cls = (src.getAttribute("class") || "").split(/\s+/).filter((c) => CLASS_OK.has(c));
+    if (cls.length) el.setAttribute("class", cls.join(" "));
+    DATA_OK.forEach((k) => { if (src.hasAttribute(k)) el.setAttribute(k, src.getAttribute(k)); });
+  }
 
   const esc = (s) => String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -29,9 +41,13 @@
         const tag = n.tagName.toLowerCase();
         if (tag === "script" || tag === "style" || tag === "iframe" ||
             tag === "object" || tag === "embed" || tag === "svg" || tag === "template") return;
-        if (!ALLOWED.has(tag)) { walk(n, into); return; }        // unwrap unknown tags
+        /* a <div> only survives as the footnote store; every other one is
+           unwrapped exactly as it always was */
+        const isFnBox = tag === "div" && (n.getAttribute("class") || "").indexOf("fn-defs") >= 0;
+        if (!ALLOWED.has(tag) && !isFnBox) { walk(n, into); return; }   // unwrap unknown tags
         const norm = tag === "strike" ? "s" : tag;
         const el = document.createElement(norm);
+        keepMarkers(n, el);
         into.appendChild(el);
         if (norm !== "br" && norm !== "hr") walk(n, el);
       });
@@ -88,7 +104,7 @@
      The link URL allows one level of nested parens — real URLs (Wikipedia
      disambiguation pages, for one) routinely have them, and a bare "(1)"
      shouldn't truncate the match at its first close-paren. */
-  const INLINE_TOKEN = /\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|<u>([\s\S]*?)<\/u>|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_/;
+  const INLINE_TOKEN = /\[\^([^\]\s]+)\]|\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|<u>([\s\S]*?)<\/u>|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_/;
   function mdInline(raw) {
     let s = String(raw == null ? "" : raw);
     let out = "";
@@ -97,31 +113,90 @@
       if (!m) { out += esc(s); break; }
       out += esc(s.slice(0, m.index));
       if (m[1] !== undefined) {
-        const href = safeHref(m[2]);
-        out += href ? ('<a href="' + esc(href) + '">' + mdInline(m[1]) + "</a>") : mdInline(m[1]);
-      } else if (m[3] !== undefined) out += "<strong><em>" + mdInline(m[3]) + "</em></strong>";
-      else if (m[4] !== undefined) out += "<strong>" + mdInline(m[4]) + "</strong>";
-      else if (m[5] !== undefined) out += "<u>" + mdInline(m[5]) + "</u>";
-      else if (m[6] !== undefined) out += "<s>" + mdInline(m[6]) + "</s>";
-      else out += "<em>" + mdInline(m[7] !== undefined ? m[7] : m[8]) + "</em>";
+        /* [^1] — a footnote reference; the number is re-derived from
+           document order when the editor opens it, so any label works */
+        out += '<sup class="fn" data-fn="fn_' + esc(m[1]) + '">' + esc(m[1]) + "</sup>";
+      } else if (m[2] !== undefined) {
+        const href = safeHref(m[3]);
+        out += href ? ('<a href="' + esc(href) + '">' + mdInline(m[2]) + "</a>") : mdInline(m[2]);
+      } else if (m[4] !== undefined) out += "<strong><em>" + mdInline(m[4]) + "</em></strong>";
+      else if (m[5] !== undefined) out += "<strong>" + mdInline(m[5]) + "</strong>";
+      else if (m[6] !== undefined) out += "<u>" + mdInline(m[6]) + "</u>";
+      else if (m[7] !== undefined) out += "<s>" + mdInline(m[7]) + "</s>";
+      else out += "<em>" + mdInline(m[8] !== undefined ? m[8] : m[9]) + "</em>";
       s = s.slice(m.index + m[0].length);
     }
     return out;
   }
   function mdInlineTop(raw) { return restoreEscapes(mdInline(protectEscapes(raw))); }
 
+  /* Sipru's own block types travel through markdown as readable markers, so
+     a vault file stays hand-editable and a round-trip through disk loses
+     nothing:
+
+       <!-- page-break -->            a forced page break
+       <!-- scene: Title | draft -->  a scene separator
+       ::: epigraph … -- author :::   an epigraph block
+       ::: note … :::                 a note block
+       text[^1] / [^1]: note text     footnotes (standard markdown)
+       <p class="al-c">…</p>          a paragraph with its own alignment  */
+  const ALIGN_LINE = /^<p class="al-(l|c|r|j)">([\s\S]*)<\/p>$/;
   function mdToHTML(md) {
     const lines = String(md || "").replace(/\r\n?/g, "\n").split("\n");
-    let out = "", list = null, para = [], quote = [];
+    let out = "", list = null, para = [], quote = [], fence = null, fenceLines = [];
+    const notes = [];
     const flushPara = () => { if (para.length) { out += "<p>" + para.map(mdInlineTop).join("<br>") + "</p>"; para = []; } };
     const flushQuote = () => { if (quote.length) { out += "<blockquote>" + quote.map(mdInlineTop).join("<br>") + "</blockquote>"; quote = []; } };
     const flushList = () => { if (list) { out += "<" + list.tag + ">" + list.items.map((i) => "<li>" + mdInlineTop(i) + "</li>").join("") + "</" + list.tag + ">"; list = null; } };
     const flushAll = () => { flushPara(); flushQuote(); flushList(); };
+    const flushFence = () => {
+      if (!fence) return;
+      const body = fenceLines.filter((l) => l.trim() !== "");
+      fenceLines = [];
+      if (fence === "epigraph") {
+        let author = "";
+        if (body.length && /^\s*(--|—)\s*/.test(body[body.length - 1])) {
+          author = body.pop().replace(/^\s*(--|—)\s*/, "");
+        }
+        out += '<figure class="epigraph"><blockquote>' + body.map(mdInlineTop).join("<br>") +
+          "</blockquote><figcaption>" + mdInlineTop(author) + "</figcaption></figure>";
+      } else {
+        out += '<aside class="note">' + body.map(mdInlineTop).join("<br>") + "</aside>";
+      }
+      fence = null;
+    };
 
     lines.forEach((raw) => {
       const line = raw.replace(/\s+$/, "");
-      if (!line.trim()) { flushAll(); return; }
+      if (fence) {
+        if (/^:::\s*$/.test(line.trim())) flushFence();
+        else fenceLines.push(line);
+        return;
+      }
       let m;
+      if ((m = line.match(/^:::\s*(epigraph|note)\s*$/))) { flushAll(); fence = m[1]; return; }
+      if (/^<!--\s*page-break\s*-->$/.test(line.trim())) { flushAll(); out += '<hr class="page-break">'; return; }
+      if ((m = line.trim().match(/^<!--\s*scene:\s*([\s\S]*?)\s*-->$/))) {
+        flushAll();
+        const bits = m[1].split("|");
+        const title = (bits[0] || "").trim();
+        const st = (bits[1] || "draft").trim();
+        out += '<hr class="scene-sep" data-t="' + esc(title).replace(/"/g, "&quot;") +
+          '" data-s="' + esc(st).replace(/"/g, "&quot;") + '" data-id="s_' +
+          Math.random().toString(36).slice(2, 9) + '">';
+        return;
+      }
+      if ((m = line.match(/^\[\^([^\]\s]+)\]:\s*([\s\S]*)$/))) {
+        flushAll();
+        notes.push({ id: m[1], text: m[2] });
+        return;
+      }
+      if ((m = line.match(ALIGN_LINE))) {
+        flushAll();
+        out += '<p class="al-' + m[1] + '">' + mdInlineTop(m[2]) + "</p>";
+        return;
+      }
+      if (!line.trim()) { flushAll(); return; }
       if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { flushAll(); out += "<h" + m[1].length + ">" + mdInlineTop(m[2]) + "</h" + m[1].length + ">"; return; }
       if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) { flushAll(); out += "<hr>"; return; }
       if ((m = line.match(/^>\s?(.*)$/))) { flushPara(); flushList(); quote.push(m[1]); return; }
@@ -134,7 +209,12 @@
       flushQuote(); flushList();
       para.push(line);
     });
+    flushFence();
     flushAll();
+    if (notes.length) {
+      out += '<div class="fn-defs">' + notes.map((n) =>
+        '<p data-fn="fn_' + esc(n.id).replace(/"/g, "&quot;") + '">' + esc(n.text) + "</p>").join("") + "</div>";
+    }
     return out || "<p></p>";
   }
 
@@ -260,6 +340,7 @@
       const tag = n.tagName.toLowerCase();
       if (tag === "br") { runs.push({ br: true }); return; }
       const next = { ...fmt };
+      if (tag === "sup") next.sup = true;
       if (tag === "strong" || tag === "b") next.b = true;
       if (tag === "em" || tag === "i") next.i = true;
       if (tag === "u") next.u = true;
@@ -275,6 +356,7 @@
     if (r.i) rpr += "<w:i/>";
     if (r.u) rpr += '<w:u w:val="single"/>';
     if (r.s) rpr += "<w:strike/>";
+    if (r.sup) rpr += '<w:vertAlign w:val="superscript"/>';
     return "<w:r>" + (rpr ? "<w:rPr>" + rpr + "</w:rPr>" : "") +
       '<w:t xml:space="preserve">' + esc(r.text) + "</w:t></w:r>";
   }
@@ -303,10 +385,26 @@
         }
         if (n.nodeType !== 1) return;
         const tag = n.tagName.toLowerCase();
+        const cls = n.getAttribute ? (n.getAttribute("class") || "") : "";
+        if (tag === "div" && cls.indexOf("fn-defs") >= 0) return;   /* collected separately */
         if (tag === "h1") emit(n, "Heading1");
         else if (tag === "h2") emit(n, "Heading2");
         else if (tag === "h3") emit(n, "Heading3");
         else if (tag === "blockquote") emit(n, "Quote");
+        else if (tag === "figure" && cls.indexOf("epigraph") >= 0) {
+          const body = n.querySelector("blockquote");
+          const cap = n.querySelector("figcaption");
+          if (body) emit(body, "Epigraph");
+          if (cap && (cap.textContent || "").trim()) {
+            out.push(paraXML([{ text: "— " + cap.textContent.trim(), i: true }], "EpigraphBy"));
+          }
+        }
+        else if (tag === "aside" && cls.indexOf("note") >= 0) emit(n, "NoteBlock");
+        else if (tag === "hr" && cls.indexOf("page-break") >= 0) out.push(PAGE_BREAK);
+        else if (tag === "hr" && cls.indexOf("scene-sep") >= 0) {
+          const t = n.getAttribute("data-t");
+          out.push(paraXML([{ text: t ? t : "* * *" }], "Separator"));
+        }
         else if (tag === "hr") out.push(paraXML([{ text: "* * *" }], "Separator"));
         else if (tag === "ul" || tag === "ol") {
           const numId = tag === "ul" ? 1 : 2;
@@ -317,6 +415,16 @@
       });
     };
     walk(holder);
+    /* Word's own footnote part is a different document altogether; the
+       notes are written out as a numbered block at the end of the chapter
+       instead, keeping their numbers and their text. */
+    const box = holder.querySelector(".fn-defs");
+    if (box && box.children.length) {
+      out.push(paraXML([{ text: "" }], "Separator"));
+      Array.prototype.forEach.call(box.children, (def, i) => {
+        out.push(paraXML([{ text: (i + 1) + ". " + (def.textContent || "") }], "NoteBlock"));
+      });
+    }
     return out;
   }
 
@@ -362,8 +470,19 @@
       '<w:pPr><w:jc w:val="center"/><w:spacing w:after="240"/></w:pPr><w:rPr><w:i/></w:rPr></w:style>' +
       '<w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/><w:basedOn w:val="Normal"/><w:qFormat/>' +
       '<w:pPr><w:ind w:left="720" w:right="720"/></w:pPr><w:rPr><w:i/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Epigraph"><w:name w:val="Epigraph"/><w:basedOn w:val="Normal"/>' +
+      '<w:pPr><w:ind w:left="1440"/><w:jc w:val="right"/><w:spacing w:before="240" w:after="60"/></w:pPr>' +
+      '<w:rPr><w:i/><w:sz w:val="22"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="EpigraphBy"><w:name w:val="Epigraph By"/><w:basedOn w:val="Normal"/>' +
+      '<w:pPr><w:ind w:left="1440"/><w:jc w:val="right"/><w:spacing w:after="240"/></w:pPr>' +
+      '<w:rPr><w:sz w:val="20"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="NoteBlock"><w:name w:val="Note"/><w:basedOn w:val="Normal"/>' +
+      '<w:pPr><w:ind w:left="360"/><w:spacing w:before="120" w:after="120"/></w:pPr>' +
+      '<w:rPr><w:sz w:val="20"/></w:rPr></w:style>' +
       '<w:style w:type="paragraph" w:styleId="Separator"><w:name w:val="Separator"/><w:basedOn w:val="Normal"/>' +
       '<w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="240"/></w:pPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="RunHead"><w:name w:val="Running Head"/><w:basedOn w:val="Normal"/>' +
+      '<w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:sz w:val="18"/></w:rPr></w:style>' +
       '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/>' +
       '<w:pPr><w:ind w:left="720"/><w:spacing w:after="60"/></w:pPr></w:style>' +
       '</w:styles>';
@@ -392,12 +511,58 @@
   const DOCX_FONTS = { book: "Newsreader", article: "Spectral", mono: "JetBrains Mono" };
   const PAGE_BREAK = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
 
+  /* ---- running heads ----
+     Word draws its own headers and footers, so the editor's page setup
+     carries over literally: the same slots, the same first-page rule, the
+     same even/odd mirroring, and real PAGE / STYLEREF fields rather than
+     text frozen at export time. */
+  const MM_TO_TW = 1440 / 25.4;
+  const HF_NS = ' xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"' +
+    ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  function fieldRun(instr) {
+    return '<w:fldSimple w:instr="' + esc(instr) + '"><w:r><w:t>1</w:t></w:r></w:fldSimple>';
+  }
+  function slotXML(value, ctx) {
+    if (!value) return "";
+    if (value === "page") return fieldRun(" PAGE ");
+    if (value === "pages") return fieldRun(" PAGE ") + '<w:r><w:t xml:space="preserve"> / </w:t></w:r>' + fieldRun(" NUMPAGES ");
+    if (value === "chapter") return fieldRun(' STYLEREF "heading 1" \\* MERGEFORMAT ');
+    const text = value === "title" ? (ctx.title || "") : value === "author" ? (ctx.author || "") : String(value);
+    return text ? '<w:r><w:t xml:space="preserve">' + esc(text) + "</w:t></w:r>" : "";
+  }
+  function hfPartXML(tag, slots, ctx, width) {
+    const centre = Math.round(width / 2), right = width;
+    const pPr = '<w:pPr><w:pStyle w:val="RunHead"/><w:tabs>' +
+      '<w:tab w:val="center" w:pos="' + centre + '"/><w:tab w:val="right" w:pos="' + right + '"/>' +
+      "</w:tabs></w:pPr>";
+    const body = slotXML(slots.l, ctx) + "<w:r><w:tab/></w:r>" +
+      slotXML(slots.c, ctx) + "<w:r><w:tab/></w:r>" + slotXML(slots.r, ctx);
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      "<w:" + tag + HF_NS + "><w:p>" + pPr + body + "</w:p></w:" + tag + ">";
+  }
+
   /* opts: { title, subtitle, sections: [{ heading?, html, pageBreakBefore? }],
-             paperSize, margin, font }                                        */
+             paperSize, margin, font, page? }
+     `page` is the editor's resolved page setup — when present it decides
+     the sheet, the margins and the running heads; without it the export
+     behaves exactly as it did before.                                     */
   function buildDocx(opts) {
     const o = opts || {};
-    const size = PAGE_SIZES[o.paperSize] || PAGE_SIZES.a4;
-    const mg = PAGE_MARGINS[o.margin] != null ? PAGE_MARGINS[o.margin] : PAGE_MARGINS.normal;
+    const pg = o.page || null;
+    let size = PAGE_SIZES[o.paperSize] || PAGE_SIZES.a4;
+    let mgT, mgR, mgB, mgL;
+    if (PAGE_MARGINS[o.margin] != null) { mgT = mgR = mgB = mgL = PAGE_MARGINS[o.margin]; }
+    else { mgT = mgR = mgB = mgL = PAGE_MARGINS.normal; }
+    if (pg) {
+      const d = (pg.size === "custom") ? { w: pg.w, h: pg.h }
+        : ({ a4: { w: 210, h: 297 }, a5: { w: 148, h: 210 },
+             letter: { w: 215.9, h: 279.4 }, legal: { w: 215.9, h: 355.6 } }[pg.size] || { w: 210, h: 297 });
+      const dim = pg.orient === "landscape" ? { w: d.h, h: d.w } : d;
+      size = { w: Math.round(dim.w * MM_TO_TW), h: Math.round(dim.h * MM_TO_TW) };
+      mgT = Math.round(pg.mt * MM_TO_TW); mgR = Math.round(pg.mr * MM_TO_TW);
+      mgB = Math.round(pg.mb * MM_TO_TW); mgL = Math.round(pg.ml * MM_TO_TW);
+    }
+
     let body = "";
     if (o.title) {
       body += paraXML([{ text: o.title }], "Title");
@@ -410,21 +575,69 @@
     });
     if (!body) body = paraXML([{ text: "" }], null);
 
+    /* header / footer parts */
+    const files = [];
+    const rels = [
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>',
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>',
+      '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>',
+    ];
+    const overrides = [];
+    let refs = "";
+    let rid = 4;
+    const ctx = { title: o.title || o.bookTitle || "", author: o.author || "" };
+    const width = size.w - mgL - mgR;
+    if (pg) {
+      [["hdr", "hdr", "header"], ["ftr", "ftr", "footer"]].forEach(([key, , kind]) => {
+        const band = pg[key];
+        if (!band || !band.on) return;
+        const bands = [{ type: "default", slots: band }];
+        if (pg.firstBare) bands.push({ type: "first", slots: { l: "", c: "", r: "" } });
+        if (pg.mirror) bands.push({ type: "even", slots: { l: band.r, c: band.c, r: band.l } });
+        bands.forEach((b) => {
+          const name = kind + rid + ".xml";
+          files.push({ name: "word/" + name, data: hfPartXML(kind, b.slots, ctx, width) });
+          rels.push('<Relationship Id="rId' + rid + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/' +
+            kind + '" Target="' + name + '"/>');
+          overrides.push('<Override PartName="/word/' + name + '" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.' +
+            kind + '+xml"/>');
+          refs += "<w:" + kind + 'Reference w:type="' + b.type + '" r:id="rId' + rid + '"/>';
+          rid++;
+        });
+      });
+    }
+
+    const sectPr = "<w:sectPr>" + refs +
+      '<w:pgSz w:w="' + size.w + '" w:h="' + size.h + '"' + (pg && pg.orient === "landscape" ? ' w:orient="landscape"' : "") + "/>" +
+      '<w:pgMar w:top="' + mgT + '" w:right="' + mgR + '" w:bottom="' + mgB + '" w:left="' + mgL +
+      '" w:header="' + Math.round(mgT / 2) + '" w:footer="' + Math.round(mgB / 2) + '"/>' +
+      (pg && pg.numFrom > 1 ? '<w:pgNumType w:start="' + Math.round(pg.numFrom) + '"/>' : "") +
+      (pg && pg.firstBare ? "<w:titlePg/>" : "") +
+      "</w:sectPr>";
+
     const document_xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
-      "<w:body>" + body +
-      '<w:sectPr><w:pgSz w:w="' + size.w + '" w:h="' + size.h + '"/>' +
-      '<w:pgMar w:top="' + mg + '" w:right="' + mg + '" w:bottom="' + mg + '" w:left="' + mg + '"/></w:sectPr>' +
-      "</w:body></w:document>";
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"' +
+      ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      "<w:body>" + body + sectPr + "</w:body></w:document>";
+
+    const settings_xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      (pg && pg.mirror ? "<w:evenAndOddHeaders/>" : "") + "</w:settings>";
 
     return zip([
-      { name: "[Content_Types].xml", data: CONTENT_TYPES },
+      { name: "[Content_Types].xml", data: CONTENT_TYPES.replace("</Types>",
+        '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' +
+        overrides.join("") + "</Types>") },
       { name: "_rels/.rels", data: RELS },
       { name: "word/document.xml", data: document_xml },
-      { name: "word/_rels/document.xml.rels", data: DOC_RELS },
+      { name: "word/_rels/document.xml.rels", data:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        rels.join("") + "</Relationships>" },
+      { name: "word/settings.xml", data: settings_xml },
       { name: "word/styles.xml", data: stylesXML(DOCX_FONTS[o.font] || DOCX_FONTS.book) },
       { name: "word/numbering.xml", data: NUMBERING },
-    ]);
+    ].concat(files));
   }
 
   const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

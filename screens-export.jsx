@@ -11,7 +11,9 @@ function BookPreview({ html, title, edition, lang }) {
 
   const { headings, htmlWithIds } = useMemo(() => {
     const div = document.createElement("div");
-    div.innerHTML = html || "";
+    /* the preview is a reading view: footnote definitions come out of the
+       flow and are set under the text, numbered */
+    div.innerHTML = chapterBody(html || "");
     const hs = [];
     let idx = 0;
     div.querySelectorAll("h1, h2, h3").forEach((el) => {
@@ -89,7 +91,14 @@ function BookPreview({ html, title, edition, lang }) {
 /* ---- html → plain / markdown ---- */
 function htmlToText(html) {
   const d = document.createElement("div"); d.innerHTML = html || "";
-  return (d.textContent || "").replace(/\n{3,}/g, "\n\n").trim();
+  const box = d.querySelector(".fn-defs");
+  let tail = "";
+  if (box) {
+    const notes = Array.prototype.map.call(box.children, (def, i) => (i + 1) + ". " + (def.textContent || ""));
+    box.remove();
+    if (notes.length) tail = "\n\n---\n" + notes.join("\n");
+  }
+  return ((d.textContent || "") + tail).replace(/\n{3,}/g, "\n\n").trim();
 }
 /* A literal *, _, ~, [, ] in prose would otherwise be misread as markup by
    mdToHTML (formats.js) on the way back in — escape it so the vault's md
@@ -112,6 +121,10 @@ function inlineToMd(node) {
     if (n.nodeType !== 1) return;
     const t = n.tagName.toLowerCase();
     if (t === "br") { out += "  \n"; return; }
+    if (t === "sup" && n.classList && n.classList.contains("fn")) {
+      out += "[^" + (n.textContent || "").trim() + "]";
+      return;
+    }
     const inner = inlineToMd(n);
     if (t === "strong" || t === "b") out += "**" + inner + "**";
     else if (t === "em" || t === "i") out += "*" + inner + "*";
@@ -126,11 +139,42 @@ function inlineToMd(node) {
 function htmlToMd(html) {
   const d = document.createElement("div"); d.innerHTML = html || "";
   let out = "";
+  /* Footnote definitions leave the flow and come back as standard
+     markdown definitions at the end of the file. */
+  const notes = [];
+  const box = d.querySelector(".fn-defs");
+  if (box) {
+    Array.prototype.forEach.call(box.children, (def) => notes.push((def.textContent || "").replace(/\s*\n\s*/g, " ")));
+    box.remove();
+  }
   d.childNodes.forEach((n) => {
     if (n.nodeType === 3) { out += mdEscapeText(n.textContent); return; }
     const t = n.tagName ? n.tagName.toLowerCase() : "";
+    const cls = n.getAttribute ? (n.getAttribute("class") || "") : "";
+    if (t === "hr" && cls.indexOf("page-break") >= 0) { out += "\n<!-- page-break -->\n\n"; return; }
+    if (t === "hr" && cls.indexOf("scene-sep") >= 0) {
+      out += "\n<!-- scene: " + (n.getAttribute("data-t") || "").replace(/[|\-]{2,}|-->/g, " ") +
+        " | " + (n.getAttribute("data-s") || "draft") + " -->\n\n";
+      return;
+    }
+    if (t === "figure" && cls.indexOf("epigraph") >= 0) {
+      const body = n.querySelector("blockquote");
+      const cap = n.querySelector("figcaption");
+      const text = body ? inlineToMd(body) : "";
+      const author = cap ? inlineToMd(cap) : "";
+      if (!text.trim() && !author.trim()) return;
+      out += "\n::: epigraph\n" + text + "\n" + (author.trim() ? "-- " + author + "\n" : "") + ":::\n\n";
+      return;
+    }
+    if (t === "aside" && cls.indexOf("note") >= 0) {
+      const text = inlineToMd(n);
+      if (!text.trim()) return;
+      out += "\n::: note\n" + text + "\n:::\n\n";
+      return;
+    }
     const txt = inlineToMd(n);
     if (!txt.trim() && t !== "hr") return;
+    const al = cls.match(/\bal-(l|c|r|j)\b/);
     if (t === "h1") out += "\n# " + txt + "\n\n";
     else if (t === "h2") out += "\n## " + txt + "\n\n";
     else if (t === "h3") out += "\n### " + txt + "\n\n";
@@ -138,9 +182,28 @@ function htmlToMd(html) {
     else if (t === "hr") out += "\n---\n\n";
     else if (t === "ul") n.querySelectorAll("li").forEach((li) => out += "- " + inlineToMd(li) + "\n"), out += "\n";
     else if (t === "ol") { let i = 1; n.querySelectorAll("li").forEach((li) => out += (i++) + ". " + inlineToMd(li) + "\n"); out += "\n"; }
+    else if (t === "p" && al) out += '<p class="al-' + al[1] + '">' + txt.replace(/\n/g, " ") + "</p>\n\n";
     else out += txt + "\n\n";
   });
-  return out.replace(/\n{3,}/g, "\n\n").trim();
+  out = out.replace(/\n{3,}/g, "\n\n").trim();
+  if (notes.length) {
+    out += "\n\n" + notes.map((text, i) => "[^" + (i + 1) + "]: " + text).join("\n");
+  }
+  return out;
+}
+
+/* The footnote store is not prose: a plain-text export lists the notes
+   under the text, numbered, instead of running them into the last
+   paragraph. */
+function splitNotes(html) {
+  const d = document.createElement("div"); d.innerHTML = html || "";
+  const box = d.querySelector(".fn-defs");
+  const notes = [];
+  if (box) {
+    Array.prototype.forEach.call(box.children, (def) => notes.push(def.textContent || ""));
+    box.remove();
+  }
+  return { html: d.innerHTML, notes };
 }
 
 /* Print-to-PDF.
@@ -205,6 +268,40 @@ function downloadBlob(name, mime, content) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
+/* Styling shared by every HTML/PDF export so an epigraph, a note, a
+   footnote, a scene break and a forced page break look — and paginate —
+   the way they do in the editor. */
+const BLOCK_CSS = `
+    sup.fn { font-size: .68em; vertical-align: super; line-height: 0; color: #c2542f; }
+    .fn-defs { display: none; }
+    .b-notes { margin: 1.8em 0 0; padding: .9em 0 0 1.4em; border-top: 1px solid #e2ddcf;
+      font-size: 9.5pt; line-height: 1.45; color: #5c564a; }
+    .b-notes li { margin-bottom: .3em; text-align: left; text-indent: 0; }
+    figure.epigraph { margin: 1.8em 0 2em auto; max-width: 24em; font-style: italic; color: #5c564a; }
+    figure.epigraph blockquote { margin: 0; font-style: italic; color: inherit; text-align: right; }
+    figure.epigraph figcaption { margin-top: .45em; text-align: right; font-style: normal;
+      font-size: .86em; letter-spacing: .02em; color: #8a8474; }
+    aside.note { margin: 1.3em 0; padding: .55em 0 .55em .95em; border-left: 2px solid #ddd7c8;
+      font-size: .92em; color: #5c564a; text-indent: 0; }
+    hr.page-break { border: none; height: 0; margin: 0; page-break-after: always; break-after: page; }
+    hr.page-break::after { content: none; }
+    hr.scene-sep { border: none; text-align: center; margin: 1.7em 0; }
+    hr.scene-sep::after { content: "· · ·"; color: #b9b2a1; letter-spacing: .2em; }
+    p.al-l { text-align: left; } p.al-j { text-align: justify; }
+    p.al-c { text-align: center; text-indent: 0; } p.al-r { text-align: right; text-indent: 0; }
+`;
+
+/* Footnote definitions live hidden inside the text; on the way out they
+   become a numbered block under the chapter they belong to. */
+function escText(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function chapterBody(html) {
+  const { html: body, notes } = splitNotes(html);
+  if (!notes.length) return body;
+  return body + '<ol class="b-notes">' + notes.map((n) => "<li>" + escText(n) + "</li>").join("") + "</ol>";
+}
+
 const MARGINS = { narrow: "14mm", normal: "22mm", wide: "32mm" };
 const SCREEN_PADS = { narrow: "12px", normal: "28px", wide: "60px" };
 const PAPER = {
@@ -217,6 +314,10 @@ const PAPER = {
 
 function buildBookHTML(project, opts) {
   const chapters = project.chapters.filter((c) => opts.include[c.id] !== false);
+  /* The book's own typography (first line, alignment, paragraph spacing)
+     comes from page setup; the sheet and margins stay the export modal's
+     explicit choice, exactly as before. */
+  const pg = opts.page || null;
   const fontStack = opts.font === "mono"
     ? "'JetBrains Mono', monospace"
     : opts.font === "article" ? "'Spectral', Georgia, serif" : "'Newsreader', Georgia, serif";
@@ -228,7 +329,7 @@ function buildBookHTML(project, opts) {
     body += `<section class="b-toc"><h2>${t("toc_title", opts.lang || "ru")}</h2><ol>${chapters.map((c) => `<li><span>${c.title}</span></li>`).join("")}</ol></section>`;
   }
   chapters.forEach((c, i) => {
-    body += `<section class="b-chap${opts.merge ? " merged" : ""}">${c.content || ""}</section>`;
+    body += `<section class="b-chap${opts.merge ? " merged" : ""}">${chapterBody(c.content || "")}</section>`;
   });
   return `<!doctype html><html><head><meta charset="utf-8"><title>${project.title}</title>
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,600;1,400&family=Spectral:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
@@ -244,12 +345,13 @@ function buildBookHTML(project, opts) {
     h1 { font-size: 21pt; font-weight: 600; margin: 0 0 .8em; letter-spacing: -.01em; }
     h2 { font-size: 15pt; font-weight: 600; margin: 1.3em 0 .4em; }
     h3 { font-size: 12.5pt; font-weight: 600; margin: 1.1em 0 .3em; }
-    p { margin: 0; text-indent: 1.5em; text-align: justify; }
+    p { margin: 0 0 ${pg ? pg.spaceAfter : 0}em; text-indent: ${pg ? pg.indent : 1.5}em; text-align: ${pg ? (pg.align === "justify" ? "justify" : pg.align) : "justify"}; }
     h1 + p, h2 + p, h3 + p, blockquote + p, ul + p, ol + p, hr + p, p:first-child { text-indent: 0; }
     blockquote { margin: 1.1em 1.6em; font-style: italic; color: #555; }
     ul, ol { padding-left: 1.5em; margin: .4em 0; } li { margin-bottom: .3em; text-align: left; }
     hr { border: none; text-align: center; margin: 1.6em 0; }
     hr:after { content: "✶"; color: #c2542f; }
+${BLOCK_CSS}
     /* on-screen preview: a single clean, centred book column */
     @media screen {
       body { padding: 60px 0 80px; }
@@ -301,6 +403,7 @@ function buildBookDocx(project, opts) {
     title: opts.titlePage ? project.title : "",
     subtitle: opts.titlePage ? (project.synopsis || "") : "",
     sections, paperSize: opts.paperSize, margin: opts.margin, font: opts.font,
+    page: opts.page || null, bookTitle: project.title, author: opts.author || "",
   });
 }
 
@@ -318,36 +421,40 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
   const set = (patch) => setOpts((o) => ({ ...o, ...patch }));
   if (!project) return null;
 
-  const previewHTML = useMemo(() => buildBookHTML(project, opts), [project, opts]);
+  /* Page setup travels with the export: typography in the HTML/PDF build,
+     and real running heads in the .docx one. */
+  const page = store.resolvePage(project.page);
+  const eopts = { ...opts, page, author: (store.get().user && store.get().user.name) || "" };
+  const previewHTML = useMemo(() => buildBookHTML(project, eopts), [project, opts, JSON.stringify(page)]);
   const included = project.chapters.filter((c) => opts.include[c.id] !== false).length;
 
   function doExport(fmt) {
     const base = project.title.replace(/[^\wа-яёА-ЯЁ\- ]+/gi, "").trim() || "book";
     if (fmt === "pdf") {
       if (window.__TAURI__) {
-        if (printHTML(buildBookHTML(project, opts))) { onToast(tl("exp_toast_pdf")); return; }
+        if (printHTML(buildBookHTML(project, eopts))) { onToast(tl("exp_toast_pdf")); return; }
         /* No print pipeline available — hand over the print-ready HTML
            through the native picker rather than doing nothing at all. */
-        downloadBlob(base + ".html", "text/html;charset=utf-8", buildBookHTML(project, opts));
+        downloadBlob(base + ".html", "text/html;charset=utf-8", buildBookHTML(project, eopts));
         onToast(tl("exp_toast_pdf_tauri"));
         return;
       }
       const w = window.open("", "_blank");
       if (!w) { onToast(tl("exp_err_popup")); return; }
-      w.document.write(buildBookHTML(project, opts));
+      w.document.write(buildBookHTML(project, eopts));
       w.document.close();
       setTimeout(() => { w.focus(); w.print(); }, 700);
       onToast(tl("exp_toast_pdf"));
     } else if (fmt === "docx") {
       try {
-        downloadBlob(base + ".docx", SipruFormats.DOCX_MIME, buildBookDocx(project, opts));
+        downloadBlob(base + ".docx", SipruFormats.DOCX_MIME, buildBookDocx(project, eopts));
         onToast(tl("exp_toast_docx_real"));
       } catch (e) { onToast(tl("exp_err_docx")); }
     } else if (fmt === "txt") {
-      downloadBlob(base + ".txt", "text/plain;charset=utf-8", buildPlain(project, opts, false));
+      downloadBlob(base + ".txt", "text/plain;charset=utf-8", buildPlain(project, eopts, false));
       onToast(tl("exp_toast_txt"));
     } else if (fmt === "md") {
-      downloadBlob(base + ".md", "text/markdown;charset=utf-8", buildPlain(project, opts, true));
+      downloadBlob(base + ".md", "text/markdown;charset=utf-8", buildPlain(project, eopts, true));
       onToast(tl("exp_toast_md"));
     }
   }
@@ -446,6 +553,7 @@ function buildNoteHTML(note, opts) {
     ul, ol { padding-left: 1.5em; margin: .4em 0; } li { margin-bottom: .3em; }
     hr { border: none; text-align: center; margin: 1.6em 0; }
     hr:after { content: "✶"; color: #c2542f; }
+${BLOCK_CSS}
     .n-head { margin-bottom: 2em; padding-bottom: 1em; border-bottom: 1px solid #e9e3d5; }
     .n-kicker { font-family: 'JetBrains Mono', monospace; letter-spacing: .42em; font-size: 9pt; color: #c2542f; text-transform: uppercase; margin-bottom: 10px; }
     .n-title { font-size: 26pt; font-weight: 600; letter-spacing: -.015em; line-height: 1.1; margin: 0; }
@@ -453,7 +561,7 @@ function buildNoteHTML(note, opts) {
       body { padding: 60px 0 80px; }
       .n-wrap { max-width: ${(PAPER[opts.paperSize] || PAPER.a4).em}; margin: 0 auto; padding: 0 ${SCREEN_PADS[opts.margin]}; }
     }
-  </style></head><body><div class="n-wrap">${opts.titlePage ? `<div class="n-head"><div class="n-kicker">SIPRU.</div><h1 class="n-title">${note.title}</h1></div>` : ""}${note.content || ""}</div></body></html>`;
+  </style></head><body><div class="n-wrap">${opts.titlePage ? `<div class="n-head"><div class="n-kicker">SIPRU.</div><h1 class="n-title">${note.title}</h1></div>` : ""}${chapterBody(note.content || "")}</div></body></html>`;
 }
 
 function NoteExportModal({ note, onClose, onToast, lang }) {

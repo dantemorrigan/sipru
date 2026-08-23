@@ -264,7 +264,8 @@
       takenNames.add(desired.slice(0, -3));
       var filename = await resolveName(pdir, prevMeta[c.id], desired);
       await writeEntity(pdir, filename, c.content);
-      chapterMeta.push({ id: c.id, title: c.title, filename: filename, updatedAt: c.updatedAt, snapshots: c.snapshots || [] });
+      chapterMeta.push({ id: c.id, title: c.title, filename: filename, updatedAt: c.updatedAt,
+        snapshots: c.snapshots || [], status: c.status || "draft", partId: c.partId || null });
     }
     /* trash files that belonged to a chapter which no longer exists */
     for (var id in prevMeta) {
@@ -275,6 +276,9 @@
       schema: 1, id: project.id, title: project.title, status: project.status,
       synopsis: project.synopsis, createdAt: project.createdAt, updatedAt: project.updatedAt,
       goal: project.goal, chapters: chapterMeta,
+      /* structure and page setup travel with the book; an older Sipru
+         simply ignores both keys */
+      parts: project.parts || [], page: project.page || null,
     });
 
     var fileMap = {};
@@ -296,7 +300,8 @@
       var filename = await resolveName(ndir, prevFiles[n.id], desired);
       await writeEntity(ndir, filename, n.content);
       meta.push({ id: n.id, title: n.title, filename: filename, status: n.status,
-        createdAt: n.createdAt, updatedAt: n.updatedAt, snapshots: n.snapshots || [] });
+        createdAt: n.createdAt, updatedAt: n.updatedAt, snapshots: n.snapshots || [],
+        page: n.page || null });
     }
     for (var id in prevFiles) {
       if (!notes.some(function (n) { return n.id === id; })) await trash(vaultDir, join(NOTES_DIR, prevFiles[id]));
@@ -353,7 +358,7 @@
       try { raw = await FS.readText(join(pdir, cm.filename)); } catch (e) { raw = ""; }
       var html = window.SipruFormats.mdToHTML(raw);
       chapters.push({ id: cm.id, title: cm.title, content: html, updatedAt: cm.updatedAt || Date.now(),
-        snapshots: cm.snapshots || [] });
+        snapshots: cm.snapshots || [], status: cm.status || "draft", partId: cm.partId || null });
     }
     var files = {};
     (m.chapters || []).forEach(function (cm) { files[cm.id] = cm.filename; });
@@ -361,7 +366,8 @@
       ok: true, folder: folderName, files: files,
       project: { id: m.id, title: m.title, status: m.status || "draft", synopsis: m.synopsis || "",
         createdAt: m.createdAt || Date.now(), updatedAt: m.updatedAt || Date.now(),
-        goal: m.goal || null, chapters: chapters },
+        goal: m.goal || null, chapters: chapters,
+        parts: Array.isArray(m.parts) ? m.parts : [], page: m.page || null },
     };
   }
 
@@ -376,7 +382,8 @@
       var raw = null;
       try { raw = await FS.readText(join(ndir, nm.filename)); } catch (e) { raw = ""; }
       notes.push({ id: nm.id, title: nm.title, status: nm.status || "draft", content: window.SipruFormats.mdToHTML(raw),
-        createdAt: nm.createdAt || Date.now(), updatedAt: nm.updatedAt || Date.now(), snapshots: nm.snapshots || [] });
+        createdAt: nm.createdAt || Date.now(), updatedAt: nm.updatedAt || Date.now(), snapshots: nm.snapshots || [],
+        page: nm.page || null });
     }
     var files = {};
     (meta.data.notes || []).forEach(function (nm) { files[nm.id] = nm.filename; });

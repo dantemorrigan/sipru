@@ -151,7 +151,7 @@ function buildTourSteps(nav, store) {
   if (chap) {
     steps.push({
       screen: "doc", goto: () => nav.doc(chap.id),
-      selector: ".ed-tools", prefer: "right",
+      selector: ".ed-bar", prefer: "bottom",
       eyebrow: tl("tour_tools_eyebrow"), title: tl("tour_tools_title"),
       body: tl("tour_tools_body"),
     });
@@ -161,7 +161,7 @@ function buildTourSteps(nav, store) {
       body: tl("tour_modes_body"),
     });
     steps.push({
-      screen: "doc", selector: ".ed-tools-modes", prefer: "right",
+      screen: "doc", selector: ".ed-bar-end", prefer: "bottom",
       eyebrow: tl("tour_focus_eyebrow"), title: tl("tour_focus_title"),
       body: tl("tour_focus_body"),
     });
