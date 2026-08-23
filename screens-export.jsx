@@ -589,9 +589,12 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
   const project = store.get().projects.find((p) => p.id === projectId);
   const lang = (store.get().user && store.get().user.lang) || "en";
   const tl = T(lang);
+  /* The book already has a chosen writer's font — asking again here would
+     just be the same choice with extra steps. */
+  const defaultFont = (store.get().user && store.get().user.editorFont) || "book";
   const [opts, setOpts] = useState(() => ({
     merge: false, titlePage: true, toc: true,
-    margin: "normal", font: "book", leading: 1.7,
+    margin: "normal", font: defaultFont, leading: 1.7,
     paperSize: "a4", lang,
     include: {},
   }));
@@ -682,10 +685,6 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
                 <div className="seg seg--sm">{[["narrow","exp_margin_narrow"],["normal","exp_margin_normal"],["wide","exp_margin_wide"]].map(([k,lk]) => (
                   <button key={k} className={"seg-btn"+(opts.margin===k?" on":"")} onClick={() => set({margin:k})}>{tl(lk)}</button>))}</div>
               </div>
-              <div className="exp-row"><span className="exp-lbl">{tl("exp_font")}</span>
-                <div className="seg seg--sm">{[["book","Newsreader"],["article","Spectral"],["mono","Mono"]].map(([k,l]) => (
-                  <button key={k} className={"seg-btn"+(opts.font===k?" on":"")} onClick={() => set({font:k})}>{l}</button>))}</div>
-              </div>
               <div className="exp-row"><span className="exp-lbl">{tl("exp_leading")}</span>
                 <input type="range" min="1.3" max="2.2" step="0.1" value={opts.leading}
                   onChange={(e) => set({ leading: parseFloat(e.target.value) })} className="exp-range" />
@@ -741,10 +740,10 @@ ${BLOCK_CSS}
   </style></head><body><div class="n-wrap">${opts.titlePage ? `<div class="n-head"><div class="n-kicker">SIPRU.</div><h1 class="n-title">${note.title}</h1></div>` : ""}${chapterBody(note.content || "")}</div></body></html>`;
 }
 
-function NoteExportModal({ note, onClose, onToast, lang }) {
+function NoteExportModal({ note, onClose, onToast, lang, defaultFont }) {
   const [closing, close] = useDismiss(onClose);
   const tl = T(lang || "en");
-  const [opts, setOpts] = useState({ margin: "normal", font: "book", leading: 1.7, paperSize: "a4", titlePage: true });
+  const [opts, setOpts] = useState({ margin: "normal", font: defaultFont || "book", leading: 1.7, paperSize: "a4", titlePage: true });
   const set = (patch) => setOpts((o) => ({ ...o, ...patch }));
 
   const previewHTML = useMemo(() => buildNoteHTML(note, opts), [note, opts]);
@@ -808,10 +807,6 @@ function NoteExportModal({ note, onClose, onToast, lang }) {
               <div className="exp-row"><span className="exp-lbl">{tl("exp_margins")}</span>
                 <div className="seg seg--sm">{[["narrow","exp_margin_narrow"],["normal","exp_margin_normal"],["wide","exp_margin_wide"]].map(([k,lk]) => (
                   <button key={k} className={"seg-btn"+(opts.margin===k?" on":"")} onClick={() => set({margin:k})}>{tl(lk)}</button>))}</div>
-              </div>
-              <div className="exp-row"><span className="exp-lbl">{tl("exp_font")}</span>
-                <div className="seg seg--sm">{[["book","Newsreader"],["article","Spectral"],["mono","Mono"]].map(([k,l]) => (
-                  <button key={k} className={"seg-btn"+(opts.font===k?" on":"")} onClick={() => set({font:k})}>{l}</button>))}</div>
               </div>
               <div className="exp-row"><span className="exp-lbl">{tl("exp_leading")}</span>
                 <input type="range" min="1.3" max="2.2" step="0.1" value={opts.leading}

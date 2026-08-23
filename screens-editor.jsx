@@ -411,6 +411,26 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     commitChange();
   }
 
+  /* Pasted text that reads as markdown — multiple lines, or a line that
+     opens with a heading/list/quote marker — is parsed and inserted as the
+     formatting it describes, the same as generating it inside the editor
+     would. A short inline paste (a name, a phrase) is left to the browser's
+     own plain-text paste so it never breaks mid-sentence into a new block. */
+  function looksLikeMarkdown(text) {
+    return text.indexOf("\n") >= 0 || /^\s*(#{1,3}\s|>|[-*+]\s|\d+[.)]\s|:::)/.test(text);
+  }
+  function onPaste(e) {
+    const cd = e.clipboardData;
+    if (!cd) return;
+    const text = cd.getData("text/plain");
+    if (!text || !looksLikeMarkdown(text)) return;
+    e.preventDefault();
+    const html = window.SipruFormats.mdToHTML(text);
+    document.execCommand("insertHTML", false, html);
+    commitChange();
+    schedulePaginate(true);
+  }
+
   /* ---- link insert/edit popover ---- */
   function expandToWord(range) {
     const node = range.startContainer;
@@ -1035,7 +1055,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
               className="ed-area" contentEditable suppressContentEditableWarning
               spellCheck={true} lang={lang} data-placeholder={tl("editor_placeholder")}
               style={{ top: geom.mt, left: geom.ml, width: geom.contentW }}
-              onInput={onInput} onKeyDown={onKeyDown} onKeyUp={onKeyUp} onClick={onAreaClick}
+              onInput={onInput} onPaste={onPaste} onKeyDown={onKeyDown} onKeyUp={onKeyUp} onClick={onAreaClick}
               onMouseUp={refreshActive} onFocus={refreshActive} />
           </div>
           <div className="ed-tail" />
@@ -1107,6 +1127,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           onClose={() => setNoteExport(false)}
           onToast={onToast || (() => {})}
           lang={lang}
+          defaultFont={user.editorFont}
         />
       )}
       {fnEdit && (

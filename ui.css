@@ -315,13 +315,14 @@
 .ed-scroll, .preview-scroll { animation: modeFadeIn .16s var(--ease-out); }
 .ed-scroll { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth;
   padding: 34px 0 0; background: var(--paper-2); }
-.ed-paper { position: relative; margin: 0 auto; }
+.ed-paper { position: relative; margin: 0 auto; transition: width .22s var(--ease-out), height .22s var(--ease-out); }
 .ed-tail { height: 24vh; }
 /* decorations sit behind the text and never swallow a click — except the
    footnotes, which are their own little editable surface */
 .ed-pagelayer { position: absolute; inset: 0; pointer-events: none; }
 .ed-pagebox { position: absolute; left: 0; background: var(--sheet); border-radius: 2px;
-  box-shadow: var(--sheet-shadow); }
+  box-shadow: var(--sheet-shadow);
+  transition: top .22s var(--ease-out), width .22s var(--ease-out), height .22s var(--ease-out); }
 .ed-page-margins { position: absolute; opacity: 0;
   border: 1px dashed color-mix(in srgb, var(--ink) 14%, transparent);
   transition: opacity .35s var(--ease); }
@@ -345,7 +346,8 @@
   font-family: var(--ed-font, var(--book)); font-size: var(--pg-font, 18px);
   line-height: var(--pg-lead, 1.5); color: var(--ink); caret-color: var(--accent);
   text-align: var(--pg-align, left); hyphens: var(--pg-hyphens, auto); -webkit-hyphens: var(--pg-hyphens, auto);
-  padding-left: var(--pg-padl, 0); padding-right: var(--pg-padr, 0); }
+  padding-left: var(--pg-padl, 0); padding-right: var(--pg-padr, 0);
+  transition: top .22s var(--ease-out), left .22s var(--ease-out), width .22s var(--ease-out), font-size .22s var(--ease-out); }
 .ed-area:empty::before { content: attr(data-placeholder); color: var(--ink-faint); pointer-events: none; }
 .ed-area p { margin: var(--pg-before, 0) 0 var(--pg-after, .55em); text-indent: var(--pg-indent, 1.2em); }
 /* the first paragraph after any break in the flow never gets an indent —
@@ -1460,5 +1462,5 @@
     animation-duration: .01ms !important;
     animation-delay: 0s !important;
   }
-  .ed-more-menu { transition-duration: .01ms !important; }
+  .ed-more-menu, .ed-paper, .ed-pagebox, .ed-area { transition-duration: .01ms !important; }
 }
