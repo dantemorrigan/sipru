@@ -105,7 +105,7 @@ function htmlToText(html) {
    files and this export both round-trip losslessly. mdToHTML strips a
    matching \ off these five characters and no others. */
 function mdEscapeText(s) {
-  return String(s == null ? "" : s).replace(/[\\*_~[\]]/g, (c) => "\\" + c);
+  return String(s == null ? "" : s).replace(/[\\*_~[\]`$]/g, (c) => "\\" + c);
 }
 
 /* Inline serializer: walks bold/italic/underline/strike/link nodes (the
@@ -125,7 +125,17 @@ function inlineToMd(node) {
       out += "[^" + (n.textContent || "").trim() + "]";
       return;
     }
-    if (t === "code") { out += "`" + (n.textContent || "") + "`"; return; }  // literal — never escaped/nested
+    /* Literal, never escaped and never re-entered: whatever is between the
+       backticks is the code. A longer fence is used when the code itself
+       contains backticks, so the span still closes where it should. */
+    if (t === "code") {
+      const raw = n.textContent || "";
+      let tick = "`";
+      while (raw.indexOf(tick) >= 0) tick += "`";
+      const pad = /^`|`$/.test(raw) ? " " : "";
+      out += tick + pad + raw + pad + tick;
+      return;
+    }
     const inner = inlineToMd(n);
     if (t === "strong" || t === "b") out += "**" + inner + "**";
     else if (t === "em" || t === "i") out += "*" + inner + "*";
@@ -140,6 +150,12 @@ function inlineToMd(node) {
 function htmlToMd(html) {
   const d = document.createElement("div"); d.innerHTML = html || "";
   let out = "";
+  /* Verbatim blocks are parked behind a sentinel while the whitespace of
+     the surrounding prose is normalised, then dropped back in untouched —
+     otherwise the blank-line collapse below would rewrite the inside of a
+     code block. */
+  const verbatim = [];
+  const park = (text) => { verbatim.push(text); return "\x01v" + (verbatim.length - 1) + "\x02"; };
   /* Footnote definitions leave the flow and come back as standard
      markdown definitions at the end of the file. */
   const notes = [];
@@ -167,6 +183,28 @@ function htmlToMd(html) {
       out += "\n::: epigraph\n" + text + "\n" + (author.trim() ? "-- " + author + "\n" : "") + ":::\n\n";
       return;
     }
+    /* Verbatim blocks go back out character for character — no inline
+       serializer, no backslash escaping. A code fence is grown past any
+       run of backticks inside the code so it still closes correctly. */
+    if (t === "pre") {
+      const code = n.querySelector("code");
+      const raw = (code || n).textContent || "";
+      if (cls.indexOf("math") >= 0) { out += "\n" + park("$$\n" + raw + "\n$$") + "\n\n"; return; }
+      let fence = "```";
+      while (new RegExp("^\\s*" + fence, "m").test(raw)) fence += "`";
+      out += "\n" + park(fence + (n.getAttribute("data-lang") || "") + "\n" + raw + "\n" + fence) + "\n\n";
+      return;
+    }
+    if (t === "table") {
+      const rows = Array.prototype.map.call(n.querySelectorAll("tr"), (tr) =>
+        Array.prototype.map.call(tr.children, (c) => inlineToMd(c).replace(/\n/g, " ").replace(/\|/g, "\\|").trim()));
+      if (!rows.length) return;
+      const width = rows.reduce((w, r) => Math.max(w, r.length), 0);
+      const pad = (r) => { const c = r.slice(); while (c.length < width) c.push(""); return "| " + c.join(" | ") + " |"; };
+      out += "\n" + pad(rows[0]) + "\n|" + " --- |".repeat(width) + "\n" +
+        rows.slice(1).map(pad).join("\n") + "\n\n";
+      return;
+    }
     if (t === "aside" && cls.indexOf("note") >= 0) {
       const text = inlineToMd(n);
       if (!text.trim()) return;
@@ -190,7 +228,7 @@ function htmlToMd(html) {
   if (notes.length) {
     out += "\n\n" + notes.map((text, i) => "[^" + (i + 1) + "]: " + text).join("\n");
   }
-  return out;
+  return out.replace(/\x01v(\d+)\x02/g, (_, i) => verbatim[+i]);
 }
 
 /* The footnote store is not prose: a plain-text export lists the notes

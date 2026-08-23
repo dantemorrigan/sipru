@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node build.js",
     "check": "node build.js --check",
+    "test": "node test/run.js",
     "tauri": "tauri"
   },
   "devDependencies": {

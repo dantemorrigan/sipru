@@ -1,0 +1,188 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sipru — markdown round-trip tests</title>
+<body>
+<pre id="out">running…</pre>
+<script src="../formats.js"></script>
+<script src="../build/screens-export.js"></script>
+<script>
+/* Markdown round-trip regression tests.
+
+   These run against the real built formats.js / screens-export.js in a real
+   browser, because both serializers walk the DOM — there is no separate
+   parser to unit-test in isolation, and stubbing one would test the stub.
+
+   The property that matters is *stability*: md -> html -> md -> html must
+   reach a fixed point after the first export. A construct that survives one
+   trip but degrades on the next is exactly the bug class this guards. */
+const md2html = window.SipruFormats.mdToHTML;
+const html2md = window.htmlToMd;
+
+const results = [];
+function check(name, cond, detail) {
+  results.push({ name, ok: !!cond, detail: cond ? "" : (detail || "") });
+}
+
+/* md -> html -> md -> html; asserts the second export equals the first. */
+/* A scene separator is stamped with a fresh random data-id every time it is
+   parsed — by design, ids are not content — so it is normalised away before
+   two parses are compared. */
+const norm = (h) => h.replace(/data-id="s_[a-z0-9]+"/g, 'data-id="s_X"');
+function stable(name, md, alsoAssert) {
+  const h1 = md2html(md);
+  const m1 = html2md(h1);
+  const h2 = md2html(m1);
+  const m2 = html2md(h2);
+  check(name + " :: md stable", m1 === m2, "first:\n" + m1 + "\n\nsecond:\n" + m2);
+  check(name + " :: html stable", norm(h1) === norm(h2), "first:\n" + h1 + "\n\nsecond:\n" + h2);
+  if (alsoAssert) alsoAssert({ h1, m1, h2, m2, name });
+  return { h1, m1, h2, m2 };
+}
+
+/* ---- headings / title ---- */
+stable("h1", "# Title\n\nBody text.", ({ h1 }) => {
+  check("h1 :: one h1", (h1.match(/<h1>/g) || []).length === 1, h1);
+});
+
+/* the import path promotes a leading heading to the title and must not
+   also leave it in the body — that duplicated the title once per trip */
+check("import :: leading h1 not duplicated into body", (() => {
+  const html = md2html("# The Title\n\nBody.");
+  const m = html.match(/^<h1>([\s\S]*?)<\/h1>/i);
+  return m && html.slice(m[0].length).indexOf("<h1>") < 0;
+})());
+
+/* ---- fenced code: characters must survive exactly ---- */
+const CODE = "```python\ndef f(a_b, *args):\n    s = 'x_y * z'\n    return a_b \\\\ 2\n\n    # blank line above kept\n```";
+stable("fenced code", CODE, ({ h1, m1 }) => {
+  check("code :: underscores not emphasised", h1.indexOf("<em>") < 0 && h1.indexOf("<strong>") < 0, h1);
+  check("code :: is a pre/code block", /<pre[^>]*><code>/.test(h1), h1);
+  check("code :: keeps indentation", h1.indexOf("    s = ") >= 0, h1);
+  check("code :: keeps blank line", /\n\n/.test(m1), JSON.stringify(m1));
+  check("code :: keeps backslash", m1.indexOf("\\\\") >= 0, JSON.stringify(m1));
+  check("code :: keeps language", m1.indexOf("```python") >= 0, JSON.stringify(m1));
+});
+
+/* ---- inline code stays literal ---- */
+stable("inline code", "Use `a_b * c` and `**not bold**` here.", ({ h1 }) => {
+  check("inline code :: no emphasis inside", h1.indexOf("<em>") < 0 && h1.indexOf("<strong>") < 0, h1);
+  check("inline code :: two code spans", (h1.match(/<code>/g) || []).length === 2, h1);
+});
+
+/* ---- math: TeX must not be read as markdown ---- */
+const MATH = "$$\n\\frac{\\rho_m}{\\rho_c} = \\Lambda^{2}_{i} + \\pi\n$$";
+stable("math", MATH, ({ h1, m1 }) => {
+  check("math :: no emphasis", h1.indexOf("<em>") < 0, h1);
+  check("math :: frac kept", m1.indexOf("\\frac") >= 0, JSON.stringify(m1));
+  check("math :: subscript/superscript kept", m1.indexOf("^{2}_{i}") >= 0, JSON.stringify(m1));
+  check("math :: pi and Lambda kept", m1.indexOf("\\pi") >= 0 && m1.indexOf("\\Lambda") >= 0, JSON.stringify(m1));
+});
+
+/* ---- ASCII / preformatted art ---- */
+const ASCII = "```\n +---+---+\n |a_b| * |\n +---+---+\n```";
+stable("ascii block", ASCII, ({ m1 }) => {
+  check("ascii :: pipes and spacing kept", m1.indexOf(" +---+---+") >= 0, JSON.stringify(m1));
+});
+
+/* ---- literal backslash and underscores in prose ---- */
+stable("prose backslash/underscore", "A path C:\\\\temp and snake_case_name and a literal * star.", ({ h1 }) => {
+  check("prose :: no emphasis from snake_case", h1.indexOf("<em>") < 0, h1);
+});
+
+/* ---- tables ---- */
+const TABLE = "| Name | Value |\n| --- | --- |\n| alpha | 1 |\n| beta_x | *two* |";
+stable("table", TABLE, ({ h1, m1 }) => {
+  check("table :: is a table", /<table>/.test(h1), h1);
+  check("table :: header cells", (h1.match(/<th>/g) || []).length === 2, h1);
+  check("table :: body rows", (h1.match(/<tr>/g) || []).length === 3, h1);
+  check("table :: emphasis inside cell kept", /<em>two<\/em>/.test(h1), h1);
+  check("table :: pipes still delimit", m1.indexOf("| alpha | 1 |") >= 0, JSON.stringify(m1));
+});
+
+/* ---- ordinary formatting still works ---- */
+stable("prose formatting",
+  "# H\n\n## H2\n\nSome **bold**, *italic*, ~~strike~~ and a [link](https://example.com/a_(b)).\n\n" +
+  "- one\n- two\n\n1. first\n2. second\n\n> quoted line\n> second line\n\n---\n",
+  ({ h1 }) => {
+    check("prose :: bold", /<strong>bold<\/strong>/.test(h1), h1);
+    check("prose :: italic", /<em>italic<\/em>/.test(h1), h1);
+    check("prose :: strike", /<s>strike<\/s>/.test(h1), h1);
+    check("prose :: link href with parens", /href="https:\/\/example\.com\/a_\(b\)"/.test(h1), h1);
+    check("prose :: list", /<ul><li>one<\/li><li>two<\/li><\/ul>/.test(h1), h1);
+    check("prose :: ordered list", /<ol><li>first<\/li><li>second<\/li><\/ol>/.test(h1), h1);
+    check("prose :: quote", /<blockquote>quoted line<br>second line<\/blockquote>/.test(h1), h1);
+  });
+
+/* ---- Sipru's own constructs ---- */
+stable("sipru epigraph", "::: epigraph\nThe line.\n-- The Author\n:::", ({ h1 }) => {
+  check("epigraph :: figure", /<figure class="epigraph">/.test(h1), h1);
+  check("epigraph :: caption", /<figcaption>The Author<\/figcaption>/.test(h1), h1);
+});
+stable("sipru note", "::: note\nA note.\n:::", ({ h1 }) => {
+  check("note :: aside", /<aside class="note">/.test(h1), h1);
+});
+stable("sipru scene", "<!-- scene: Chapter start | draft -->", ({ h1 }) => {
+  check("scene :: hr", /<hr class="scene-sep"/.test(h1), h1);
+  check("scene :: title kept", /data-t="Chapter start"/.test(h1), h1);
+});
+stable("sipru page-break", "<!-- page-break -->", ({ h1 }) => {
+  check("page-break :: hr", /<hr class="page-break">/.test(h1), h1);
+});
+stable("sipru footnote", "Text with a note[^1].\n\n[^1]: The note body.", ({ h1, m1 }) => {
+  check("footnote :: marker", /<sup class="fn"/.test(h1), h1);
+  check("footnote :: definition", /class="fn-defs"/.test(h1), h1);
+  check("footnote :: md definition", m1.indexOf("[^1]: The note body.") >= 0, JSON.stringify(m1));
+});
+
+/* ---- the whole document at once, the real-file shape ---- */
+const DOC = [
+  "# Observable Universe",
+  "",
+  "Intro with snake_case and a `code_span * here`.",
+  "",
+  "## 18. Gravitational waves",
+  "",
+  "$$",
+  "h_{\\mu\\nu} = \\frac{2G}{c^4 r} \\ddot{Q}_{\\mu\\nu}",
+  "$$",
+  "",
+  "```c",
+  "int main(void) {",
+  "    return 0;  /* a_b * c */",
+  "}",
+  "```",
+  "",
+  "| Quantity | Symbol |",
+  "| --- | --- |",
+  "| density | \\rho |",
+  "",
+  "::: epigraph",
+  "A quoted line.",
+  "-- Someone",
+  ":::",
+  "",
+  "<!-- scene: Opening | draft -->",
+  "",
+  "Body[^1].",
+  "",
+  "[^1]: A footnote.",
+].join("\n");
+stable("full document", DOC, ({ h1, m1 }) => {
+  check("doc :: single h1", (h1.match(/<h1>/g) || []).length === 1, h1);
+  check("doc :: math intact", m1.indexOf("\\frac{2G}{c^4 r}") >= 0, JSON.stringify(m1));
+  check("doc :: code intact", m1.indexOf("    return 0;  /* a_b * c */") >= 0, JSON.stringify(m1));
+  check("doc :: table intact", /\| density \| \\?\\rho \|/.test(m1), JSON.stringify(m1));
+});
+
+const failed = results.filter((r) => !r.ok);
+const summary = {
+  total: results.length,
+  passed: results.length - failed.length,
+  failed: failed.length,
+  failures: failed.map((f) => f.name + (f.detail ? "\n    " + f.detail.replace(/\n/g, "\n    ") : "")),
+};
+window.__RESULTS__ = summary;
+document.getElementById("out").textContent =
+  summary.passed + "/" + summary.total + " passed\n\n" + summary.failures.join("\n\n");
+</script>
+</body>

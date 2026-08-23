@@ -6,15 +6,15 @@
 
   /* ---------------- shared ---------------- */
   const BLOCKS = ["p","br","h1","h2","h3","blockquote","ul","ol","li","hr",
-    "figure","figcaption","aside"];
-  const INLINE = ["strong","b","em","i","u","s","strike","sup"];
+    "figure","figcaption","aside","pre","table","thead","tbody","tr","th","td"];
+  const INLINE = ["strong","b","em","i","u","s","strike","sup","code"];
   const ALLOWED = new Set(BLOCKS.concat(INLINE));
   /* The only attributes that ever survive a sanitise: the handful of marker
      classes and data-* keys the editor uses to tell its own block types
      apart. Everything else — style, href, on*, id — is still dropped. */
   const CLASS_OK = new Set(["epigraph","note","page-break","scene-sep","fn","fn-defs",
-    "al-l","al-c","al-r","al-j"]);
-  const DATA_OK = ["data-fn","data-t","data-s","data-id"];
+    "al-l","al-c","al-r","al-j","math"]);
+  const DATA_OK = ["data-fn","data-t","data-s","data-id","data-lang"];
   function keepMarkers(src, el) {
     const cls = (src.getAttribute("class") || "").split(/\s+/).filter((c) => CLASS_OK.has(c));
     if (cls.length) el.setAttribute("class", cls.join(" "));
@@ -76,7 +76,7 @@
      mdEscapeText so a literal "*" in prose can't be mistaken for markup — is
      protected behind a sentinel before the tokenizer runs, so it survives
      as plain text rather than being read back as emphasis. */
-  const ESCAPABLE = /\\([\\*_~[\]])/g;
+  const ESCAPABLE = /\\([\\*_~[\]`$])/g;
   const SENTINEL_RE = /\x01(\d+)\x02/g;
   function protectEscapes(s) {
     return String(s || "").replace(ESCAPABLE, (_, c) => "\x01" + c.charCodeAt(0) + "\x02");
@@ -104,7 +104,13 @@
      The link URL allows one level of nested parens — real URLs (Wikipedia
      disambiguation pages, for one) routinely have them, and a bare "(1)"
      shouldn't truncate the match at its first close-paren. */
-  const INLINE_TOKEN = /\[\^([^\]\s]+)\]|\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|<u>([\s\S]*?)<\/u>|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_|`([^`\n]+)`/;
+  /* A code span binds tighter than every emphasis marker, so it has to be
+     the first alternative: with `_` or `*` tried first, an underscore in
+     prose could pair with one inside a later code span and swallow the
+     backticks into an <em>. The fence is a run of backticks closed by an
+     equal run, so code containing backticks still has a way to be written. */
+  const INLINE_TOKEN = /(`+)([\s\S]*?)\1|\[\^([^\]\s]+)\]|\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|<u>([\s\S]*?)<\/u>|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_/;
+  const WORD_CH = /[0-9A-Za-zÀ-ɏЀ-ӿ]/;
   function mdInline(raw) {
     let s = String(raw == null ? "" : raw);
     let out = "";
@@ -112,19 +118,38 @@
       const m = INLINE_TOKEN.exec(s);
       if (!m) { out += esc(s); break; }
       out += esc(s.slice(0, m.index));
-      if (m[1] !== undefined) {
+      if (m[2] !== undefined) {
+        /* literal — no nested markdown inside a code span. One padding
+           space either side is dropped, which is how a span can hold code
+           that itself starts or ends with a backtick. */
+        let code = m[2];
+        if (/^ [\s\S]* $/.test(code) && code.trim()) code = code.slice(1, -1);
+        out += "<code>" + esc(code) + "</code>";
+      } else if (m[3] !== undefined) {
         /* [^1] — a footnote reference; the number is re-derived from
            document order when the editor opens it, so any label works */
-        out += '<sup class="fn" data-fn="fn_' + esc(m[1]) + '">' + esc(m[1]) + "</sup>";
-      } else if (m[2] !== undefined) {
-        const href = safeHref(m[3]);
-        out += href ? ('<a href="' + esc(href) + '">' + mdInline(m[2]) + "</a>") : mdInline(m[2]);
-      } else if (m[4] !== undefined) out += "<strong><em>" + mdInline(m[4]) + "</em></strong>";
-      else if (m[5] !== undefined) out += "<strong>" + mdInline(m[5]) + "</strong>";
-      else if (m[6] !== undefined) out += "<u>" + mdInline(m[6]) + "</u>";
-      else if (m[7] !== undefined) out += "<s>" + mdInline(m[7]) + "</s>";
-      else if (m[10] !== undefined) out += "<code>" + esc(m[10]) + "</code>";  // literal — no nested markdown inside a code span
-      else out += "<em>" + mdInline(m[8] !== undefined ? m[8] : m[9]) + "</em>";
+        out += '<sup class="fn" data-fn="fn_' + esc(m[3]) + '">' + esc(m[3]) + "</sup>";
+      } else if (m[4] !== undefined) {
+        const href = safeHref(m[5]);
+        out += href ? ('<a href="' + esc(href) + '">' + mdInline(m[4]) + "</a>") : mdInline(m[4]);
+      } else if (m[6] !== undefined) out += "<strong><em>" + mdInline(m[6]) + "</em></strong>";
+      else if (m[7] !== undefined) out += "<strong>" + mdInline(m[7]) + "</strong>";
+      else if (m[8] !== undefined) out += "<u>" + mdInline(m[8]) + "</u>";
+      else if (m[9] !== undefined) out += "<s>" + mdInline(m[9]) + "</s>";
+      else if (m[10] !== undefined) out += "<em>" + mdInline(m[10]) + "</em>";
+      else {
+        /* An underscore inside a word is part of the word: snake_case_name
+           is one identifier, not emphasis. Only a `_` with a non-word
+           character (or nothing) on both outer sides opens a span. */
+        const before = m.index > 0 ? s.charAt(m.index - 1) : "";
+        const after = s.charAt(m.index + m[0].length);
+        if (WORD_CH.test(before) || WORD_CH.test(after)) {
+          out += esc("_");
+          s = s.slice(m.index + 1);
+          continue;
+        }
+        out += "<em>" + mdInline(m[11]) + "</em>";
+      }
       s = s.slice(m.index + m[0].length);
     }
     return out;
@@ -145,11 +170,34 @@
   function mdToHTML(md) {
     const lines = String(md || "").replace(/\r\n?/g, "\n").split("\n");
     let out = "", list = null, para = [], quote = [], fence = null, fenceLines = [];
+    /* A verbatim fence (``` code, $$ math) is captured character for
+       character: no inline tokenizer, no escape protection, no blank-line
+       trimming. Its body is only HTML-escaped on the way into the DOM, so
+       `_`, `*`, `\frac`, backslashes and Unicode all survive the trip. */
+    let verb = null, verbLines = [], verbLang = "";
+    const flushVerb = () => {
+      if (!verb) return;
+      const body = esc(verbLines.join("\n"));
+      verbLines = [];
+      if (verb === "math") out += '<pre class="math">' + body + "</pre>";
+      else out += "<pre" + (verbLang ? ' data-lang="' + esc(verbLang).replace(/"/g, "&quot;") + '"' : "") +
+        "><code>" + body + "</code></pre>";
+      verb = null; verbLang = "";
+    };
+    let table = null;
+    const flushTable = () => {
+      if (!table) return;
+      const row = (cells, tag) => "<tr>" + cells.map((c) => "<" + tag + ">" + mdInlineTop(c) + "</" + tag + ">").join("") + "</tr>";
+      out += "<table><thead>" + row(table.head, "th") + "</thead><tbody>" +
+        table.rows.map((r) => row(r, "td")).join("") + "</tbody></table>";
+      table = null;
+    };
+    const splitRow = (l) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
     const notes = [];
     const flushPara = () => { if (para.length) { out += "<p>" + para.map(mdInlineTop).join("<br>") + "</p>"; para = []; } };
     const flushQuote = () => { if (quote.length) { out += "<blockquote>" + quote.map(mdInlineTop).join("<br>") + "</blockquote>"; quote = []; } };
     const flushList = () => { if (list) { out += "<" + list.tag + ">" + list.items.map((i) => "<li>" + mdInlineTop(i) + "</li>").join("") + "</" + list.tag + ">"; list = null; } };
-    const flushAll = () => { flushPara(); flushQuote(); flushList(); };
+    const flushAll = () => { flushPara(); flushQuote(); flushList(); flushTable(); };
     const flushFence = () => {
       if (!fence) return;
       const body = fenceLines.filter((l) => l.trim() !== "");
@@ -167,7 +215,14 @@
       fence = null;
     };
 
-    lines.forEach((raw) => {
+    lines.forEach((raw, li) => {
+      /* Inside a verbatim fence the raw line is kept exactly as read —
+         trailing whitespace included — before anything else looks at it. */
+      if (verb) {
+        if (verb === "code" ? /^\s*```/.test(raw) : /^\s*\$\$\s*$/.test(raw)) flushVerb();
+        else verbLines.push(raw);
+        return;
+      }
       const line = raw.replace(/\s+$/, "");
       if (fence) {
         if (/^:::\s*$/.test(line.trim())) flushFence();
@@ -175,6 +230,8 @@
         return;
       }
       let m;
+      if ((m = line.match(/^\s*```\s*([\w+-]*)\s*$/))) { flushAll(); verb = "code"; verbLang = m[1] || ""; return; }
+      if (/^\s*\$\$\s*$/.test(line)) { flushAll(); verb = "math"; return; }
       if ((m = line.match(/^:::\s*(epigraph|note)\s*$/))) { flushAll(); fence = m[1]; return; }
       if (/^<!--\s*page-break\s*-->$/.test(line.trim())) { flushAll(); out += '<hr class="page-break">'; return; }
       if ((m = line.trim().match(/^<!--\s*scene:\s*([\s\S]*?)\s*-->$/))) {
@@ -207,9 +264,24 @@
       if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { flushPara(); flushQuote();
         if (!list || list.tag !== "ol") { flushList(); list = { tag: "ol", items: [] }; }
         list.items.push(m[1]); return; }
-      flushQuote(); flushList();
+      /* A pipe table: a header row, a |---|---| rule, then body rows. The
+         rule is what tells a table apart from a paragraph that merely
+         contains a pipe, so it is required before any row is claimed. */
+      const isRule = /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(line) && /\|/.test(line);
+      if (table && isRule) return;                       // the header rule itself
+      if (/\|/.test(line)) {
+        if (table) { table.rows.push(splitRow(line)); return; }
+        const next = lines[li + 1];
+        if (next && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(next) && /\|/.test(next)) {
+          flushPara(); flushQuote(); flushList();
+          table = { head: splitRow(line), rows: [], rule: false };
+          return;
+        }
+      }
+      flushQuote(); flushList(); flushTable();
       para.push(line);
     });
+    flushVerb();
     flushFence();
     flushAll();
     if (notes.length) {
@@ -244,15 +316,18 @@
     const raw = await readFile(file);
     const html = kind === "md" ? mdToHTML(raw) : kind === "html" ? sanitizeHTML(raw) : txtToHTML(raw);
     const baseTitle = (file.name || "").replace(/\.[^.]+$/, "").trim();
-    // prefer a leading heading as the title, if the file has one
-    let title = baseTitle;
+    /* A leading heading becomes the document's title — and is then removed
+       from the body. Leaving it in place meant every export wrote the title
+       back out as an <h1>, which the next import promoted again: one extra
+       copy of the title per round-trip. */
+    let title = baseTitle, body = html;
     const hm = html.match(/^<h[1-3]>([\s\S]*?)<\/h[1-3]>/i);
     if (hm) {
       const d = document.createElement("div"); d.innerHTML = hm[1];
       const t = (d.textContent || "").trim();
-      if (t) title = t;
+      if (t) { title = t; body = html.slice(hm[0].length); }
     }
-    return { title: title || baseTitle || "Untitled", html };
+    return { title: title || baseTitle || "Untitled", html: body || "<p></p>" };
   }
 
   /* ============================================================
