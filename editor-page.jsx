@@ -63,7 +63,11 @@ function pageGeometry(pg, avail) {
   let fontPx = pt * scale;
   let vScale = scale;                       /* vertical stretch of the sheet */
   let fluid = false;
-  if (fit < 0.85 && zoom <= 1 && fontPx < MIN_FONT_PX) {
+  /* Going fluid trades the sheet's true proportions for readable type, so
+     it changes how much text fits on a page. A print preview has to break
+     exactly where the printed page breaks — and exactly where the editor
+     says it does — so it opts out and stays faithfully to scale. */
+  if (!pg.noFluid && fit < 0.85 && zoom <= 1 && fontPx < MIN_FONT_PX) {
     fluid = true;
     fontPx = MIN_FONT_PX;
     vScale = scale * (MIN_FONT_PX / (pt * scale));
@@ -124,9 +128,24 @@ function paginateArea(area, geom, reserved) {
 
   const tops = new Array(blocks.length);
   const heights = new Array(blocks.length);
+  /* Two adjacent blocks share one collapsed margin — max(prev's bottom,
+     this one's top). A spacer between them ends that collapse, so the gap
+     silently grows by min(bottom, top) for every push. Measured here, in
+     the same read pass, and subtracted from the spacer below; without it
+     the extra pixels accumulate down a long document until the text
+     visibly runs past the bottom of the page. */
+  const collapses = new Array(blocks.length).fill(0);
+  const mTop = new Array(blocks.length);
+  const mBot = new Array(blocks.length);
   for (let i = 0; i < blocks.length; i++) {
     tops[i] = blocks[i].offsetTop;
     heights[i] = blocks[i].offsetHeight;
+    const cs = getComputedStyle(blocks[i]);
+    mTop[i] = parseFloat(cs.marginTop) || 0;
+    mBot[i] = parseFloat(cs.marginBottom) || 0;
+  }
+  for (let i = 1; i < blocks.length; i++) {
+    if (blocks[i].previousElementSibling === blocks[i - 1]) collapses[i] = Math.min(mTop[i], mBot[i - 1]);
   }
   const baseTop = blocks.length ? tops[0] : 0;
 
@@ -142,23 +161,35 @@ function paginateArea(area, geom, reserved) {
     const pageTop = page * cycle;
     const pageEnd = pageTop + room;
 
-    const straddles = top + h > pageEnd && h <= room;
-    /* A block taller than a whole page can't be helped onto one, but it
-       still deserves a clean start — pushed to the top of a fresh page
-       rather than left straddling wherever it happened to land, which is
-       what made it look like it collided with the page below it. */
-    const oversized = h > avail(0) && top > pageTop && top + h > pageEnd;
+    /* Any block whose bottom passes the end of its page moves to the next
+       one — whether it is merely straddling the break or taller than the
+       page's remaining room because footnotes reserved part of it. The one
+       exception is a block already sitting at a fresh page top: it is
+       taller than a whole page, so moving it again would only leave a
+       blank page behind and change nothing. */
+    const atPageTop = top <= pageTop + 1;
+    const overflows = top + h > pageEnd;
     /* keep-with-next: a heading needs room for its own box plus the first
        line or two of whatever follows it */
     let stranded = false;
-    if (!straddles && keepsWithNext(blocks[i]) && i + 1 < blocks.length) {
+    if (!overflows && keepsWithNext(blocks[i]) && i + 1 < blocks.length) {
       const lead = Math.min(heights[i + 1], Math.round(geom.fontPx * 3.2));
       stranded = top + h + lead > pageEnd && h + lead <= room;
     }
-    if (forceBreak || top >= pageEnd || straddles || stranded || oversized) {
-      page++;
-      const next = page * cycle;
-      if (next > top) { pushes[i] = next - top; acc += next - top; top = next; }
+    if (forceBreak || top >= pageEnd || (overflows && !atPageTop) || stranded) {
+      /* Advance to the first page boundary at or after this block, not
+         merely one page on: after a block taller than a page, a single
+         step could land behind where the text already is, leaving the
+         push negative, silently skipped, and every later page off by one
+         — which is how the text drifted past the page edge further down
+         a long document. */
+      page = Math.max(page + 1, Math.ceil(top / cycle));
+      /* A spacer can only ever add to the gap, never shrink the margin
+         that is already collapsed there, so that is the floor on how far
+         this block can move — and acc has to record the distance actually
+         travelled, not the one asked for. */
+      const shift = Math.max(page * cycle - top, collapses[i]);
+      pushes[i] = shift; acc += shift; top += shift;
       forceBreak = false;
     }
     pageOf[i] = page;
@@ -177,7 +208,7 @@ function paginateArea(area, geom, reserved) {
     if (!pushes[i]) continue;
     const spacer = document.createElement("div");
     spacer.className = "pg-spacer";
-    spacer.style.height = pushes[i] + "px";
+    spacer.style.height = (pushes[i] - collapses[i]) + "px";
     blocks[i].parentNode.insertBefore(spacer, blocks[i]);
   }
 

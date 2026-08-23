@@ -43,13 +43,22 @@ function BookPreview({ html, title, edition, lang }) {
     scrollRef.current && scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function scrollToHeading(id) {
-    const target = contentRef.current && contentRef.current.querySelector("#" + id);
+  /* The anchor list sits in the flow above the text, so closing it shortens
+     the page. Measuring before that happens aimed the scroll at where the
+     heading used to be and overshot it by the height of the list — the
+     taller the list, the further past the heading it landed. The target is
+     recorded here and the scroll runs from an effect below, once the list
+     has actually gone and the layout is final. */
+  const [pendingAnchor, setPendingAnchor] = useState(null);
+  useEffect(() => {
+    if (!pendingAnchor) return;
+    setPendingAnchor(null);
+    const target = contentRef.current && contentRef.current.querySelector("#" + pendingAnchor);
     if (!target || !scrollRef.current) return;
     const containerTop = scrollRef.current.getBoundingClientRect().top;
     const targetTop = target.getBoundingClientRect().top;
-    scrollRef.current.scrollBy({ top: targetTop - containerTop - 80, behavior: "smooth" });
-  }
+    scrollRef.current.scrollBy({ top: targetTop - containerTop - 24, behavior: "smooth" });
+  }, [pendingAnchor]);
 
   return (
     <div className="preview-scroll" ref={scrollRef}>
@@ -63,7 +72,7 @@ function BookPreview({ html, title, edition, lang }) {
             <nav className="anchors-nav">
               {headings.map((h) => (
                 <button key={h.id} className={"anchor-item anchor-item--h" + h.level}
-                  onClick={() => { scrollToHeading(h.id); setAnchorsOpen(false); }}>
+                  onClick={() => { setAnchorsOpen(false); setPendingAnchor(h.id); }}>
                   {h.text}
                 </button>
               ))}
@@ -279,7 +288,7 @@ function exportPageGeom(pg) {
   return {
     ...p,
     hdr: { on: false, l: "", c: "", r: "" }, ftr: { on: false, l: "", c: "", r: "" },
-    firstBare: true, mirror: false, numFrom: 1, zoom: 1,
+    firstBare: true, mirror: false, numFrom: 1, zoom: 1, noFluid: true,
   };
 }
 
