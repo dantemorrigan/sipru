@@ -411,21 +411,23 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     commitChange();
   }
 
-  /* Pasted text that reads as markdown — multiple lines, or a line that
-     opens with a heading/list/quote marker — is parsed and inserted as the
-     formatting it describes, the same as generating it inside the editor
-     would. A short inline paste (a name, a phrase) is left to the browser's
-     own plain-text paste so it never breaks mid-sentence into a new block. */
-  function looksLikeMarkdown(text) {
-    return text.indexOf("\n") >= 0 || /^\s*(#{1,3}\s|>|[-*+]\s|\d+[.)]\s|:::)/.test(text);
-  }
+  /* Any paste is read as markdown — headings, lists, quotes, and inline
+     bold, italic or code markers too, mid-sentence and not just at a
+     line's start. mdToHTML always wraps its output in a block; when the whole
+     paste turns out to be exactly one <p>, that wrapper is unwrapped and
+     only its inner (inline-formatted) HTML is inserted, so a short paste
+     mid-paragraph lands inline instead of breaking it into a new block. */
   function onPaste(e) {
     const cd = e.clipboardData;
     if (!cd) return;
     const text = cd.getData("text/plain");
-    if (!text || !looksLikeMarkdown(text)) return;
+    if (!text) return;
     e.preventDefault();
-    const html = window.SipruFormats.mdToHTML(text);
+    const box = document.createElement("div");
+    box.innerHTML = window.SipruFormats.mdToHTML(text);
+    const html = box.children.length === 1 && box.firstElementChild.tagName === "P"
+      ? box.firstElementChild.innerHTML
+      : box.innerHTML;
     document.execCommand("insertHTML", false, html);
     commitChange();
     schedulePaginate(true);
@@ -791,8 +793,19 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   }
 
   /* ---- page settings ---- */
+  const [zoomLive, setZoomLive] = useState(false);
+  const zoomTimer = useRef(null);
+  /* Only the zoom slider gets a smooth resize — pagination itself re-runs
+     on every keystroke and (while footnotes converge) several times per
+     render, and animating THAT geometry is what made the page look like
+     it was crawling around rather than just being laid out. */
   function setPage(patch) {
     store.setPage(docId, patch);
+    if (patch && Object.prototype.hasOwnProperty.call(patch, "zoom")) {
+      setZoomLive(true);
+      clearTimeout(zoomTimer.current);
+      zoomTimer.current = setTimeout(() => setZoomLive(false), 260);
+    }
   }
 
   /* the two toolbar menus close on an outside press, like the header one */
@@ -1048,7 +1061,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 
         <div className="ed-scroll" ref={scrollRef} onScroll={onScroll}
           style={{ display: mode === "edit" ? "" : "none" }}>
-          <div className="ed-paper" ref={paperRef} style={paperStyle}>
+          <div className={"ed-paper" + (zoomLive ? " zoom-live" : "")} ref={paperRef} style={paperStyle}>
             <PageLayer pages={pages} geom={geom} pg={page} ctx={headCtx}
               onFootnote={openFootnote} onMeasure={onFootnoteHeights} />
             <div ref={(el) => { ref.current = el; if (el) nodeRef.current = el; }}

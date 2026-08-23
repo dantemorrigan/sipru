@@ -104,7 +104,7 @@
      The link URL allows one level of nested parens — real URLs (Wikipedia
      disambiguation pages, for one) routinely have them, and a bare "(1)"
      shouldn't truncate the match at its first close-paren. */
-  const INLINE_TOKEN = /\[\^([^\]\s]+)\]|\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|<u>([\s\S]*?)<\/u>|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_/;
+  const INLINE_TOKEN = /\[\^([^\]\s]+)\]|\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|<u>([\s\S]*?)<\/u>|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_|`([^`\n]+)`/;
   function mdInline(raw) {
     let s = String(raw == null ? "" : raw);
     let out = "";
@@ -123,6 +123,7 @@
       else if (m[5] !== undefined) out += "<strong>" + mdInline(m[5]) + "</strong>";
       else if (m[6] !== undefined) out += "<u>" + mdInline(m[6]) + "</u>";
       else if (m[7] !== undefined) out += "<s>" + mdInline(m[7]) + "</s>";
+      else if (m[10] !== undefined) out += "<code>" + esc(m[10]) + "</code>";  // literal — no nested markdown inside a code span
       else out += "<em>" + mdInline(m[8] !== undefined ? m[8] : m[9]) + "</em>";
       s = s.slice(m.index + m[0].length);
     }

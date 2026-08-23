@@ -125,6 +125,7 @@ function inlineToMd(node) {
       out += "[^" + (n.textContent || "").trim() + "]";
       return;
     }
+    if (t === "code") { out += "`" + (n.textContent || "") + "`"; return; }  // literal — never escaped/nested
     const inner = inlineToMd(n);
     if (t === "strong" || t === "b") out += "**" + inner + "**";
     else if (t === "em" || t === "i") out += "*" + inner + "*";
