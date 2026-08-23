@@ -1,6 +1,6 @@
 [package]
 name = "sipru"
-version = "1.2.0"
+version = "1.2.1"
 description = "Sipru. — a minimal local-first editor for writers"
 authors = ["Sipru."]
 license = ""
