@@ -420,6 +420,50 @@ function BookPagedPreview({ project, opts, lang }) {
   );
 }
 
+/* Same real pagination as the book preview above, for a single note —
+   the page count and numbering the export shows now always match what
+   the editor itself paginates the note to. */
+function NotePagedPreview({ note, opts }) {
+  const scrollRef = useRef(null);
+  const [avail, setAvail] = useState(0);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => { if (el.clientWidth) setAvail(Math.max(160, el.clientWidth - 48)); };
+    measure();
+    let ro = null;
+    if (window.ResizeObserver) { ro = new ResizeObserver(measure); ro.observe(el); }
+    else window.addEventListener("resize", measure);
+    return () => { if (ro) ro.disconnect(); else window.removeEventListener("resize", measure); };
+  }, []);
+
+  const pgBase = useMemo(() => exportPageGeom(opts.page), [JSON.stringify(opts.page)]);
+  const geom = useMemo(() => {
+    const g = pageGeometry(pgBase, avail);
+    g.leading = pgBase.leading; g.align = pgBase.align; g.indent = pgBase.indent;
+    g.padL = pgBase.padL; g.padR = pgBase.padR; g.spaceBefore = pgBase.spaceBefore; g.spaceAfter = pgBase.spaceAfter;
+    g.hyphens = pgBase.hyphens; g.pg = pgBase;
+    return g;
+  }, [pgBase, avail]);
+
+  const fontVar = EXPORT_FONT_MAP[opts.font] || EXPORT_FONT_MAP.book;
+
+  return (
+    <div className="exp-pages" ref={scrollRef} style={{ "--ed-font": fontVar }}>
+      {opts.titlePage && (
+        <StaticSheet geom={geom}>
+          <div className="exp-title-page">
+            <div className="b-kicker">SIPRU.</div>
+            <h1>{note.title}</h1>
+          </div>
+        </StaticSheet>
+      )}
+      <PaginatedChapter html={note.content || ""} geom={geom} title={note.title} />
+    </div>
+  );
+}
+
 /* Print-to-PDF.
 
    On the web a new tab is fine. Inside Tauri window.open() has no browser
@@ -503,6 +547,11 @@ const BLOCK_CSS = `
     hr.scene-sep::after { content: "· · ·"; color: #b9b2a1; letter-spacing: .2em; }
     p.al-l { text-align: left; } p.al-j { text-align: justify; }
     p.al-c { text-align: center; text-indent: 0; } p.al-r { text-align: right; text-indent: 0; }
+    /* justify stretches every forced line of a paragraph, not just its
+       wrapped ones — a paragraph built from manual line breaks (an
+       address, a diagram, a few short verse lines) has too few words per
+       line for that, and blows apart into huge gaps. */
+    p:has(br) { text-align: left; }
 `;
 
 /* Footnote definitions live hidden inside the text; on the way out they
@@ -747,7 +796,8 @@ function buildNoteHTML(note, opts) {
     h1 { font-size: 21pt; font-weight: 600; margin: 0 0 .8em; letter-spacing: -.01em; }
     h2 { font-size: 15pt; font-weight: 600; margin: 1.3em 0 .4em; }
     h3 { font-size: 12.5pt; font-weight: 600; margin: 1.1em 0 .3em; }
-    p { margin: 0 0 .8em; }
+    p { margin: 0 0 ${pg.spaceAfter != null ? pg.spaceAfter : 0.8}em; text-indent: ${pg.indent != null ? pg.indent : 0}em; text-align: ${(pg.align || "left") === "justify" ? "justify" : pg.align || "left"}; }
+    p:first-child { text-indent: 0; }
     blockquote { margin: 1.1em 1.6em; font-style: italic; color: #555; border-left: 3px solid #c2542f; padding-left: 1em; }
     ul, ol { padding-left: 1.5em; margin: .4em 0; } li { margin-bottom: .3em; }
     hr { border: none; text-align: center; margin: 1.6em 0; }
@@ -769,8 +819,6 @@ function NoteExportModal({ note, onClose, onToast, lang, defaultFont, page }) {
   const [opts, setOpts] = useState({ font: defaultFont || "book", titlePage: true });
   const set = (patch) => setOpts((o) => ({ ...o, ...patch }));
   const eopts = { ...opts, page };
-
-  const previewHTML = useMemo(() => buildNoteHTML(note, eopts), [note, opts, page]);
 
   function doExport(fmt) {
     const base = note.title.replace(/[^\wа-яёА-ЯЁ\- ]+/gi, "").trim() || "note";
@@ -837,9 +885,9 @@ function NoteExportModal({ note, onClose, onToast, lang, defaultFont, page }) {
           </div>
         </div>
 
-        <div className="export-preview">
-          <div className="export-preview-inner">
-            <iframe className="book-iframe" title="preview" srcDoc={previewHTML} />
+        <div className="export-preview export-preview--pages">
+          <div className="export-preview-inner export-preview-inner--pages">
+            <NotePagedPreview note={note} opts={eopts} />
           </div>
         </div>
       </div>

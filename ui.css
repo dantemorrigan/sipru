@@ -357,6 +357,12 @@
   padding-left: var(--pg-padl, 0); padding-right: var(--pg-padr, 0); }
 .ed-area:empty::before { content: attr(data-placeholder); color: var(--ink-faint); pointer-events: none; }
 .ed-area p { margin: var(--pg-before, 0) 0 var(--pg-after, .55em); text-indent: var(--pg-indent, 1.2em); }
+/* justify stretches every forced line of a paragraph (not just its wrapped
+   ones) to the full column width — fine for flowing prose, but a paragraph
+   built from manual line breaks (an address, a diagram, a few short verse
+   lines) has too few words per line for that, and blows apart into huge
+   gaps. Those read left no matter what the page's alignment is set to. */
+.ed-area p:has(br) { text-align: left; hyphens: none; -webkit-hyphens: none; }
 /* the first paragraph after any break in the flow never gets an indent —
    the same rule a typesetter would apply */
 .ed-area > p:first-child, .ed-area h1 + p, .ed-area h2 + p, .ed-area h3 + p,
