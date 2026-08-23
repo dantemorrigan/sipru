@@ -646,7 +646,12 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
         <div className="export-side">
           <div className="modal-head">
             <div><div className="eyebrow">{tl("exp_book_eyebrow")}</div><h2 className="modal-title">{project.title}</h2></div>
-            <button className="icon-btn" onClick={close}><Icon name="close" size={18} /></button>
+            <div className="modal-head-actions">
+              <button className="pset-reset" onClick={() => set({
+                merge: false, titlePage: true, toc: true, margin: "normal", font: defaultFont, leading: 1.7, paperSize: "a4",
+              })} title={tl("exp_reset")}><Icon name="reset" size={13} /> {tl("exp_reset")}</button>
+              <button className="icon-btn" onClick={close}><Icon name="close" size={18} /></button>
+            </div>
           </div>
 
           <div className="exp-scroll">
@@ -788,7 +793,12 @@ function NoteExportModal({ note, onClose, onToast, lang, defaultFont }) {
         <div className="export-side">
           <div className="modal-head">
             <div><div className="eyebrow">{tl("exp_note_eyebrow")}</div><h2 className="modal-title">{note.title}</h2></div>
-            <button className="icon-btn" onClick={close}><Icon name="close" size={18} /></button>
+            <div className="modal-head-actions">
+              <button className="pset-reset" onClick={() => set({
+                margin: "normal", font: defaultFont || "book", leading: 1.7, paperSize: "a4", titlePage: true,
+              })} title={tl("exp_reset")}><Icon name="reset" size={13} /> {tl("exp_reset")}</button>
+              <button className="icon-btn" onClick={close}><Icon name="close" size={18} /></button>
+            </div>
           </div>
 
           <div className="exp-scroll">

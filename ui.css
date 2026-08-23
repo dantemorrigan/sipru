@@ -576,6 +576,7 @@
 .pset-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 10px 14px; border-top: 1px solid var(--line-2); }
 .pset-hint { font-size: 10px; letter-spacing: .04em; color: var(--ink-faint); }
+.modal-head-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .pset-reset { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
   background: transparent; border: none; padding: 3px 4px; font-size: var(--t-xs);
   color: var(--ink-soft); border-radius: var(--r-sm); white-space: nowrap;

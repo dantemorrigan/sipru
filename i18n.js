@@ -177,6 +177,7 @@
       what_part: "часть", what_scene: "сцену",
 
       /* ---- export book modal ---- */
+      exp_reset: "Сбросить",
       exp_book_eyebrow: "Собрать книгу",
       exp_chapters_label: "Главы",
       exp_of: "из",
@@ -579,6 +580,7 @@
       what_part: "part", what_scene: "scene",
 
       /* ---- export book modal ---- */
+      exp_reset: "Reset",
       exp_book_eyebrow: "Assemble book",
       exp_chapters_label: "Chapters",
       exp_of: "of",
