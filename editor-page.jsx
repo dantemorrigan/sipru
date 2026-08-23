@@ -85,7 +85,7 @@ function pageGeometry(pg, avail) {
 
 /* ---- what counts as one laid-out block ---- */
 function isHiddenBlock(el) {
-  return el.classList && (el.classList.contains("fn-defs") || el.hasAttribute("hidden"));
+  return el.classList && (el.classList.contains("fn-defs") || el.classList.contains("pg-spacer") || el.hasAttribute("hidden"));
 }
 function isPageBreak(el) {
   return el.tagName === "HR" && el.classList && el.classList.contains("page-break");
@@ -110,13 +110,15 @@ function keepsWithNext(el) {
 function paginateArea(area, geom, reserved) {
   const step = geom.mt + geom.mb + geom.gap;      /* dead space between two content areas */
   const cycle = geom.contentH + step;             /* content-area top to content-area top */
+  /* Stale spacers from the previous pass would themselves shift every
+     later offsetTop — clear them before measuring anything. */
+  const stale = area.querySelectorAll(":scope > .pg-spacer");
+  for (let i = 0; i < stale.length; i++) stale[i].remove();
   const blocks = [];
   for (let i = 0; i < area.children.length; i++) {
     const el = area.children[i];
     if (!isHiddenBlock(el)) blocks.push(el);
   }
-
-  for (let i = 0; i < blocks.length; i++) blocks[i].style.paddingTop = "";
 
   const tops = new Array(blocks.length);
   const heights = new Array(blocks.length);
@@ -165,8 +167,16 @@ function paginateArea(area, geom, reserved) {
     if (isPageBreak(blocks[i])) forceBreak = true;
   }
 
+  /* The push is a blank spacer inserted before the block, not padding on
+     the block itself — padding sits inside the border box, so a bordered
+     block (a quote, an epigraph) would draw its left rule straight through
+     the gap to the next page, which is what actually looked broken. */
   for (let i = 0; i < blocks.length; i++) {
-    blocks[i].style.paddingTop = pushes[i] ? pushes[i] + "px" : "";
+    if (!pushes[i]) continue;
+    const spacer = document.createElement("div");
+    spacer.className = "pg-spacer";
+    spacer.style.height = pushes[i] + "px";
+    blocks[i].parentNode.insertBefore(spacer, blocks[i]);
   }
 
   const total = Math.max(1, page + 1);
@@ -194,6 +204,8 @@ function paginateArea(area, geom, reserved) {
 function serializeArea(el) {
   if (!el) return null;
   const clone = el.cloneNode(true);
+  const spacers = clone.querySelectorAll(".pg-spacer");
+  for (let i = 0; i < spacers.length; i++) spacers[i].remove();
   const styled = clone.querySelectorAll("[style]");
   for (let i = 0; i < styled.length; i++) {
     styled[i].style.removeProperty("padding-top");
@@ -541,7 +553,7 @@ function PageSetupPanel({ page, lang, editorFont, onFont, onChange, onClose }) {
         {b.on && ["l", "c", "r"].map((slot) => (
           <div className="pset-row" key={slot}>
             <span className="pset-lbl pset-lbl--sub">{tl("pset_slot_" + slot)}</span>
-            <Seg compact options={slotOpts} value={SLOT_TOKENS.indexOf(b[slot]) >= 0 ? b[slot] : ""}
+            <Seg options={slotOpts} value={SLOT_TOKENS.indexOf(b[slot]) >= 0 ? b[slot] : ""}
               onChange={(v) => set({ [key]: { [slot]: v } })} />
           </div>
         ))}
@@ -683,7 +695,12 @@ function PageSetupPanel({ page, lang, editorFont, onFont, onChange, onClose }) {
           </>
         )}
       </div>
-      <div className="pset-foot mono">{tl("pset_hint")}</div>
+      <div className="pset-foot">
+        <span className="pset-hint mono">{tl("pset_hint")}</span>
+        <button className="pset-reset" onClick={() => onChange(window.SipruStore.PAGE_DEFAULTS)}>
+          <Icon name="reset" size={13} /> {tl("pset_reset")}
+        </button>
+      </div>
     </aside>
   );
 }

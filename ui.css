@@ -168,6 +168,9 @@
 .chap-del:hover { color: var(--accent); transform: scale(1.1); }
 .chap-open { color: var(--ink-faint); justify-self: end; opacity: 0; transition: opacity .2s, transform .2s; }
 .chap:hover .chap-open { opacity: 1; transform: translateX(3px); color: var(--accent); }
+.chap-part-head { padding: 18px 14px 7px; font-size: 11px; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--ink-soft); }
+.chap-part-head:first-child { padding-top: 4px; }
 .chap-empty { padding: 30px 0; color: var(--ink-soft); font-size: var(--t-sm); }
 .chap-empty button { background: none; border: none; color: var(--accent); font-family: var(--mono); cursor: pointer; }
 
@@ -561,8 +564,14 @@
 .pset-toggle.on { background: var(--accent-tint); border-color: var(--accent); }
 .pset-toggle.on span { transform: translateX(14px); background: var(--accent); }
 .pset-band { display: flex; flex-direction: column; }
-.pset-foot { padding: 10px 14px; border-top: 1px solid var(--line-2);
-  font-size: 10px; letter-spacing: .04em; color: var(--ink-faint); }
+.pset-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 14px; border-top: 1px solid var(--line-2); }
+.pset-hint { font-size: 10px; letter-spacing: .04em; color: var(--ink-faint); }
+.pset-reset { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+  background: transparent; border: none; padding: 3px 4px; font-size: var(--t-xs);
+  color: var(--ink-soft); border-radius: var(--r-sm); white-space: nowrap;
+  transition: color .16s var(--ease-out), background-color .16s var(--ease-out); }
+.pset-reset:hover { color: var(--accent); background: var(--accent-tint); }
 
 /* ---- footnote popover ---- */
 .fn-pop { flex-direction: column; align-items: stretch; gap: 8px; width: min(340px, calc(100vw - 24px)); }

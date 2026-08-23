@@ -539,28 +539,47 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
           </div>
 
           <ol className="chap-list">
-            {p.chapters.map((c, i) => {
-              const cw = store.countWords(c.content);
+            {(() => {
+              /* Parts group the flat chapter list here exactly as they do in
+                 the editor's outline — a book's structure should be visible
+                 wherever its chapters are, not only inside one document. */
+              const idx = new Map(p.chapters.map((c, i) => [c.id, i]));
+              const chapRow = (c) => {
+                const cw = store.countWords(c.content);
+                return (
+                  <li key={c.id} draggable
+                    className={"chap" + (dragId === c.id ? " dragging" : "") + (overId === c.id ? " over" : "")}
+                    onDragStart={() => setDragId(c.id)}
+                    onDragOver={(e) => { e.preventDefault(); setOverId(c.id); }}
+                    onDragLeave={() => setOverId((o) => o === c.id ? null : o)}
+                    onDrop={() => onDrop(c.id)}
+                    onDragEnd={() => { setDragId(null); setOverId(null); }}
+                    onClick={() => nav.doc(c.id)}>
+                    <span className="chap-grip" onClick={(e)=>e.stopPropagation()}><Icon name="drag" size={16} /></span>
+                    <span className="chap-num mono">{String(idx.get(c.id) + 1).padStart(2, "0")}</span>
+                    <span className="chap-title">{c.title}</span>
+                    <span className="chap-words mono">{cw.toLocaleString(locale)} {tl("word_many")}</span>
+                    <span className="chap-time mono">{timeAgo(c.updatedAt, lang)}</span>
+                    <span className="chap-del" onClick={(e) => { e.stopPropagation(); setDeleteChap({ id: c.id, title: c.title }); }}
+                      title={tl("del_chapter_title")}><Icon name="trash" size={15} /></span>
+                    <span className="chap-open"><Icon name="forward" size={16} /></span>
+                  </li>
+                );
+              };
+              const parts = p.parts || [];
+              const loose = p.chapters.filter((c) => !c.partId);
               return (
-                <li key={c.id} draggable
-                  className={"chap" + (dragId === c.id ? " dragging" : "") + (overId === c.id ? " over" : "")}
-                  onDragStart={() => setDragId(c.id)}
-                  onDragOver={(e) => { e.preventDefault(); setOverId(c.id); }}
-                  onDragLeave={() => setOverId((o) => o === c.id ? null : o)}
-                  onDrop={() => onDrop(c.id)}
-                  onDragEnd={() => { setDragId(null); setOverId(null); }}
-                  onClick={() => nav.doc(c.id)}>
-                  <span className="chap-grip" onClick={(e)=>e.stopPropagation()}><Icon name="drag" size={16} /></span>
-                  <span className="chap-num mono">{String(i + 1).padStart(2, "0")}</span>
-                  <span className="chap-title">{c.title}</span>
-                  <span className="chap-words mono">{cw.toLocaleString(locale)} {tl("word_many")}</span>
-                  <span className="chap-time mono">{timeAgo(c.updatedAt, lang)}</span>
-                  <span className="chap-del" onClick={(e) => { e.stopPropagation(); setDeleteChap({ id: c.id, title: c.title }); }}
-                    title={tl("del_chapter_title")}><Icon name="trash" size={15} /></span>
-                  <span className="chap-open"><Icon name="forward" size={16} /></span>
-                </li>
+                <>
+                  {parts.map((pt) => (
+                    <React.Fragment key={pt.id}>
+                      <li className="chap-part-head mono">{pt.title || tl("ol_untitled")}</li>
+                      {p.chapters.filter((c) => c.partId === pt.id).map(chapRow)}
+                    </React.Fragment>
+                  ))}
+                  {loose.map(chapRow)}
+                </>
               );
-            })}
+            })()}
             {!p.chapters.length && (
               <li className="chap-empty mono">{tl("no_chapters").replace(" →", "")} <button onClick={() => { const id = store.addChapter(p.id); nav.doc(id); }}>→</button></li>
             )}

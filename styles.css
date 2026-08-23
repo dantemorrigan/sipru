@@ -11,7 +11,7 @@
 :root {
   --ui: "Helvetica Neue", Helvetica, Arial, "Segoe UI", Roboto, sans-serif;
   --book: "Newsreader", Georgia, "Times New Roman", serif;
-  --book-alt: "Spectral", Georgia, serif;
+  --book-alt: "Spectral", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* type scale */
