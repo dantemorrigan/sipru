@@ -1178,19 +1178,35 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   }
 
   /* ---- inserts: page break, scene, footnote ---- */
+  /* insertBefore/appendChild never reach the browser's own undo stack —
+     Chrome only records execCommand and real typing, so a node inserted
+     this way (a page break, a scene, a table…) could never be undone.
+     Routing the insert through execCommand("insertHTML") keeps the exact
+     same placement but makes it a real, undoable step. A throwaway marker
+     attribute is how we find the just-inserted node afterward, since
+     execCommand hands back no reference of its own. */
   function insertBlock(node) {
     const area = ref.current;
-    if (!area) return;
+    if (!area) return null;
     area.focus();
     const cur = topBlock(area);
-    if (cur) cur.parentNode.insertBefore(node, cur.nextSibling);
-    else area.appendChild(node);
-    const p = document.createElement("p");
-    p.innerHTML = "<br>";
-    node.parentNode.insertBefore(p, node.nextSibling);
-    caretTo(p, false);
+    const marker = "ins-" + Math.random().toString(36).slice(2, 9);
+    node.setAttribute("data-ins-marker", marker);
+    const range = document.createRange();
+    if (cur) { range.setStartAfter(cur); range.collapse(true); }
+    else { range.selectNodeContents(area); range.collapse(false); }
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(range);
+    document.execCommand("insertHTML", false, node.outerHTML + "<p><br></p>");
+    const real = area.querySelector('[data-ins-marker="' + marker + '"]');
+    if (real) {
+      real.removeAttribute("data-ins-marker");
+      const p = real.nextElementSibling;
+      if (p && p.tagName === "P") caretTo(p, false);
+    }
     commitChange();
     schedulePaginate(true);
+    return real;
   }
   function insertPageBreak() {
     const hr = document.createElement("hr");
@@ -1204,7 +1220,10 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   /* execCommand has no highlight of its own, so <mark> is applied and
      removed by hand. Unwrapping the whole mark on any overlap (rather than
      splitting it) keeps the toggle predictable: pressing it again on text
-     you just highlighted always clears it. */
+     you just highlighted always clears it. Both branches go through
+     execCommand("insertHTML") rather than raw insertBefore/surroundContents
+     — direct DOM writes never reach Chrome's undo stack, so toggling a
+     highlight used to be permanent. */
   function toggleHighlight() {
     const area = ref.current;
     if (!area) return;
@@ -1215,18 +1234,26 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const anchor = sel.anchorNode && (sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode);
     const existing = anchor && anchor.closest ? anchor.closest("mark") : null;
     if (existing && area.contains(existing)) {
-      const parent = existing.parentNode;
-      while (existing.firstChild) parent.insertBefore(existing.firstChild, existing);
-      existing.remove();
-      parent.normalize();
+      const inner = existing.innerHTML;
+      const r2 = document.createRange();
+      r2.selectNode(existing);
+      sel.removeAllRanges(); sel.addRange(r2);
+      document.execCommand("insertHTML", false, inner);
+      area.normalize();
     } else {
       if (range.collapsed) return;
-      const el = document.createElement("mark");
-      try { range.surroundContents(el); }
-      catch (e) { el.appendChild(range.extractContents()); range.insertNode(el); }
-      const after = document.createRange();
-      after.selectNodeContents(el);
-      sel.removeAllRanges(); sel.addRange(after);
+      const tmp = document.createElement("div");
+      tmp.appendChild(range.cloneContents());
+      const marker = "mark-" + Math.random().toString(36).slice(2, 9);
+      document.execCommand("insertHTML", false,
+        '<mark data-ins-marker="' + marker + '">' + tmp.innerHTML + "</mark>");
+      const real = area.querySelector('[data-ins-marker="' + marker + '"]');
+      if (real) {
+        real.removeAttribute("data-ins-marker");
+        const after = document.createRange();
+        after.selectNodeContents(real);
+        sel.removeAllRanges(); sel.addRange(after);
+      }
     }
     commitChange();
     schedulePaginate(true);
@@ -1246,8 +1273,11 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       body.appendChild(tr);
     }
     tbl.appendChild(head); tbl.appendChild(body);
-    insertBlock(tbl);
-    const first = tbl.querySelector("th");
+    /* insertBlock's execCommand parses a fresh copy of this markup into the
+       document, so `tbl` itself stays detached — the real inserted node is
+       whatever insertBlock hands back. */
+    const real = insertBlock(tbl);
+    const first = real && real.querySelector("th");
     if (first) caretTo(first, false);
   }
 
@@ -1256,8 +1286,9 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const code = document.createElement("code");
     code.innerHTML = "<br>";
     pre.appendChild(code);
-    insertBlock(pre);
-    caretTo(code, false);
+    const real = insertBlock(pre);
+    const realCode = real && real.querySelector("code");
+    if (realCode) caretTo(realCode, false);
   }
 
   function insertTaskList() {
@@ -1269,8 +1300,9 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     li.appendChild(box);
     li.appendChild(document.createTextNode(" "));
     ul.appendChild(li);
-    insertBlock(ul);
-    caretTo(li, true);
+    const real = insertBlock(ul);
+    const realLi = real && real.querySelector("li");
+    if (realLi) caretTo(realLi, true);
   }
 
   function insertImage() {
@@ -1318,14 +1350,14 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const sel = window.getSelection();
     if (!sel || !sel.rangeCount) return;
     const id = "f_" + Math.random().toString(36).slice(2, 9);
-    const sup = document.createElement("sup");
-    sup.className = "fn";
-    sup.setAttribute("data-fn", id);
-    sup.textContent = "1";
-    const r = sel.getRangeAt(0);
-    r.collapse(false);
-    r.insertNode(sup);
-    caretAfterMark(sup);
+    /* Range.insertNode() is a raw DOM write, invisible to Chrome's own undo
+       stack — going through execCommand keeps the marker undoable like
+       everything else typed around it. */
+    sel.getRangeAt(0).collapse(false);
+    document.execCommand("insertHTML", false,
+      '<sup class="fn" data-fn="' + id + '">1</sup>');
+    const sup = area.querySelector('sup.fn[data-fn="' + id + '"]');
+    if (sup) caretAfterMark(sup);
     setFnText(area, id, "");
     commitChange();
     schedulePaginate(true);
