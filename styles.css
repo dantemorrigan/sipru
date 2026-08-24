@@ -66,8 +66,9 @@
   --sheet:    #131210;
   --ink:      #f0ece2;
   --ink-2:    #c4bdac;
-  --ink-soft: #8a8373;
-  --ink-faint:#5d574a;
+  --ink-soft: #979082;   /* lifted: the footer meta and status text sat at
+                            the edge of legibility on the near-black paper */
+  --ink-faint:#6a6456;
   --line:     rgba(240,236,226,.12);
   --line-2:   rgba(240,236,226,.06);
   --accent:   #df6f44;

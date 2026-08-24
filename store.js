@@ -63,7 +63,11 @@
     fontSize: 12,                                     /* pt */
     leading: 1.5,                                     /* line-height multiplier */
     align: "left",                                    /* left | justify | center | right */
-    indent: 1.2,                                      /* first line, em */
+    indent: 0,                                        /* first line, em — off by default:
+                                                         a fresh document writes flush left,
+                                                         like Docs; the writer turns the
+                                                         indent on in page setup if they
+                                                         want a book indent */
     padL: 0, padR: 0,                                 /* extra block indents, em */
     spaceBefore: 0, spaceAfter: 0.55,                 /* paragraph spacing, em */
     hyphens: true,

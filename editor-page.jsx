@@ -208,6 +208,11 @@ function paginateArea(area, geom, reserved) {
     if (!pushes[i]) continue;
     const spacer = document.createElement("div");
     spacer.className = "pg-spacer";
+    /* not editable: an empty div is a perfectly good caret target, and one
+       parked in a spacer belongs to no block — which is what left the
+       caret stuck between two pages */
+    spacer.contentEditable = "false";
+    spacer.setAttribute("aria-hidden", "true");
     spacer.style.height = (pushes[i] - collapses[i]) + "px";
     blocks[i].parentNode.insertBefore(spacer, blocks[i]);
   }
@@ -499,6 +504,14 @@ function applyBlockStyle(area, style, tl) {
   }
   const next = curStyle === style ? "p" : style;
 
+  /* "Body text" on a list has to end the list — formatBlock cannot touch a
+     <li>, so without this the style picker (and ⌘⌥0) silently did nothing
+     on any bulleted or numbered line. */
+  if (next === "p" && (cur.tagName === "UL" || cur.tagName === "OL")) {
+    document.execCommand(cur.tagName === "UL" ? "insertUnorderedList" : "insertOrderedList", false, null);
+    return;
+  }
+
   if (next === "epigraph" || next === "note") {
     const lines = blockLines(cur);
     const el = next === "epigraph"
@@ -544,7 +557,7 @@ function slotsFor(band, pageIdx, pg) {
 /* ============================================================
    The drawn page stack: sheets, running heads, numbers, footnotes
    ============================================================ */
-function PageLayer({ pages, geom, pg, ctx, onFootnote, onMeasure }) {
+function PageLayer({ pages, geom, pg, ctx, onFootnote, onMeasure, onBand }) {
   const boxes = useRef([]);
   useEffect(() => {
     if (!onMeasure) return;
@@ -563,8 +576,15 @@ function PageLayer({ pages, geom, pg, ctx, onFootnote, onMeasure }) {
             style={{ top: i * (geom.pageH + geom.gap), width: geom.pageW, height: geom.pageH }}>
             <div className="ed-page-margins"
               style={{ top: geom.mt, left: geom.ml, right: geom.mr, bottom: geom.mb }} />
+            {/* Word and Docs both open the running head on a double click in
+                the margin strip it lives in — not only on the text itself,
+                which may not even be switched on yet. */}
+            <div className="ed-band-zone ed-band-zone--hdr" style={{ height: Math.max(10, geom.mt) }}
+              onDoubleClick={() => onBand && onBand("hdr")} />
+            <div className="ed-band-zone ed-band-zone--ftr" style={{ height: Math.max(10, geom.mb) }}
+              onDoubleClick={() => onBand && onBand("ftr")} />
             {pg.hdr.on && !bare && (
-              <div className="ed-band ed-band--hdr"
+              <div className="ed-band ed-band--hdr" onDoubleClick={() => onBand && onBand("hdr")}
                 style={{ top: Math.max(6, geom.mt * 0.42), left: geom.ml, right: geom.mr }}>
                 <span>{resolveSlot(hdr.l, sctx)}</span>
                 <span>{resolveSlot(hdr.c, sctx)}</span>
@@ -572,7 +592,7 @@ function PageLayer({ pages, geom, pg, ctx, onFootnote, onMeasure }) {
               </div>
             )}
             {pg.ftr.on && !bare && (
-              <div className="ed-band ed-band--ftr"
+              <div className="ed-band ed-band--ftr" onDoubleClick={() => onBand && onBand("ftr")}
                 style={{ bottom: Math.max(6, geom.mb * 0.36), left: geom.ml, right: geom.mr }}>
                 <span>{resolveSlot(ftr.l, sctx)}</span>
                 <span>{resolveSlot(ftr.c, sctx)}</span>
@@ -582,7 +602,15 @@ function PageLayer({ pages, geom, pg, ctx, onFootnote, onMeasure }) {
             <div className="ed-fnotes" ref={(el) => { boxes.current[i] = el; }}
               style={{ left: geom.ml, width: geom.contentW, bottom: geom.mb }}>
               {pageNotes.map((f) => (
-                <div className="ed-fnote" key={f.id} onMouseDown={(e) => { e.preventDefault(); onFootnote(f.id); }}>
+                <div className="ed-fnote" key={f.id}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    /* the editor pops up next to whatever was clicked: click
+                       the note in the footer and the field opens *there*,
+                       not back up beside the marker in the text */
+                    const r = e.currentTarget.getBoundingClientRect();
+                    onFootnote(f.id, { x: r.left + r.width / 2, y: r.bottom });
+                  }}>
                   <sup>{f.n}</sup>
                   <span>{f.text || "…"}</span>
                 </div>
@@ -637,9 +665,12 @@ function Seg({ options, value, onChange, compact }) {
   );
 }
 
-function PageSetupPanel({ page, lang, editorFont, onFont, onChange, onClose }) {
+function PageSetupPanel({ page, lang, editorFont, onFont, onChange, onClose, tab: tabProp, onTab }) {
   const tl = T(lang || "en");
-  const [tab, setTab] = useState("page");
+  const [tabState, setTabState] = useState(tabProp || "page");
+  const tab = tabProp || tabState;
+  const setTab = (k) => { setTabState(k); if (onTab) onTab(k); };
+  useEffect(() => { if (tabProp) setTabState(tabProp); }, [tabProp]);
   const set = (patch) => onChange(patch);
   const slotOpts = [
     { v: "", l: "—", title: tl("pset_slot_none") },
@@ -819,6 +850,14 @@ function FootnotePopup({ n, text, anchor, lang, onApply, onDelete, onClose }) {
   const boxRef = useRef(null);
   const inputRef = useRef(null);
   useEffect(() => { setTimeout(() => inputRef.current && inputRef.current.focus(), 30); }, []);
+  /* Escape has to close the popover wherever the focus happens to be —
+     tabbing to the delete button and pressing it left the popover stuck
+     over the page with no way out but a click. */
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   useEffect(() => {
     const el = boxRef.current;
     if (!el || !anchor) return;

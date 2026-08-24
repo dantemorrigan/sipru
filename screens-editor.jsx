@@ -53,6 +53,28 @@ function useDocSave(docId, store, getHTML) {
 
 const FONT_MAP = { book: "var(--book)", article: "var(--book-alt)", mono: "var(--mono)" };
 
+/* Shortcut hints have to name the key the reader actually has: ⌘ on a Mac,
+   Ctrl everywhere else — a tooltip promising ⌘B on Windows teaches the
+   wrong thing. The bindings themselves are read off e.code, so they work
+   on every keyboard layout, Cyrillic included. */
+const IS_MAC = (() => {
+  try { return /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || ""); }
+  catch (e) { return false; }
+})();
+const MOD = IS_MAC ? "⌘" : "Ctrl+";
+const ALTK = IS_MAC ? "⌥" : "Alt+";
+const SHIFTK = IS_MAC ? "⇧" : "Shift+";
+const KEYS = {
+  bold: MOD + "B", italic: MOD + "I", underline: MOD + "U",
+  strike: MOD + SHIFTK + "X", highlight: MOD + SHIFTK + "H", link: MOD + "K",
+  quote: MOD + SHIFTK + "9", ul: MOD + SHIFTK + "8", ol: MOD + SHIFTK + "7",
+  "al-l": MOD + SHIFTK + "L", "al-c": MOD + SHIFTK + "E", "al-r": MOD + SHIFTK + "R", "al-j": MOD + SHIFTK + "J",
+  undo: MOD + "Z", redo: MOD + SHIFTK + "Z", save: MOD + "S",
+  pagebreak: MOD + "⏎", footnote: MOD + ALTK + "F", focus: MOD + SHIFTK + "F", preview: MOD + SHIFTK + "P",
+  h: MOD + ALTK + "1…6",
+};
+const hint = (label, key) => (key ? label + "  ·  " + key : label);
+
 /* The editor remounts on every document change (App keys it by id), so
    whether the outline is open lives just outside the component — jumping
    between chapters from the outline must not close the outline. */
@@ -79,7 +101,6 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const saved = useRef("");
   const [focusMode, setFocusMode] = useState(false);
   const [mode, setMode] = useState("edit");
-  const [edition] = useState("novel");
   const [active, setActive] = useState({});
   const [words, setWords] = useState(0);
   const [renaming, setRenaming] = useState(false);
@@ -105,12 +126,15 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     return next;
   }), []);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [setupTab, setSetupTab] = useState("page");
   const [insertOpen, setInsertOpen] = useState(false);
   const [styleOpen, setStyleOpen] = useState(false);
   const [blockStyle, setBlockStyle] = useState("p");
+  const [alignCls, setAlignState] = useState("");
   const [fnEdit, setFnEdit] = useState(null);
   const [curScene, setCurScene] = useState("");
   const [curPage, setCurPage] = useState(1);
+  const [prevMeta, setPrevMeta] = useState(null);
   const insertRef = useRef(null);
   const styleRef = useRef(null);
   const reserveRef = useRef([]);
@@ -135,6 +159,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
      instead of a copy we'd otherwise have to refresh on every keystroke. */
   const nodeRef = useRef(null);
   const wordTimer = useRef(null);
+  const lastRange = useRef(null);
   const { schedule: doSave, flush: flushSave } =
     useDocSave(docId, store, useCallback(() => serializeArea(nodeRef.current), []));
 
@@ -208,6 +233,25 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [focusMode]);
 
+  /* Focus mode and the preview switch are about the *screen*, not about the
+     text, so they cannot depend on the caret sitting in the editable — in
+     preview there is no editable to sit in, and after any toolbar press the
+     focus is elsewhere. They listen on the window; typing in a field
+     (rename, search, a page-setup number) is left alone. */
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const t = e.target;
+      if (t && t.tagName && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      const code = e.code || "";
+      const k = /^Key[A-Z]$/.test(code) ? code.slice(3).toLowerCase() : (e.key || "").toLowerCase();
+      if (e.altKey && k === "p") { e.preventDefault(); switchMode(mode === "edit" ? "preview" : "edit"); }
+      else if (e.shiftKey && !e.altKey && k === "f") { e.preventDefault(); setFocusMode((f) => !f); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode, docId]);
+
   const refreshRaf = useRef(0);
   useEffect(() => () => cancelAnimationFrame(refreshRaf.current), [docId]);
 
@@ -232,7 +276,9 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       }
       st.block = block;
       setActive(st);
-      setBlockStyle(blockStyleOf(topBlock(ref.current)) || "p");
+      const top = topBlock(ref.current);
+      setBlockStyle(blockStyleOf(top) || "p");
+      setAlignState(top ? (ALIGN_CLASSES.find((c) => top.classList.contains(c)) || "") : "");
     } catch (e) {}
   }
   /* queryCommandState (×6) forces a synchronous selection/style recalc in
@@ -258,7 +304,15 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   useEffect(() => {
     const onSelChange = () => {
       const sel = window.getSelection();
-      if (ref.current && sel && sel.anchorNode && ref.current.contains(sel.anchorNode)) refreshActive();
+      if (ref.current && sel && sel.anchorNode && ref.current.contains(sel.anchorNode)) {
+        /* Clicking a toolbar button moves focus out of the editable for an
+           instant; every path that acts on "the block the caret is in"
+           needs a range to fall back on, or the button silently does
+           nothing — which is why alignment appeared to work only every
+           other press. */
+        if (sel.rangeCount) lastRange.current = sel.getRangeAt(0).cloneRange();
+        refreshActive();
+      }
     };
     document.addEventListener("selectionchange", onSelChange);
     return () => document.removeEventListener("selectionchange", onSelChange);
@@ -515,6 +569,25 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       return false;
     }
     if (data === "`") {
+      /* ``` on its own line opens a real code block, the way it does in
+         every markdown editor — typing a fence used to leave three
+         backticks sitting in the prose and the code after it set in the
+         book face. */
+      const parentBlock = node.parentElement;
+      if (parentBlock && parentBlock.firstChild === node && /^`{3}$/.test(before.trim())) {
+        const block = topBlock(ref.current);
+        if (block && !/^(PRE|CODE)$/.test(block.tagName)) {
+          const pre = document.createElement("pre");
+          const code = document.createElement("code");
+          code.innerHTML = "<br>";
+          pre.appendChild(code);
+          block.parentNode.replaceChild(pre, block);
+          caretTo(code, false);
+          commitChange();
+          schedulePaginate(true);
+          return true;
+        }
+      }
       const c = before.match(/`([^`\n]+)`$/);
       if (c) { wrapRange(node, offset - c[0].length, offset, "code", c[1]); return true; }
       return false;
@@ -681,23 +754,179 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     return true;
   }
 
+  /* ---- deleting *into* a block, not just inside it ----------------
+
+     contentEditable will happily leave an emptied blockquote, code block,
+     epigraph or heading standing there with nothing in it, and then refuse
+     to remove it: Backspace has no text left to eat, so every press is a
+     no-op and the block looks frozen on the page. The same goes for a page
+     break or a scene marker sitting above the caret — nothing native ever
+     deletes those, so the extra page they create could not be taken back.
+
+     Word and Docs both answer this the same way: the first Backspace in an
+     empty special block turns it back into an ordinary paragraph, and a
+     Backspace at the very start of a line eats whatever rule sits above
+     it. ------------------------------------------------------------- */
+  function isBlockEmpty(el) {
+    if (!el) return false;
+    if (el.querySelector && el.querySelector("img, table, input, sup.fn, hr")) return false;
+    return !(el.textContent || "").replace(/ /g, " ").trim();
+  }
+  function caretEdge(block, atEnd) {
+    const sel = window.getSelection();
+    if (!sel || !sel.isCollapsed || !sel.rangeCount) return false;
+    const caret = sel.getRangeAt(0);
+    try {
+      const r = document.createRange();
+      r.selectNodeContents(block);
+      if (atEnd) r.setStart(caret.endContainer, caret.endOffset);
+      else r.setEnd(caret.startContainer, caret.startOffset);
+      return !r.toString().replace(/ /g, " ").trim();
+    } catch (err) { return false; }
+  }
+  function siblingBlock(el, dir) {
+    let n = dir < 0 ? el.previousElementSibling : el.nextElementSibling;
+    while (n && n.classList && (n.classList.contains("pg-spacer") || n.classList.contains("fn-defs"))) {
+      n = dir < 0 ? n.previousElementSibling : n.nextElementSibling;
+    }
+    return n;
+  }
+  function toParagraph(block) {
+    const p = document.createElement("p");
+    p.innerHTML = "<br>";
+    block.parentNode.replaceChild(p, block);
+    caretTo(p, false);
+    commitChange();
+    schedulePaginate(true);
+  }
+  const SPECIAL_EMPTY = { BLOCKQUOTE: 1, PRE: 1, ASIDE: 1, FIGURE: 1, H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1 };
+  function handleDeleteKey(e) {
+    const area = ref.current;
+    if (!area) return false;
+    const sel = window.getSelection();
+    if (!sel || !sel.isCollapsed) return false;
+    const block = topBlock(area);
+    if (!block) return false;
+    const back = e.key === "Backspace";
+    const empty = isBlockEmpty(block);
+
+    if (back && empty && SPECIAL_EMPTY[block.tagName]) { toParagraph(block); return true; }
+    /* An emptied paragraph deleted natively takes a character of the line
+       above with it in Chrome (the <br> placeholder confuses the merge).
+       Removing it here is both exact and predictable. */
+    if (back && empty && block.tagName === "P") {
+      const prev = siblingBlock(block, -1);
+      if (prev && prev.tagName !== "HR") {
+        block.remove();
+        caretTo(prev.tagName === "TABLE" ? (prev.querySelector("td, th") || prev) : prev, true);
+        commitChange();
+        schedulePaginate(true);
+        return true;
+      }
+    }
+    /* an emptied list item that is the list's only one takes the list with it */
+    if (back && empty && (block.tagName === "UL" || block.tagName === "OL") &&
+        block.querySelectorAll("li").length <= 1) { toParagraph(block); return true; }
+
+    const near = siblingBlock(block, back ? -1 : 1);
+    const atEdge = caretEdge(block, !back);
+    if (!atEdge) return false;
+    if (near && near.tagName === "HR") {
+      /* a page break or a scene marker: the one thing that made an extra
+         page impossible to take back */
+      near.remove();
+      commitChange();
+      schedulePaginate(true);
+      return true;
+    }
+    if (near && back && empty && SPECIAL_EMPTY[near.tagName] === undefined &&
+        (near.tagName === "TABLE" || near.tagName === "PRE" || near.tagName === "FIGURE")) {
+      block.remove();
+      caretTo(near.tagName === "TABLE" ? (near.querySelector("td, th") || near) : near, true);
+      commitChange();
+      schedulePaginate(true);
+      return true;
+    }
+    /* Nothing above and nothing to delete: swallow the key rather than let
+       the browser hunt for a target outside the document. */
+    if (back && !near && empty && area.children.length <= 1) return true;
+    return false;
+  }
+
+  /* Shortcuts read the *physical* key (e.code), not the character it
+     produces: on a Cyrillic (or any non-Latin) layout e.key for the B key
+     is "и", so every ⌘B/Ctrl+B in the app silently stopped working the
+     moment the writer switched layouts — which is most of the time here. */
+  function hotKey(e) {
+    const code = e.code || "";
+    if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
+    if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+    if (/^Numpad[0-9]$/.test(code)) return code.slice(6);
+    return (e.key || "").toLowerCase();
+  }
   function onKeyDown(e) {
+    if (e.key === "Backspace" || e.key === "Delete") {
+      if (handleDeleteKey(e)) { e.preventDefault(); return; }
+    }
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); insertPageBreak(); return; }
     if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey && exitSpecialBlock()) { e.preventDefault(); return; }
+    if (e.key === "Tab" && !e.metaKey && !e.ctrlKey) {
+      /* Tab inside a list is indent/outdent, the way every editor does it;
+         anywhere else it must not walk the focus out of the document. */
+      const cur = topBlock(ref.current);
+      if (cur && (cur.tagName === "UL" || cur.tagName === "OL")) {
+        e.preventDefault();
+        exec(e.shiftKey ? "outdent" : "indent");
+        return;
+      }
+      if (!e.shiftKey) { e.preventDefault(); document.execCommand("insertText", false, "\t"); commitChange(); return; }
+    }
     if (!(e.metaKey || e.ctrlKey)) return;
-    const k = (e.key || "").toLowerCase();
-    if (k === "z") { e.preventDefault(); runHistory(e.shiftKey ? "redo" : "undo"); }
+    const k = hotKey(e);
+    const alt = e.altKey;
+
+    /* ⌘/Ctrl+Alt+1…6 — headings; 0 — back to body text */
+    if (alt && /^[0-6]$/.test(k)) {
+      e.preventDefault();
+      setStyle(k === "0" ? "p" : "h" + k);
+      return;
+    }
+    if (alt && k === "f") { e.preventDefault(); insertFootnote(); return; }
+    if (e.shiftKey) {
+      switch (k) {
+        case "l": e.preventDefault(); setAlign("al-l"); return;
+        case "e": e.preventDefault(); setAlign("al-c"); return;
+        case "r": e.preventDefault(); setAlign("al-r"); return;
+        case "j": e.preventDefault(); setAlign("al-j"); return;
+        case "7": e.preventDefault(); runTool("ol"); return;
+        case "8": e.preventDefault(); runTool("ul"); return;
+        case "9": e.preventDefault(); runTool("quote"); return;
+        case "h": e.preventDefault(); toggleHighlight(); return;
+        case "x": e.preventDefault(); exec("strikeThrough"); return;
+        case "z": e.preventDefault(); runHistory("redo"); return;
+        default: break;
+      }
+    }
+    if (k === "z") { e.preventDefault(); runHistory("undo"); }
     else if (k === "y") { e.preventDefault(); runHistory("redo"); }
     else if (k === "b") { e.preventDefault(); exec("bold"); }
     else if (k === "i") { e.preventDefault(); exec("italic"); }
     else if (k === "u") { e.preventDefault(); exec("underline"); }
     else if (k === "k") { e.preventDefault(); e.stopPropagation(); openLinkPopup(); }
-    else if (e.shiftKey && k === "x") { e.preventDefault(); exec("strikeThrough"); }
+    else if (k === "\\" || e.key === "\\") { e.preventDefault(); exec("removeFormat"); }
   }
 
+  /* Commands that build a block (a list, a heading, a quote) go through
+     Chrome's own execCommand, which will happily build it *inside* the
+     paragraph it was meant to replace — <p><ul><li>…</li></ul></p>. That is
+     invalid, and everything downstream (pagination, the style dropdown,
+     block conversion) then treats the pile as one block. Repairing it right
+     after the command keeps the damage from ever being saved. */
+  const BLOCK_CMD = { insertUnorderedList: 1, insertOrderedList: 1, formatBlock: 1, indent: 1, outdent: 1 };
   function exec(cmd, val) {
     ref.current.focus();
     document.execCommand(cmd, false, val);
+    if (BLOCK_CMD[cmd]) unwrapNestedBlocks(ref.current);
     onInput(); refreshActive();
   }
   function block(tag) {
@@ -1025,14 +1254,20 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     schedulePaginate(true);
     setTimeout(() => openFootnote(id), 0);
   }
-  function openFootnote(id) {
+  /* `at` is where the click actually happened — clicking a note in the
+     page footer must open the editor next to *it*, not somewhere else on
+     the page beside the marker in the text. */
+  function openFootnote(id, at) {
     const area = ref.current;
     if (!area) return;
     const mark = area.querySelector('sup.fn[data-fn="' + String(id).replace(/["\\]/g, "") + '"]');
-    const rect = mark ? mark.getBoundingClientRect()
-      : { left: window.innerWidth / 2, width: 0, bottom: Math.min(220, window.innerHeight / 2) };
-    setFnEdit({ id, n: mark ? mark.textContent : "", text: fnText(area, id),
-      anchor: { x: rect.left + rect.width / 2, y: rect.bottom } });
+    let anchor = at;
+    if (!anchor) {
+      const rect = mark ? mark.getBoundingClientRect()
+        : { left: window.innerWidth / 2, width: 0, bottom: Math.min(220, window.innerHeight / 2) };
+      anchor = { x: rect.left + rect.width / 2, y: rect.bottom };
+    }
+    setFnEdit({ id, n: mark ? mark.textContent : "", text: fnText(area, id), anchor });
   }
   function applyFootnote(id, text) {
     const area = ref.current;
@@ -1072,7 +1307,8 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const mark = e.target && e.target.closest ? e.target.closest("sup.fn") : null;
     if (mark) {
       e.preventDefault();
-      openFootnote(mark.getAttribute("data-fn"));
+      const mr = mark.getBoundingClientRect();
+      openFootnote(mark.getAttribute("data-fn"), { x: mr.left + mr.width / 2, y: mr.bottom });
       return;
     }
     /* A checkbox left enabled inside contentEditable is itself editable —
@@ -1104,23 +1340,60 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   function setStyle(name) {
     const area = ref.current;
     if (!area) return;
+    restoreCaret(area);
     area.focus();
     applyBlockStyle(area, name, tl);
+    unwrapNestedBlocks(area);
     setStyleOpen(false);
     commitChange();
     refreshActive();
     schedulePaginate(true);
   }
   const ALIGN_CLASSES = ["al-l", "al-c", "al-r", "al-j"];
+  /* Every top-level block the selection touches — pressing "centre" with
+     three paragraphs selected has to centre all three, not just the one
+     the anchor happens to sit in. */
+  function selectedBlocks(area) {
+    const out = [];
+    const sel = window.getSelection();
+    const range = sel && sel.rangeCount && area.contains(sel.anchorNode)
+      ? sel.getRangeAt(0) : lastRange.current;
+    if (range && area.contains(range.commonAncestorContainer)) {
+      for (let i = 0; i < area.children.length; i++) {
+        const el = area.children[i];
+        if (el.classList && (el.classList.contains("pg-spacer") || el.classList.contains("fn-defs"))) continue;
+        let hit = false;
+        try { hit = range.intersectsNode(el); } catch (err) { hit = false; }
+        if (hit) out.push(el);
+      }
+    }
+    if (out.length) return out;
+    const cur = topBlock(area);
+    return cur ? [cur] : [];
+  }
+  /* Restores the caret the toolbar press stole, so a button never lands on
+     "no block selected" and quietly does nothing. */
+  function restoreCaret(area) {
+    const sel = window.getSelection();
+    if (sel && sel.anchorNode && area.contains(sel.anchorNode)) return true;
+    if (!lastRange.current || !area.contains(lastRange.current.commonAncestorContainer)) return false;
+    sel.removeAllRanges(); sel.addRange(lastRange.current);
+    return true;
+  }
   function setAlign(cls) {
     const area = ref.current;
     if (!area) return;
-    const cur = topBlock(area);
-    if (!cur) return;
-    const had = cur.classList.contains(cls);
-    ALIGN_CLASSES.forEach((c) => cur.classList.remove(c));
-    if (!had && cls) cur.classList.add(cls);
-    if (!cur.getAttribute("class")) cur.removeAttribute("class");
+    restoreCaret(area);
+    const blocks = selectedBlocks(area);
+    if (!blocks.length) return;
+    blocks.forEach((el) => {
+      ALIGN_CLASSES.forEach((c) => el.classList.remove(c));
+      if (cls) el.classList.add(cls);
+      if (!el.getAttribute("class")) el.removeAttribute("class");
+    });
+    area.focus();
+    restoreCaret(area);
+    setAlignState(cls);
     commitChange();
     schedulePaginate(true);
   }
@@ -1181,7 +1454,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           case "edit": switchMode("edit"); break;
           case "focus": setFocusMode((f) => !f); break;
           case "outline": setOutlineOpen((o) => !o); break;
-          case "pagesetup": setSetupOpen((o) => !o); break;
+          case "pagesetup": setSetupTab("page"); setSetupOpen((o) => !o); break;
           case "pagebreak": insertPageBreak(); break;
           case "footnote": insertFootnote(); break;
           case "scene": insertScene(); break;
@@ -1259,7 +1532,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
             <button className={"modeswitch-b" + (mode==="edit"?" on":"")} onClick={() => switchMode("edit")}><Icon name="edit" size={15} /> {tl("mode_edit")}</button>
             <button className={"modeswitch-b" + (mode==="preview"?" on":"")} onClick={() => switchMode("preview")}><Icon name="eye" size={15} /> {tl("mode_preview")}</button>
           </div>
-          <button className={"icon-btn" + (savedFlash ? " icon-btn--flash" : "")} onClick={saveNow} title={tl("ed_save")}><Icon name="save" size={18} /></button>
+          <button className={"icon-btn" + (savedFlash ? " icon-btn--flash" : "")} onClick={saveNow} title={hint(tl("ed_save"), KEYS.save)}><Icon name="save" size={18} /></button>
           <div className={"ed-more" + (moreOpen ? " ed-more--open" : "")} ref={moreRef}>
             <button className="icon-btn ed-more-btn" onClick={() => setMoreOpen((o) => !o)} title={tl("ed_more")}>
               <Icon name="more" size={18} />
@@ -1294,15 +1567,15 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
         {mode === "edit" && (
           <>
             <div className="ed-bar-grp">
-              <button className="tool" title={tl("ed_undo")} disabled={!hist.undo}
+              <button className="tool" title={hint(tl("ed_undo"), KEYS.undo)} disabled={!hist.undo}
                 onMouseDown={(e) => { e.preventDefault(); runHistory("undo"); }}><Icon name="undo" size={18} /></button>
-              <button className="tool" title={tl("ed_redo")} disabled={!hist.redo}
+              <button className="tool" title={hint(tl("ed_redo"), KEYS.redo)} disabled={!hist.redo}
                 onMouseDown={(e) => { e.preventDefault(); runHistory("redo"); }}><Icon name="redo" size={18} /></button>
             </div>
 
             <div className="ed-bar-grp ed-stylepick" ref={styleRef}>
               <button className="ed-style-btn" onClick={() => { setStyleOpen((o) => !o); setInsertOpen(false); }}
-                title={tl("style_title")}>
+                title={hint(tl("style_title"), KEYS.h)}>
                 <span className="ed-style-cur">{tl("style_" + (blockStyle || "p"))}</span>
                 <Icon name="chevron" size={13} />
               </button>
@@ -1321,7 +1594,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 
             <div className="ed-bar-grp">
               {marks.map(([icon, cmd]) => (
-                <button key={cmd} className={"tool" + (active[cmd] ? " on" : "")} title={tl("tool_" + cmd)}
+                <button key={cmd} className={"tool" + (active[cmd] ? " on" : "")} title={hint(tl("tool_" + cmd), KEYS[cmd])}
                   onMouseDown={(e) => { e.preventDefault(); runTool(cmd); }}><Icon name={icon} size={18} /></button>
               ))}
             </div>
@@ -1329,8 +1602,17 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
             <div className="ed-bar-grp">
               {lists.map(([icon, cmd]) => (
                 <button key={cmd} className={"tool" + (active[cmd] || active.block === (cmd === "quote" ? "blockquote" : cmd) ? " on" : "")}
-                  title={tl("tool_" + cmd)}
+                  title={hint(tl("tool_" + cmd), KEYS[cmd])}
                   onMouseDown={(e) => { e.preventDefault(); runTool(cmd); }}><Icon name={icon} size={18} /></button>
+              ))}
+            </div>
+
+            <div className="ed-bar-grp ed-bar-grp--align">
+              {aligns.map(([cls, key]) => (
+                <button key={cls} className={"tool" + (alignCls === cls ? " on" : "")} title={hint(tl(key), KEYS[cls])}
+                  onMouseDown={(e) => { e.preventDefault(); setAlign(cls); }}>
+                  <span className={"align-pv align-pv--" + cls} />
+                </button>
               ))}
             </div>
 
@@ -1341,12 +1623,14 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
                 <div className="ed-menu ed-insert-menu">
                   <div className="ed-menu-lbl mono">{tl("ins_title")}</div>
                   <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertFootnote(); }}>
-                    <Icon name="note" size={15} /> <span>{tl("ins_footnote")}</span></button>
+                    <Icon name="note" size={15} /> <span>{tl("ins_footnote")}</span>
+                    <kbd className="mono">{FINE_POINTER ? KEYS.footnote : ""}</kbd></button>
                   <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertPageBreak(); }}>
                     <Icon name="book" size={15} /> <span>{tl("ins_pagebreak")}</span>
-                    <kbd className="mono">{FINE_POINTER ? "⌘⏎" : ""}</kbd></button>
+                    <kbd className="mono">{FINE_POINTER ? KEYS.pagebreak : ""}</kbd></button>
                   {project && (
-                    <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertScene(); }}>
+                    <button title={tl("ins_scene_hint")}
+                      onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertScene(); }}>
                       <Icon name="panel" size={15} /> <span>{tl("ins_scene")}</span></button>
                   )}
                   <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); exec("insertHorizontalRule"); }}>
@@ -1362,7 +1646,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
                   <div className="ed-menu-lbl mono">{tl("ins_align")}</div>
                   <div className="ed-menu-aligns">
                     {aligns.map(([cls, key]) => (
-                      <button key={cls} className="ed-align-b" title={tl(key)}
+                      <button key={cls} className={"ed-align-b" + (alignCls === cls ? " on" : "")} title={tl(key)}
                         onMouseDown={(e) => { e.preventDefault(); setAlign(cls); }}>
                         <span className={"align-pv align-pv--" + cls} />
                       </button>
@@ -1379,14 +1663,14 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
             <button className={"tool" + (setupOpen ? " on" : "")} title={tl("pset_title")}
               onClick={() => setSetupOpen((o) => !o)}><Icon name="settings" size={18} /></button>
           )}
-          <button className={"tool tool--focusdot" + (focusMode ? " on" : "")} title={tl("focus_mode_btn")}
+          <button className={"tool tool--focusdot" + (focusMode ? " on" : "")} title={hint(tl("focus_mode_btn"), KEYS.focus)}
             onClick={() => setFocusMode((f) => !f)}>
             <span className={"brand-dot-btn" + (focusMode ? " active" : "")} />
           </button>
           <div className="ed-bar-modes">
             <button className={"tool" + (mode === "edit" ? " on" : "")} title={tl("mode_edit")}
               onMouseDown={(e) => { e.preventDefault(); switchMode("edit"); }}><Icon name="edit" size={17} /></button>
-            <button className={"tool" + (mode === "preview" ? " on" : "")} title={tl("mode_preview")}
+            <button className={"tool" + (mode === "preview" ? " on" : "")} title={hint(tl("mode_preview"), KEYS.preview)}
               onMouseDown={(e) => { e.preventDefault(); switchMode("preview"); }}><Icon name="eye" size={17} /></button>
           </div>
         </div>
@@ -1406,7 +1690,8 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           style={{ display: mode === "edit" ? "" : "none" }}>
           <div className={"ed-paper" + (zoomLive ? " zoom-live" : "")} ref={paperRef} style={paperStyle}>
             <PageLayer pages={pages} geom={geom} pg={page} ctx={headCtx}
-              onFootnote={openFootnote} onMeasure={onFootnoteHeights} />
+              onFootnote={openFootnote} onMeasure={onFootnoteHeights}
+              onBand={() => { setSetupTab("head"); setSetupOpen(true); }} />
             <div ref={(el) => { ref.current = el; if (el) nodeRef.current = el; }}
               className="ed-area" contentEditable suppressContentEditableWarning
               spellCheck={true} lang={lang} data-placeholder={tl("editor_placeholder")}
@@ -1418,14 +1703,15 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
         </div>
 
         {mode === "preview" && (
-          <BookPreview html={saved.current || doc.content} title={doc.title} edition={edition} lang={lang} />
+          <BookPreview html={saved.current || doc.content} title={doc.title} lang={lang}
+            page={page} ctx={headCtx} font={editorFontVar} onMeta={setPrevMeta} />
         )}
 
         {setupOpen && mode === "edit" && (
           <>
             <div className="ed-scrim ed-scrim--setup" onMouseDown={() => setSetupOpen(false)} />
             <PageSetupPanel page={page} lang={lang} editorFont={user.editorFont}
-              onFont={(f) => store.setUser({ editorFont: f })}
+              onFont={(f) => store.setUser({ editorFont: f })} tab={setupTab} onTab={setSetupTab}
               onChange={setPage} onClose={() => setSetupOpen(false)} />
           </>
         )}
@@ -1437,7 +1723,8 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           {savedFlash && <span className="ed-foot-saved">{tl("saved_flash")}</span>}
         </div>
         <div className="ed-count mono">
-          <span className="ed-pageno">{tl("foot_page")} {curPage} / {pageCount}</span>
+          <span className="ed-pageno">{tl("foot_page")}{" "}
+            {mode === "preview" && prevMeta ? prevMeta.page : curPage} / {mode === "preview" && prevMeta ? prevMeta.total : pageCount}</span>
           <span className="ed-foot-sep">·</span>
           <span className={"wc" + (savedFlash?" wc--saved":"")}>{wordsLabel(words, lang)}</span>
           {words > 0 && <><span className="ed-foot-sep">·</span><span>≈ {readMins} {tl("read_min")}</span></>}

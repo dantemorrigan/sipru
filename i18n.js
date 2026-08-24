@@ -136,7 +136,8 @@
       epi_author_hint: "Автор",
 
       ins_title: "Вставить",
-      ins_footnote: "Сноска", ins_pagebreak: "Разрыв страницы", ins_scene: "Сцена",
+      ins_footnote: "Сноска", ins_pagebreak: "Разрыв страницы", ins_scene: "Разрыв сцены",
+      ins_scene_hint: "Отбивка между сценами внутри главы: помечает место, показывается в структуре и переносится вместе с текстом",
       ins_table: "Таблица", ins_code: "Блок кода", ins_image: "Изображение",
       ins_tasklist: "Список задач",
       img_prompt: "Ссылка на изображение", img_alt: "Описание изображения",
@@ -532,7 +533,8 @@
       epi_author_hint: "Author",
 
       ins_title: "Insert",
-      ins_footnote: "Footnote", ins_pagebreak: "Page break", ins_scene: "Scene",
+      ins_footnote: "Footnote", ins_pagebreak: "Page break", ins_scene: "Scene break",
+      ins_scene_hint: "A break between scenes inside a chapter: marks the spot, shows up in the outline and travels with the text",
       ins_table: "Table", ins_code: "Code block", ins_image: "Image",
       ins_tasklist: "Task list",
       img_prompt: "Image URL", img_alt: "Image description",

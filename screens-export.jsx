@@ -2,18 +2,36 @@
    Sipru. — Book preview + Export builder
    ============================================================ */
 
-function BookPreview({ html, title, edition, lang }) {
+/* ============================================================
+   Preview — the same sheet the editor lays out, minus the caret.
+
+   It used to be a separate "book" layout: one endless column with its own
+   typography and no styling at all for tables, code, task lists or any of
+   the newer block types, on a sheet whose size had nothing to do with the
+   page set up in the editor. Everything below reuses the editor's own
+   geometry, pagination and stylesheet instead, so what the writer sees in
+   preview is the page they are actually writing — A4 stays A4, landscape
+   stays landscape, and a block can only look wrong in preview if it also
+   looks wrong in the editor.
+   ============================================================ */
+function BookPreview({ html, title, page, ctx, lang, font, onMeta }) {
   const scrollRef = useRef(null);
-  const contentRef = useRef(null);
+  const areaRef = useRef(null);
   const [showTop, setShowTop] = useState(false);
   const [anchorsOpen, setAnchorsOpen] = useState(false);
+  const [avail, setAvail] = useState(0);
+  const [pages, setPages] = useState([[]]);
+  const reserveRef = useRef([]);
+  const passRef = useRef(0);
   const tl = T(lang || "en");
+
+  const pg = page || (window.SipruStore ? window.SipruStore.PAGE_DEFAULTS : {});
+  const pgKey = JSON.stringify(pg);
+  const geom = useMemo(() => pageGeometry(pg, avail), [pgKey, avail]);
 
   const { headings, htmlWithIds } = useMemo(() => {
     const div = document.createElement("div");
-    /* the preview is a reading view: footnote definitions come out of the
-       flow and are set under the text, numbered */
-    div.innerHTML = chapterBody(html || "");
+    div.innerHTML = html || "";
     const hs = [];
     let idx = 0;
     div.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((el) => {
@@ -24,20 +42,67 @@ function BookPreview({ html, title, edition, lang }) {
     return { headings: hs, htmlWithIds: div.innerHTML };
   }, [html]);
 
-  const pageCount = useMemo(() => {
-    const div = document.createElement("div");
-    div.innerHTML = html || "";
-    const words = (div.textContent || "").trim().split(/\s+/).filter(Boolean).length;
-    return Math.max(1, Math.round(words / 280));
-  }, [html]);
+  const metaRef = useRef(onMeta);
+  metaRef.current = onMeta;
+  const geomRef = useRef(geom);
+  geomRef.current = geom;
+  const totalRef = useRef(1);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      setShowTop(el.scrollTop > 320);
+      /* the footer's page counter has to follow the preview's own scroll,
+         not stay on wherever the editor was left */
+      const g = geomRef.current;
+      const cyc = g.pageH + g.gap;
+      const at = Math.max(1, Math.min(totalRef.current, Math.floor((el.scrollTop + cyc * 0.35) / cyc) + 1));
+      if (metaRef.current) metaRef.current({ page: at, total: totalRef.current });
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+  useEffect(() => {
+    totalRef.current = pages.length;
+    if (onMeta) onMeta({ page: Math.min(pages.length, 1), total: pages.length });
+  }, [pages.length]);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const onScroll = () => setShowTop(el.scrollTop > 320);
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    const measure = () => {
+      if (!el.clientWidth) return;
+      const pad = window.innerWidth < 700 ? 20 : 96;
+      setAvail(Math.max(160, el.clientWidth - pad));
+    };
+    measure();
+    let ro = null;
+    if (window.ResizeObserver) { ro = new ResizeObserver(measure); ro.observe(el); }
+    else window.addEventListener("resize", measure);
+    return () => { if (ro) ro.disconnect(); else window.removeEventListener("resize", measure); };
   }, []);
+
+  function repaginate() {
+    const area = areaRef.current;
+    if (!area) return;
+    const notes = footnoteList(area);
+    const byId = {};
+    notes.forEach((f) => { byId[f.id] = f; });
+    const res = paginateArea(area, geom, reserveRef.current);
+    setPages(res.notes.map((ids) => ids.map((id) => byId[id]).filter(Boolean)));
+  }
+  useEffect(() => { passRef.current = 0; repaginate(); }, [htmlWithIds, geom]);
+  function onFootnoteHeights(hs) {
+    const prev = reserveRef.current;
+    let changed = false;
+    for (let i = 0; i < hs.length; i++) {
+      const v = hs[i] ? hs[i] + Math.round(12 * geom.scale) : 0;
+      if (Math.abs((prev[i] || 0) - v) > 2) { prev[i] = v; changed = true; }
+    }
+    if (prev.length > hs.length) { prev.length = hs.length; changed = true; }
+    if (changed && passRef.current < 3) { passRef.current++; repaginate(); }
+    else passRef.current = 0;
+  }
 
   function scrollToTop() {
     scrollRef.current && scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
@@ -45,20 +110,35 @@ function BookPreview({ html, title, edition, lang }) {
 
   /* The anchor list sits in the flow above the text, so closing it shortens
      the page. Measuring before that happens aimed the scroll at where the
-     heading used to be and overshot it by the height of the list — the
-     taller the list, the further past the heading it landed. The target is
-     recorded here and the scroll runs from an effect below, once the list
-     has actually gone and the layout is final. */
+     heading used to be and overshot it by the height of the list. The
+     target is recorded here and the scroll runs from an effect below, once
+     the list has actually gone and the layout is final. */
   const [pendingAnchor, setPendingAnchor] = useState(null);
   useEffect(() => {
     if (!pendingAnchor) return;
     setPendingAnchor(null);
-    const target = contentRef.current && contentRef.current.querySelector("#" + pendingAnchor);
+    const target = areaRef.current && areaRef.current.querySelector("#" + pendingAnchor);
     if (!target || !scrollRef.current) return;
     const containerTop = scrollRef.current.getBoundingClientRect().top;
     const targetTop = target.getBoundingClientRect().top;
     scrollRef.current.scrollBy({ top: targetTop - containerTop - 24, behavior: "smooth" });
   }, [pendingAnchor]);
+
+  const paperH = pages.length * (geom.pageH + geom.gap) - geom.gap;
+  const paperStyle = {
+    width: geom.pageW, height: paperH,
+    "--ed-font": font || "var(--book)",
+    "--pg-font": geom.fontPx + "px",
+    "--pg-lead": pg.leading,
+    "--pg-align": pg.align === "justify" ? "justify" : pg.align,
+    "--pg-indent": pg.indent + "em",
+    "--pg-padl": pg.padL + "em",
+    "--pg-padr": pg.padR + "em",
+    "--pg-before": pg.spaceBefore + "em",
+    "--pg-after": pg.spaceAfter + "em",
+    "--pg-hyphens": pg.hyphens ? "auto" : "manual",
+    "--pg-scale": geom.scale,
+  };
 
   return (
     <div className="preview-scroll" ref={scrollRef}>
@@ -80,14 +160,14 @@ function BookPreview({ html, title, edition, lang }) {
           )}
         </div>
       )}
-      <div className={"book book--" + edition}>
-        <div className="book-page">
-          <div className="book-content" ref={contentRef} dangerouslySetInnerHTML={{ __html: htmlWithIds }} />
-        </div>
-        <div className="book-foot mono">
-          {tl("preview_label")} · ≈&thinsp;{pageCount}&thinsp;{lang === "ru" ? "стр." : "p."}
-        </div>
+      <div className="ed-paper ed-paper--preview" style={paperStyle}>
+        <PageLayer pages={pages} geom={geom} pg={pg} ctx={ctx || { title: title || "", chapter: title || "" }}
+          onFootnote={() => {}} onMeasure={onFootnoteHeights} />
+        <div ref={areaRef} className="ed-area ed-area--ro"
+          style={{ top: geom.mt, left: geom.ml, width: geom.contentW }}
+          dangerouslySetInnerHTML={{ __html: htmlWithIds }} />
       </div>
+      <div className="ed-tail" />
       {showTop && (
         <button className="scroll-top-btn" onClick={scrollToTop} title={tl("scroll_top")}>
           <Icon name="chevron" size={18} style={{ transform: "rotate(180deg)" }} />
