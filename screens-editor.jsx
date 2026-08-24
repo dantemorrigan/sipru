@@ -222,6 +222,24 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     refreshRaf.current = requestAnimationFrame(() => { refreshRaf.current = 0; computeActive(); });
   }
 
+  /* onMouseUp/onKeyUp/onFocus only cover a subset of the ways a selection
+     can change — dragging the native selection handles on touch (the usual
+     way to select text on mobile/tablet) fires neither, so extending or
+     shrinking a selection there never told the toolbar its format state was
+     stale. A "pressed" bold/italic button could then survive a click that
+     did toggle the actual formatting, since the click's own refreshActive()
+     recomputes from whatever (possibly stale) selection the browser reports
+     at that instant. selectionchange is the one event every selection
+     change reaches, on every input method, so it closes that gap. */
+  useEffect(() => {
+    const onSelChange = () => {
+      const sel = window.getSelection();
+      if (ref.current && sel && sel.anchorNode && ref.current.contains(sel.anchorNode)) refreshActive();
+    };
+    document.addEventListener("selectionchange", onSelChange);
+    return () => document.removeEventListener("selectionchange", onSelChange);
+  }, [docId]);
+
   /* Typing a character cannot change which formats are active — only moving
      the caret can. Skipping the recalc for ordinary keys keeps the style
      recalc out of the typing path entirely; navigation keys still refresh. */
