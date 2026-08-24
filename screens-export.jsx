@@ -725,9 +725,9 @@ const BLOCK_CSS = `
     code { font-family: 'JetBrains Mono', monospace; font-size: .87em;
       background: #f4f0e6; border: 1px solid #e2ddcf; border-radius: 3px; padding: .1em .35em; }
     h4 { font-size: 1.05em; font-weight: 600; margin: 1.1em 0 .35em; text-indent: 0; }
-    h5 { font-size: 1em; font-weight: 600; margin: 1em 0 .3em; text-indent: 0; color: #5c564a; }
+    h5 { font-size: 1em; font-weight: 600; margin: 1em 0 .3em; text-indent: 0; }
     h6 { font-size: .92em; font-weight: 600; margin: 1em 0 .3em; text-indent: 0;
-      color: #8a8474; letter-spacing: .04em; text-transform: uppercase; }
+      letter-spacing: .04em; text-transform: uppercase; }
 `;
 
 /* Footnote definitions live hidden inside the text; on the way out they

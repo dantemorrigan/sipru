@@ -112,9 +112,9 @@ $$`)+`
     code { font-family: 'JetBrains Mono', monospace; font-size: .87em;
       background: #f4f0e6; border: 1px solid #e2ddcf; border-radius: 3px; padding: .1em .35em; }
     h4 { font-size: 1.05em; font-weight: 600; margin: 1.1em 0 .35em; text-indent: 0; }
-    h5 { font-size: 1em; font-weight: 600; margin: 1em 0 .3em; text-indent: 0; color: #5c564a; }
+    h5 { font-size: 1em; font-weight: 600; margin: 1em 0 .3em; text-indent: 0; }
     h6 { font-size: .92em; font-weight: 600; margin: 1em 0 .3em; text-indent: 0;
-      color: #8a8474; letter-spacing: .04em; text-transform: uppercase; }
+      letter-spacing: .04em; text-transform: uppercase; }
 `;function escText(i){return String(i==null?"":i).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}function chapterBody(i){const{html:e,notes:o}=splitNotes(i);return o.length?e+'<ol class="b-notes">'+o.map(n=>"<li>"+escText(n)+"</li>").join("")+"</ol>":e}function buildBookHTML(i,e){const o=i.chapters.filter(m=>e.include[m.id]!==!1),n=e.page||{},a=pageDimsMM(n),c=n.mt!=null?n.mt:20,l=n.mr!=null?n.mr:18,r=n.mb!=null?n.mb:20,s=n.ml!=null?n.ml:18,d=Math.round(a.w/5.4)+"em",x=Math.round(Math.min(s,l)*2.6)+"px",p=e.font==="mono"?"'JetBrains Mono', monospace":e.font==="article"?"'Spectral', Georgia, serif":"'Newsreader', Georgia, serif";let f="";return e.titlePage&&(f+=`<section class="b-title"><div class="b-kicker">SIPRU.</div><h1>${i.title}</h1>${i.synopsis?`<p class="b-syn">${i.synopsis}</p>`:""}</section>`),e.toc&&(f+=`<section class="b-toc"><h2>${t("toc_title",e.lang||"ru")}</h2><ol>${o.map(m=>`<li><span>${m.title}</span></li>`).join("")}</ol></section>`),o.forEach((m,b)=>{f+=`<section class="b-chap"><h1>${escText(m.title)}</h1>${chapterBody(m.content||"")}</section>`}),`<!doctype html><html><head><meta charset="utf-8"><title>${i.title}</title>
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,600;1,400&family=Spectral:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
   <style>

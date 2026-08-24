@@ -307,8 +307,40 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     area.appendChild(p);
     caretTo(p, true);
   }
+  /* Pressing Enter at the end of a task item copies its "task" class onto
+     the new sibling <li> — native list-continuation behavior — but not the
+     checkbox itself (that's ordinary content, not something the browser
+     knows to duplicate). Left alone, the new line renders with the task
+     item's own CSS (no bullet, hanging indent) but no checkbox at all: an
+     orphaned, unclickable-looking line. Checking only the block the caret
+     is actually in keeps this cheap regardless of document length — a
+     stray class can only ever appear here, immediately after Enter creates
+     it, never on some other <li> the caret isn't in. */
+  function ensureTaskCheckbox() {
+    const area = ref.current;
+    if (!area) return;
+    /* topBlock only returns area's *direct* children (p, ul, blockquote…);
+       an <li> lives one level deeper, inside the list, so it has to be
+       found by walking up from the caret instead. */
+    const sel = window.getSelection();
+    if (!sel || !sel.anchorNode) return;
+    const start = sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode;
+    const li = start && start.closest ? start.closest("li") : null;
+    if (li && area.contains(li) && li.classList.contains("task") &&
+        !li.querySelector(":scope > input[type=\"checkbox\"]")) {
+      const box = document.createElement("input");
+      box.type = "checkbox"; box.disabled = true;
+      li.insertBefore(box, li.firstChild);
+      /* The native Enter-in-list caret lands at the very start of the new
+         (till now empty) <li>, which is now *before* the checkbox we just
+         inserted — left alone, the next character typed would land ahead
+         of it instead of continuing the line after it. */
+      caretAfterMark(box);
+    }
+  }
   function commitChange() {
     ensureNotBare();
+    ensureTaskCheckbox();
     doSave(null);
     schedulePaginate(false);
     depth.current.u++; depth.current.r = 0;
@@ -341,13 +373,12 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const RESET = { strong: "bold", em: "italic", s: "strikeThrough" };
     const after = document.createRange();
     if (RESET[tagName]) {
-      let tail = el.nextSibling;
-      if (!tail || tail.nodeType !== 3) {
-        tail = document.createTextNode("");
-        el.parentNode.insertBefore(tail, el.nextSibling);
-      }
-      after.setStart(tail, 0); after.collapse(true);
-      sel.removeAllRanges(); sel.addRange(after);
+      /* Same trap as the footnote marker (see caretAfterMark): a caret in a
+         *zero-length* tail node still reads as inside the <strong>/<em>/<s>
+         to the browser's typing style, so the reset below could toggle the
+         wrong way and leave the format stuck on for whatever is typed next.
+         caretAfterMark guarantees real, non-empty content to land in. */
+      caretAfterMark(el);
       if (document.queryCommandState(RESET[tagName])) {
         document.execCommand(RESET[tagName], false, null);
       }
@@ -384,6 +415,33 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     if (isSpace) {
       const parentBlock = node.parentElement;
       const atLineStart = parentBlock && parentBlock.firstChild === node;
+      /* "- [ ] " / "- [x] " — a task item. The plain-bullet check just
+         below fires on the very first space, the moment "- " alone is
+         typed, converting the line to a <li> *before* "[ ] " even exists
+         to look at — so a checkbox can only be recognized as a second
+         stage, once the "-" has already become a fresh, otherwise-empty
+         <li> and "[ ] " is typed as its first content. Paste/import
+         already understood "- [ ] " directly via mdToHTML (there the whole
+         line is available at once); only the live-typing path needed this
+         two-step version of the same trigger. */
+      if (parentBlock && parentBlock.tagName === "LI" && parentBlock.firstChild === node) {
+        const taskM = before.match(/^\[([ xX])\] $/);
+        if (taskM) {
+          const range = document.createRange();
+          range.setStart(node, 0); range.setEnd(node, offset);
+          sel.removeAllRanges(); sel.addRange(range);
+          ref.current.focus();
+          document.execCommand("delete", false, null);
+          parentBlock.classList.add("task");
+          const box = document.createElement("input");
+          box.type = "checkbox"; box.disabled = true;
+          if (/x/i.test(taskM[1])) { box.checked = true; box.setAttribute("checked", ""); }
+          parentBlock.insertBefore(box, parentBlock.firstChild);
+          caretAfterMark(box);
+          refreshActive();
+          return true;
+        }
+      }
       if (atLineStart) {
         const m = before.match(/^(#{1,6}|>|-|\*|\d+\.) $/);
         if (m) {
@@ -1015,6 +1073,30 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     if (mark) {
       e.preventDefault();
       openFootnote(mark.getAttribute("data-fn"));
+      return;
+    }
+    /* A checkbox left enabled inside contentEditable is itself editable —
+       the caret can land in it, arrow keys can select it away, Backspace
+       can delete it. `disabled` avoids all of that, but a disabled control
+       swallows every pointer event before it reaches its own listeners
+       (and never fires "click"), which is exactly why it never seemed to
+       respond to clicking it at all. The click still lands on the <li>
+       underneath, so a task item is toggled here by hit-testing the actual
+       checkbox's box — clicking anywhere else in the line still just
+       places the caret to edit the text, same as any other list item. */
+    const item = e.target && e.target.closest ? e.target.closest("li.task") : null;
+    const box = item && item.querySelector(":scope > input[type=\"checkbox\"]");
+    if (box) {
+      const r = box.getBoundingClientRect();
+      const pad = 4;
+      if (e.clientX >= r.left - pad && e.clientX <= r.right + pad &&
+          e.clientY >= r.top - pad && e.clientY <= r.bottom + pad) {
+        e.preventDefault();
+        if (box.hasAttribute("checked")) box.removeAttribute("checked"); else box.setAttribute("checked", "");
+        box.checked = box.hasAttribute("checked");
+        commitChange();
+        schedulePaginate(false);
+      }
     }
   }
 

@@ -373,11 +373,13 @@
 .ed-area h2 { font-size: 1.45em; font-weight: 600; margin: 1.4em 0 .5em; text-indent: 0; }
 .ed-area h3 { font-size: 1.18em; font-weight: 600; margin: 1.2em 0 .4em; text-indent: 0; }
 /* h4-h6 keep descending in weight rather than size alone, so six levels stay
-   tellable apart on a page where h5 and h6 are already near body size */
+   tellable apart on a page where h5 and h6 are already near body size —
+   but all six stay the same ink colour as body text, matching h1-h3
+   rather than fading toward a caption grey. */
 .ed-area h4 { font-size: 1.05em; font-weight: 600; margin: 1.1em 0 .35em; text-indent: 0; }
-.ed-area h5 { font-size: 1em; font-weight: 600; margin: 1em 0 .3em; text-indent: 0; color: var(--ink-2); }
+.ed-area h5 { font-size: 1em; font-weight: 600; margin: 1em 0 .3em; text-indent: 0; }
 .ed-area h6 { font-size: .92em; font-weight: 600; margin: 1em 0 .3em; text-indent: 0;
-  color: var(--ink-soft); letter-spacing: .04em; text-transform: uppercase; }
+  letter-spacing: .04em; text-transform: uppercase; }
 .ed-area blockquote { margin: 1.3em 0; padding-left: 1.1em; border-left: 2px solid var(--accent);
   color: var(--ink-2); font-style: italic; text-indent: 0; }
 /* a quote inside a quote steps in again and loses the accent, so the nesting
@@ -387,9 +389,11 @@
 .ed-area li { margin-bottom: .4em; }
 /* a nested list tightens up: it is a sub-point, not a new section */
 .ed-area li > ul, .ed-area li > ol { margin: .35em 0 .1em; }
-.ed-area li.task { list-style: none; margin-left: -1.15em; }
+.ed-area li.task { list-style: none; margin-left: -1.15em; cursor: pointer; }
 .ed-area li.task > input[type="checkbox"] { margin-right: .5em; vertical-align: baseline;
-  accent-color: var(--accent); pointer-events: none; }
+  accent-color: var(--accent); pointer-events: none; cursor: pointer; }
+.ed-area li.task:has(> input:checked) { color: var(--ink-soft); text-decoration: line-through;
+  text-decoration-color: var(--ink-soft); }
 .ed-area mark { background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: inherit; padding: .05em .18em; border-radius: 3px; }
 .ed-area img { max-width: 100%; height: auto; display: block; margin: 1.2em auto; border-radius: var(--r-sm); }
