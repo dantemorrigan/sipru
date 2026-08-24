@@ -58,6 +58,18 @@ const FONT_MAP = { book: "var(--book)", article: "var(--book-alt)", mono: "var(-
    between chapters from the outline must not close the outline. */
 let OUTLINE_STICKY = false;
 
+/* A contentEditable with *no* element children at all gives the browser
+   nowhere to anchor typing: the first character lands as a bare text node
+   sitting directly under the editable root instead of inside a paragraph.
+   That orphan node is invisible to pagination (which only walks element
+   children) and to per-page footnote placement (which looks for markers
+   *inside* each block) — so the very first word can drift to the wrong
+   page, and a footnote planted right after it never finds its way into any
+   page's footnote box. Every place that loads stored HTML into the editor
+   goes through this so there is always at least one block to type into. */
+const EMPTY_DOC_HTML = "<p><br></p>";
+function withFallbackHTML(html) { return html && html !== "" ? html : EMPTY_DOC_HTML; }
+
 function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const lang = user.lang || "en";
   const tl = T(lang);
@@ -143,7 +155,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 
   useEffect(() => {
     if (ref.current && doc) {
-      const html = doc.content || "";
+      const html = withFallbackHTML(doc.content);
       saved.current = html;
       ref.current.innerHTML = html;
       try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch (e) {}
@@ -167,7 +179,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 
   useEffect(() => {
     if (mode === "edit" && ref.current) {
-      ref.current.innerHTML = saved.current;
+      ref.current.innerHTML = withFallbackHTML(saved.current);
       schedulePaginate(true);
       if (FINE_POINTER) setTimeout(() => ref.current && ref.current.focus(), 40);
     }
@@ -268,7 +280,24 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   /* Runs on every keystroke, so it stays O(1): no innerHTML serialization and
      no full-document word count. The counter refreshes on a short idle pause,
      which also collapses a burst of typing into one React re-render. */
+  /* Backspacing out the last character of the last block can take the
+     block itself with it — contentEditable is happy to leave the root with
+     zero element children rather than an empty <p>. From there the very
+     next character typed lands as a bare text node directly under the
+     editable, the same orphan this app guards against on load (see
+     EMPTY_DOC_HTML above): invisible to pagination's block walk and to
+     per-page footnote placement. Runs on every edit, not just load, since
+     this state is reached live rather than only when opening a document. */
+  function ensureNotBare() {
+    const area = ref.current;
+    if (!area || area.children.length) return;
+    const p = document.createElement("p");
+    p.innerHTML = "<br>";
+    area.appendChild(p);
+    caretTo(p, true);
+  }
   function commitChange() {
+    ensureNotBare();
     doSave(null);
     schedulePaginate(false);
     depth.current.u++; depth.current.r = 0;
@@ -571,8 +600,8 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     persistNow();
     store.createSnapshot(docId, tl("snap_auto_name"));
     store.updateDoc(docId, { content: snap.content });
-    saved.current = snap.content;
-    if (ref.current) ref.current.innerHTML = snap.content;
+    saved.current = withFallbackHTML(snap.content);
+    if (ref.current) ref.current.innerHTML = saved.current;
     setWords(store.countWords(snap.content));
     depth.current = { u: 0, r: 0 };
     setHist({ undo: false, redo: false });
@@ -707,8 +736,8 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
      live editor so the two can never drift apart. */
   function onOutlineContent(cid, html) {
     if (cid !== docId || !ref.current) return;
-    saved.current = html;
-    ref.current.innerHTML = html;
+    saved.current = withFallbackHTML(html);
+    ref.current.innerHTML = saved.current;
     setWords(store.countWords(html));
     depth.current = { u: 0, r: 0 };
     setHist({ undo: false, redo: false });
@@ -738,6 +767,34 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   function insertScene() {
     insertBlock(makeSceneEl(tl("ol_new_scene"), "draft"));
   }
+  /* A caret merely *after* a <sup class="fn"> still counts as inside it as
+     far as the browser's typing style is concerned \u2014 exactly the trap
+     wrapRange() works around for bold/italic/strike above. Left alone, a
+     later Enter at that spot splits the paragraph but carries the <sup>
+     across the break, cloning the footnote marker (same data-fn id) into
+     the new paragraph and pulling whatever is typed next inside it. Every
+     path that leaves the caret next to a marker routes through here so
+     there is always a real text node outside the <sup> to land in. */
+  function caretAfterMark(mark) {
+    if (!mark) return;
+    let tail = mark.nextSibling;
+    /* Range.insertNode can leave a zero-length text node right after the
+       inserted element (splitting an existing text node at its own edge) \u2014
+       that still passes the nodeType check, but a caret parked at offset 0
+       of an empty node gives the browser nothing to anchor "outside the
+       <sup>" on, so it resolves as inside it exactly like having no tail
+       node at all. */
+    if (!tail || tail.nodeType !== 3) {
+      tail = document.createTextNode("\u00A0");
+      mark.parentNode.insertBefore(tail, mark.nextSibling);
+    } else if (!tail.length) {
+      tail.nodeValue = "\u00A0";
+    }
+    const after = document.createRange();
+    after.setStart(tail, Math.min(1, tail.length)); after.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(after);
+  }
   function insertFootnote() {
     const area = ref.current;
     if (!area) return;
@@ -752,14 +809,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const r = sel.getRangeAt(0);
     r.collapse(false);
     r.insertNode(sup);
-    let tail = sup.nextSibling;
-    if (!tail || tail.nodeType !== 3) {
-      tail = document.createTextNode("\u00A0");
-      sup.parentNode.insertBefore(tail, sup.nextSibling);
-    }
-    const after = document.createRange();
-    after.setStart(tail, Math.min(1, tail.length)); after.collapse(true);
-    sel.removeAllRanges(); sel.addRange(after);
+    caretAfterMark(sup);
     setFnText(area, id, "");
     commitChange();
     schedulePaginate(true);
@@ -778,6 +828,9 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const area = ref.current;
     if (!area) return;
     setFnText(area, id, text);
+    const mark = area.querySelector('sup.fn[data-fn="' + String(id).replace(/["\\]/g, "") + '"]');
+    caretAfterMark(mark);
+    area.focus();
     commitChange();
     schedulePaginate(true);
   }
@@ -785,8 +838,23 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const area = ref.current;
     if (!area) return;
     const mark = area.querySelector('sup.fn[data-fn="' + String(id).replace(/["\\]/g, "") + '"]');
-    if (mark) mark.remove();
+    if (mark) {
+      /* Removing the mark and simply refocusing leaves the browser to pick
+         its own caret position — which is the editable's very start, not
+         where the footnote used to sit, so whatever the user types next
+         lands at the wrong end of the document entirely. Land the caret
+         exactly where the marker was instead. */
+      const parent = mark.parentNode, next = mark.nextSibling;
+      mark.remove();
+      const r = document.createRange();
+      if (next) r.setStartBefore(next);
+      else r.setStart(parent, parent.childNodes.length);
+      r.collapse(true);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(r);
+    }
     setFnEdit(null);
+    area.focus();
     commitChange();
     schedulePaginate(true);
   }
