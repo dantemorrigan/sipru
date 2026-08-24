@@ -930,8 +930,12 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       if (prev && prev.tagName !== "HR") {
         removeNode(block);
         caretTo(prev.tagName === "TABLE" ? (prev.querySelector("td, th") || prev) : prev, true);
+        /* commitChange's own (debounced) schedulePaginate is enough —
+           forcing an immediate repaginate() here used to run its pg-spacer
+           insert/remove in the same tick as the execCommand delete above,
+           which desynced Chrome's undo entry for it badly enough that
+           Ctrl+Z silently stopped restoring the deleted block. */
         commitChange();
-        schedulePaginate(true);
         return true;
       }
     }
@@ -944,10 +948,10 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     if (!atEdge) return false;
     if (near && near.tagName === "HR") {
       /* a page break or a scene marker: the one thing that made an extra
-         page impossible to take back */
+         page impossible to take back. See the comment above on why
+         schedulePaginate isn't forced synchronous here. */
       removeNode(near);
       commitChange();
-      schedulePaginate(true);
       return true;
     }
     if (near && back && empty && SPECIAL_EMPTY[near.tagName] === undefined &&
@@ -955,7 +959,6 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       removeNode(block);
       caretTo(near.tagName === "TABLE" ? (near.querySelector("td, th") || near) : near, true);
       commitChange();
-      schedulePaginate(true);
       return true;
     }
     /* Nothing above and nothing to delete: swallow the key rather than let
@@ -1385,12 +1388,27 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     if (!sel || !sel.rangeCount) return;
     const id = "f_" + Math.random().toString(36).slice(2, 9);
     /* Range.insertNode() is a raw DOM write, invisible to Chrome's own undo
-       stack — going through execCommand keeps the marker undoable like
-       everything else typed around it. */
+       stack. execCommand("insertHTML") would keep it undoable, but Chrome
+       normalizes a literal <sup> in that markup into a plain <span
+       style="vertical-align:super">, silently dropping data-fn — and
+       retagging the placeholder afterward by hand (replaceWith) turned out
+       to desync the undo entry just as badly, since it no longer points at
+       the node Chrome actually tracks. execCommand("superscript") is the
+       one path that produces a real, undoable <sup> — it just needs the
+       marker text inserted and selected first. */
     sel.getRangeAt(0).collapse(false);
-    document.execCommand("insertHTML", false,
-      '<sup class="fn" data-fn="' + id + '">1</sup>');
-    const sup = area.querySelector('sup.fn[data-fn="' + id + '"]');
+    document.execCommand("insertText", false, "1");
+    const sel2 = window.getSelection();
+    const r = sel2.getRangeAt(0);
+    r.setStart(r.startContainer, Math.max(0, r.startOffset - 1));
+    sel2.removeAllRanges(); sel2.addRange(r);
+    document.execCommand("superscript");
+    const marked = sel2.anchorNode && (sel2.anchorNode.nodeType === 3 ? sel2.anchorNode.parentElement : sel2.anchorNode);
+    const sup = marked && marked.closest ? marked.closest("sup") : null;
+    if (sup) {
+      sup.className = "fn";
+      sup.setAttribute("data-fn", id);
+    }
     if (sup) caretAfterMark(sup);
     setFnText(area, id, "");
     commitChange();

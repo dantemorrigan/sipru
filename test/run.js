@@ -45,4 +45,9 @@ spawnSync(process.execPath, [path.join(root, "build.js")], { stdio: "inherit" })
     console.error("\nFAILED:\n" + r.failures.map((f) => "  - " + f).join("\n"));
     process.exit(1);
   }
+
+  /* editor.js drives the real app UI (contentEditable, undo, touch) — a
+     class of bug the markdown round-trip above can never see. */
+  const editor = spawnSync(process.execPath, [path.join(__dirname, "editor.js")], { stdio: "inherit" });
+  if (editor.status) process.exit(editor.status);
 })();
