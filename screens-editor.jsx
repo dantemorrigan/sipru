@@ -98,6 +98,10 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const found = store.findDoc(docId);
   const ref = useRef(null);
   const scrollRef = useRef(null);
+  const barRef = useRef(null);
+  const [barH, setBarH] = useState(0);
+  const footRef = useRef(null);
+  const [footH, setFootH] = useState(0);
   const saved = useRef("");
   const [focusMode, setFocusMode] = useState(false);
   const [mode, setMode] = useState("edit");
@@ -162,6 +166,63 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const lastRange = useRef(null);
   const { schedule: doSave, flush: flushSave } =
     useDocSave(docId, store, useCallback(() => serializeArea(nodeRef.current), []));
+
+  /* The mobile toolbar is `position: fixed` so it can float above the
+     keyboard, which pulls it out of the normal document flow — nothing
+     downstream reserves room for it any more. The footer, still laid out
+     in flow as the last child of the same flex column, ends up sized to
+     the full remaining height and lands at the very bottom of the
+     screen, exactly where the fixed toolbar also sits: the two draw on
+     top of each other. Measuring the toolbar's real height (it varies
+     with the safe-area inset and whether a menu row wraps) and exposing
+     it as a CSS variable lets the footer place itself just above it
+     instead of guessing a fixed pixel offset. */
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const measure = () => setBarH(el.offsetHeight);
+    measure();
+    let ro = null;
+    if (window.ResizeObserver) { ro = new ResizeObserver(measure); ro.observe(el); }
+    else window.addEventListener("resize", measure);
+    return () => { if (ro) ro.disconnect(); else window.removeEventListener("resize", measure); };
+  }, []);
+  /* Some Android keyboards (Gboard's clipboard tray in particular) insert
+     a pasted note without ever firing a ClipboardEvent — only a native
+     `beforeinput` with inputType "insertFromPaste" reaches the page.
+     React's onBeforeInput prop goes through a legacy emulation layer that
+     does not reliably forward a plain native `beforeinput` event, so this
+     is a real, non-React listener on the node itself (same technique as
+     the pinch handler below) rather than a JSX prop. Left unhandled, the
+     browser's own default insertion drops the paste in completely raw:
+     "## Heading" stays two literal hash marks instead of becoming a
+     heading — this is what closes that gap without touching the normal
+     desktop path (there the ClipboardEvent fires first and its own
+     preventDefault() stops any of this from running). */
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onBeforeInput = (e) => {
+      if (e.inputType !== "insertFromPaste" || !e.dataTransfer) return;
+      const text = e.dataTransfer.getData("text/plain");
+      if (!text) return;
+      e.preventDefault();
+      insertMarkdownText(text);
+    };
+    el.addEventListener("beforeinput", onBeforeInput);
+    return () => el.removeEventListener("beforeinput", onBeforeInput);
+  }, [docId]);
+
+  useEffect(() => {
+    const el = footRef.current;
+    if (!el) return;
+    const measure = () => setFootH(el.offsetHeight);
+    measure();
+    let ro = null;
+    if (window.ResizeObserver) { ro = new ResizeObserver(measure); ro.observe(el); }
+    else window.addEventListener("resize", measure);
+    return () => { if (ro) ro.disconnect(); else window.removeEventListener("resize", measure); };
+  }, []);
 
   useEffect(() => {
     const vv = window.visualViewport;
@@ -606,12 +667,10 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
      paste turns out to be exactly one <p>, that wrapper is unwrapped and
      only its inner (inline-formatted) HTML is inserted, so a short paste
      mid-paragraph lands inline instead of breaking it into a new block. */
-  function onPaste(e) {
-    const cd = e.clipboardData;
-    if (!cd) return;
-    const text = cd.getData("text/plain");
+  /* Shared by the standard clipboard 'paste' path and the Android
+     fallback below: text in, markdown-transformed HTML into the caret. */
+  function insertMarkdownText(text) {
     if (!text) return;
-    e.preventDefault();
     const box = document.createElement("div");
     box.innerHTML = window.SipruFormats.mdToHTML(text);
     const html = box.children.length === 1 && box.firstElementChild.tagName === "P"
@@ -622,6 +681,24 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     commitChange();
     schedulePaginate(true);
   }
+  function onPaste(e) {
+    const cd = e.clipboardData;
+    if (!cd) return;
+    const text = cd.getData("text/plain");
+    if (!text) return;
+    e.preventDefault();
+    insertMarkdownText(text);
+  }
+  /* Some Android keyboards (Gboard's clipboard tray in particular) insert
+     a pasted note without ever firing a ClipboardEvent — only a
+     `beforeinput` with inputType "insertFromPaste" reaches the page. Left
+     unhandled, onPaste above never runs and the browser falls back to its
+     own default insertion, dropping the pasted text in completely raw:
+     "## Heading" stays two literal hash marks instead of becoming a
+     heading. Catching it here, the same way `paste` is caught, closes
+     that gap without touching the normal desktop path (there the
+     ClipboardEvent already fires and preventDefault()s this one before it
+     can act). */
 
   /* ---- link insert/edit popover ---- */
   function expandToWord(range) {
@@ -1413,6 +1490,47 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       zoomTimer.current = setTimeout(() => setZoomLive(false), 260);
     }
   }
+  const setPageRef = useRef(setPage);
+  setPageRef.current = setPage;
+  const zoomRef = useRef(page.zoom);
+  zoomRef.current = page.zoom;
+
+  /* ---- pinch-to-zoom on the page itself ----
+     A slider works, but on a phone the natural gesture is two fingers on
+     the sheet — the way every PDF reader and Google Docs' own mobile page
+     view already does it. React attaches its synthetic touchstart/move
+     listeners as passive (matching the browser default, for scroll
+     perf), so calling preventDefault() inside a JSX onTouchMove is
+     silently ignored and the browser's own page-wide pinch-zoom fires
+     instead of ours. A real, non-passive listener is the only way to
+     actually claim the gesture. */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    let pinch = null;
+    const onStart = (e) => {
+      if (e.touches.length === 2) pinch = { d0: dist(e.touches), z0: zoomRef.current };
+    };
+    const onMove = (e) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      const factor = dist(e.touches) / pinch.d0;
+      const z = Math.min(1.6, Math.max(0.5, pinch.z0 * factor));
+      setPageRef.current({ zoom: Math.round(z * 100) / 100 });
+    };
+    const onEnd = (e) => { if (e.touches.length < 2) pinch = null; };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    el.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, []);
 
   /* the two toolbar menus close on an outside press, like the header one */
   useEffect(() => {
@@ -1562,7 +1680,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
         </div>
       </header>
 
-      <div className={"ed-bar" + (mode !== "edit" ? " ed-bar--preview" : "")}
+      <div className={"ed-bar" + (mode !== "edit" ? " ed-bar--preview" : "")} ref={barRef}
         style={kbOffset > 0 ? { bottom: kbOffset } : undefined}>
         {mode === "edit" && (
           <>
@@ -1672,7 +1790,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
         </div>
       </div>
 
-      <div className="ed-body">
+      <div className="ed-body" style={{ "--ed-bar-h": barH + "px", "--ed-foot-h": footH + "px", "--ed-kb": kbOffset + "px" }}>
         {outlineOpen && (
           <>
             <div className="ed-scrim" onMouseDown={() => setOutlineOpen(false)} />
@@ -1713,7 +1831,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
         )}
       </div>
 
-      <footer className="ed-foot">
+      <footer className="ed-foot" ref={footRef} style={{ "--ed-bar-h": barH + "px", "--ed-kb": kbOffset + "px" }}>
         <div className="ed-foot-meta mono">
           {project ? project.title : tl("note_label")} <span className="ed-foot-sep">·</span> {doc.title}
           {savedFlash && <span className="ed-foot-saved">{tl("saved_flash")}</span>}

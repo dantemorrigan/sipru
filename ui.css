@@ -324,7 +324,18 @@
    .preview-scroll (BookPreview) genuinely mounts fresh each time, so the
    same animation plays there for the same reason. */
 .ed-scroll, .preview-scroll { animation: modeFadeIn .16s var(--ease-out); }
-.ed-scroll { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth;
+/* scroll-behavior: smooth is a CSS-level "keep gliding toward wherever I
+   last aimed" — it does not know a finger is actively dragging the same
+   scroller, and on iOS/Android it periodically fought the touch-driven
+   scroll, producing exactly the unexplained mid-drag drift writers were
+   seeing. The few scrolls that should ease (jump-to-scene, scroll-to-top)
+   already ask for `behavior: "smooth"` explicitly per call; native touch
+   scrolling stays untouched now, plain and immediate. */
+/* pan-y (not none): a single finger still scrolls the sheet natively,
+   but the browser gives up its own two-finger pinch-zoom over this area
+   so the JS pinch handler in screens-editor.jsx can claim the gesture
+   for the page's own zoom instead of the whole browser tab's. */
+.ed-scroll { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; touch-action: pan-y;
   padding: 34px 0 0; background: var(--paper-2); }
 .ed-paper { position: relative; margin: 0 auto; }
 /* Smooth resize for the zoom slider only — a brief window applied by JS
@@ -1035,8 +1046,26 @@
   /* Body stacks; the toolbar leaves the flow for the bottom of the screen */
   .ed-body { position: relative; }
 
-  /* Scroll area fills what's left; the fixed toolbar gets its room back */
-  .ed-scroll { flex: 1; padding: 14px 0 76px; }
+  /* Scroll area fills what's left; the fixed toolbar gets its room back.
+     76px was a guess at the toolbar's height — wrong the moment a longer
+     translation wrapped a row or the safe-area inset changed it, at which
+     point the last lines of text sat *under* the bar instead of above it.
+     The real, measured height (see barH in screens-editor.jsx) replaces
+     the guess. */
+  .ed-scroll { flex: 1; padding: 14px 0 calc(var(--ed-bar-h, 76px) + var(--ed-foot-h, 30px) + var(--ed-kb, 0px)); }
+
+  /* The toolbar is `position: fixed`, so nothing in the flex column below
+     it reserves room any more — a footer left in normal flow lands at the
+     literal bottom of the screen, exactly where the fixed toolbar also
+     sits, and the two draw on top of each other. Pin the footer just
+     above the (measured) toolbar instead, riding the keyboard the same
+     way the toolbar does. */
+  .ed-foot {
+    position: fixed; left: 0; right: 0;
+    bottom: calc(var(--ed-bar-h, 76px) + var(--ed-kb, 0px));
+    z-index: 39;
+    transition: bottom .12s linear;
+  }
 
   /* Toolbar: pinned to the bottom, riding above the keyboard via kbOffset.
      It scrolls sideways, but the page/focus/mode cluster stays pinned to
