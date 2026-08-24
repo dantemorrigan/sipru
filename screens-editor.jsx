@@ -104,6 +104,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const reserveRef = useRef([]);
   const passRef = useRef(0);
   const pgTimer = useRef(null);
+  const pgLast = useRef(0);
   const pendingScene = useRef(null);
   const scrollRaf = useRef(0);
   /* Only load-bearing on mobile, where the header has no room to lay these
@@ -624,11 +625,23 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     const res = paginateArea(area, geom, reserveRef.current);
     setPages(res.notes.map((ids) => ids.map((id) => byId[id]).filter(Boolean)));
   }
+  /* Debounced so ordinary typing doesn't reflow on every keystroke — but a
+     plain debounce can be starved forever by input that keeps arriving
+     faster than the wait (holding Enter down, a fast paste-like burst):
+     every keystroke pushes the deadline back, so the page boxes (drawn from
+     the *last* successful pass) stay put while the text quietly keeps
+     growing past them, straight through the footer and footnotes, until
+     the user finally pauses. A capped max wait guarantees a pass runs at
+     least this often even under continuous input, so the break can never
+     fall more than one beat behind — the same guarantee Word/Docs give by
+     reflowing on essentially every keystroke. */
+  const PAGINATE_MAX_WAIT = 250;
   function schedulePaginate(now) {
     clearTimeout(pgTimer.current);
     passRef.current = 0;
-    if (now) { repaginate(); return; }
-    pgTimer.current = setTimeout(repaginate, 90);
+    if (now) { pgLast.current = Date.now(); repaginate(); return; }
+    if (Date.now() - pgLast.current >= PAGINATE_MAX_WAIT) { pgLast.current = Date.now(); repaginate(); return; }
+    pgTimer.current = setTimeout(() => { pgLast.current = Date.now(); repaginate(); }, 90);
   }
   useEffect(() => () => { clearTimeout(pgTimer.current); cancelAnimationFrame(scrollRaf.current); }, []);
   useEffect(() => { schedulePaginate(true); }, [geom, mode, docId]);
