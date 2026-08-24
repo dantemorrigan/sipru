@@ -385,7 +385,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       const parentBlock = node.parentElement;
       const atLineStart = parentBlock && parentBlock.firstChild === node;
       if (atLineStart) {
-        const m = before.match(/^(#{1,3}|>|-|\*|\d+\.) $/);
+        const m = before.match(/^(#{1,6}|>|-|\*|\d+\.) $/);
         if (m) {
           const range = document.createRange();
           range.setStart(node, 0); range.setEnd(node, offset);
@@ -393,9 +393,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           ref.current.focus();
           document.execCommand("delete", false, null);
           const marker = m[1];
-          if (marker === "#") document.execCommand("formatBlock", false, "h1");
-          else if (marker === "##") document.execCommand("formatBlock", false, "h2");
-          else if (marker === "###") document.execCommand("formatBlock", false, "h3");
+          if (/^#{1,6}$/.test(marker)) document.execCommand("formatBlock", false, "h" + marker.length);
           else if (marker === ">") document.execCommand("formatBlock", false, "blockquote");
           else if (marker === "-" || marker === "*") document.execCommand("insertUnorderedList", false, null);
           else document.execCommand("insertOrderedList", false, null);

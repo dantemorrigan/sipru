@@ -100,7 +100,7 @@ function isPageBreak(el) {
    text overleaf, is the one break a typesetter never allows. */
 function keepsWithNext(el) {
   const tag = el.tagName;
-  return tag === "H1" || tag === "H2" || tag === "H3" ||
+  return tag === "H1" || tag === "H2" || tag === "H3" || tag === "H4" || tag === "H5" || tag === "H6" ||
     (tag === "HR" && el.classList && el.classList.contains("scene-sep")) ||
     (tag === "FIGURE" && el.classList && el.classList.contains("epigraph"));
 }

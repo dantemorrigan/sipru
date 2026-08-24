@@ -16,7 +16,7 @@ function BookPreview({ html, title, edition, lang }) {
     div.innerHTML = chapterBody(html || "");
     const hs = [];
     let idx = 0;
-    div.querySelectorAll("h1, h2, h3").forEach((el) => {
+    div.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((el) => {
       const id = "bh-" + (idx++);
       el.id = id;
       hs.push({ id, level: parseInt(el.tagName[1]), text: el.textContent.trim() });
@@ -780,7 +780,7 @@ function buildBookHTML(project, opts) {
     h2 { font-size: 15pt; font-weight: 600; margin: 1.3em 0 .4em; }
     h3 { font-size: 12.5pt; font-weight: 600; margin: 1.1em 0 .3em; }
     p { margin: 0 0 ${pg.spaceAfter != null ? pg.spaceAfter : 0.6}em; text-indent: ${pg.indent != null ? pg.indent : 1.5}em; text-align: ${(pg.align || "justify") === "justify" ? "justify" : pg.align}; }
-    h1 + p, h2 + p, h3 + p, blockquote + p, ul + p, ol + p, hr + p, p:first-child { text-indent: 0; }
+    h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p, blockquote + p, ul + p, ol + p, hr + p, p:first-child { text-indent: 0; }
     blockquote { margin: 1.1em 1.6em; font-style: italic; color: #555; }
     ul, ol { padding-left: 1.5em; margin: .4em 0; } li { margin-bottom: .3em; text-align: left; }
     hr { border: none; text-align: center; margin: 1.6em 0; }

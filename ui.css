@@ -366,6 +366,7 @@
 /* the first paragraph after any break in the flow never gets an indent —
    the same rule a typesetter would apply */
 .ed-area > p:first-child, .ed-area h1 + p, .ed-area h2 + p, .ed-area h3 + p,
+.ed-area h4 + p, .ed-area h5 + p, .ed-area h6 + p,
 .ed-area blockquote + p, .ed-area ul + p, .ed-area ol + p, .ed-area hr + p,
 .ed-area figure + p, .ed-area aside + p { text-indent: 0; }
 .ed-area h1 { font-size: 1.9em; font-weight: 600; letter-spacing: -.02em; line-height: 1.15; margin: .2em 0 .7em; text-indent: 0; }
@@ -687,6 +688,9 @@
 .anchor-item--h1 { font-weight: 600; }
 .anchor-item--h2 { padding-left: 28px; }
 .anchor-item--h3 { padding-left: 40px; font-size: var(--t-xs); color: var(--ink-soft); }
+.anchor-item--h4 { padding-left: 52px; font-size: var(--t-xs); color: var(--ink-soft); }
+.anchor-item--h5 { padding-left: 64px; font-size: var(--t-xs); color: var(--ink-soft); }
+.anchor-item--h6 { padding-left: 76px; font-size: var(--t-xs); color: var(--ink-soft); }
 
 .scroll-top-btn { position: sticky; bottom: 28px; float: right; margin-right: 8px;
   width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
