@@ -261,12 +261,14 @@
 .ed-style-btn:hover { background: var(--paper-2); color: var(--ink); }
 .ed-style-cur { min-width: 84px; text-align: left; }
 
-/* the two toolbar menus */
-.ed-menu { position: absolute; top: calc(100% + 9px); left: 0; z-index: 60; min-width: 216px;
+/* the two toolbar menus — portaled to <body> (see BarMenu in
+   components.jsx) so a toolbar that clips its own overflow on mobile
+   can never clip the menu that opens out of it; JS sets the actual
+   position/top/left/right inline per anchor. */
+.ed-menu { z-index: 70; min-width: 216px; max-height: min(60vh, 420px); overflow-y: auto;
   display: flex; flex-direction: column; gap: 1px; padding: 6px;
   background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-3);
   transform-origin: top left; animation: menuIn .14s var(--ease-out) both; }
-.ed-insert-menu { left: auto; right: 0; }
 .ed-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px;
   border: none; background: transparent; color: var(--ink-2); font-family: var(--ui); font-size: var(--t-sm);
   text-align: left; border-radius: calc(var(--r-md) - 5px); transition: background-color .15s var(--ease), color .15s var(--ease); }
@@ -1067,10 +1069,7 @@
     background: linear-gradient(90deg, transparent 0, var(--paper) 20px); }
   .ed-style-cur { min-width: 0; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
   .tool { width: 40px; height: 40px; }
-  /* menus open upward out of a bottom-anchored bar */
-  .ed-menu { top: auto; bottom: calc(100% + 10px); left: 0; right: auto;
-    max-height: 52vh; overflow-y: auto; }
-  .ed-insert-menu { left: auto; right: 0; }
+  .ed-menu { max-height: 52vh; }
 
   /* Outline and page setup become full-height layers over the text, never
      squeezing the page column itself */

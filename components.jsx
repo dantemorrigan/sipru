@@ -271,6 +271,45 @@ function SearchModal({ store, lang, projectId, onPick, onClose }) {
 
 const FONT_LABEL = { book: "Newsreader", article: "Spectral", mono: "JetBrains Mono" };
 
+/* Any dropdown anchored inside the mobile toolbar has to escape it: the
+   bar scrolls sideways (overflow-x: auto), and giving one axis a scroll
+   box forces the other non-visible too — overflow-y is clipped right
+   along with it. A menu positioned by the ordinary `position: absolute`
+   relative to a button in that bar was being clipped by its own parent's
+   overflow-y before it ever reached the viewport, so it opened invisible
+   and un-clickable while the button underneath kept lighting up as
+   "pressed". Portaling the menu to <body> and placing it by the anchor's
+   own bounding rect sidesteps every ancestor's overflow entirely — the
+   same fix a native <select> or Radix/Headless popover relies on. */
+function BarMenu({ anchorRef, open, className, children, align }) {
+  const [rect, setRect] = useState(null);
+  useEffect(() => {
+    if (!open || !anchorRef.current) { setRect(null); return; }
+    const place = () => {
+      if (!anchorRef.current) return;
+      setRect(anchorRef.current.getBoundingClientRect());
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  }, [open, anchorRef]);
+  if (!open || !rect) return null;
+  const margin = 8;
+  const style = { position: "fixed", zIndex: 70 };
+  if (rect.bottom + 260 > window.innerHeight && rect.top > 260) {
+    style.bottom = Math.max(margin, window.innerHeight - rect.top + 10);
+  } else {
+    style.top = Math.min(rect.bottom + 10, window.innerHeight - margin);
+  }
+  if (align === "right") style.right = Math.max(margin, window.innerWidth - rect.right);
+  else style.left = Math.min(rect.left, window.innerWidth - margin);
+  return ReactDOM.createPortal(
+    <div className={className} style={style} onMouseDown={(e) => e.stopPropagation()}>{children}</div>,
+    document.body
+  );
+}
+
 /* Lets a modal play its exit animation before it unmounts: the scrim
    takes `cls` for one animation's length, then the real onClose runs.
    Desktop keeps the instant close — the exit is a touch affordance. */
@@ -292,5 +331,5 @@ function useDismiss(onClose) {
 
 Object.assign(window, {
   useStore, Icon, ICONS, Logo, StatsDot, ThemeToggle, timeAgo, plural, wordsLabel, useToast, FONT_LABEL, T, SearchModal,
-  useDismiss,
+  useDismiss, BarMenu,
 });

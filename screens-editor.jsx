@@ -1579,17 +1579,15 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
                 <span className="ed-style-cur">{tl("style_" + (blockStyle || "p"))}</span>
                 <Icon name="chevron" size={13} />
               </button>
-              {styleOpen && (
-                <div className="ed-menu ed-style-menu">
-                  {BLOCK_STYLES.map((k) => (
-                    <button key={k} className={blockStyle === k ? "on" : ""}
-                      onMouseDown={(e) => { e.preventDefault(); setStyle(k); }}>
-                      <span className={"style-pv style-pv--" + k}>Aa</span>
-                      <span className="style-name">{tl("style_" + k)}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+              <BarMenu anchorRef={styleRef} open={styleOpen} className="ed-menu ed-style-menu">
+                {BLOCK_STYLES.map((k) => (
+                  <button key={k} className={blockStyle === k ? "on" : ""}
+                    onMouseDown={(e) => { e.preventDefault(); setStyle(k); }}>
+                    <span className={"style-pv style-pv--" + k}>Aa</span>
+                    <span className="style-name">{tl("style_" + k)}</span>
+                  </button>
+                ))}
+              </BarMenu>
             </div>
 
             <div className="ed-bar-grp">
@@ -1619,41 +1617,39 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
             <div className="ed-bar-grp ed-insert" ref={insertRef}>
               <button className={"tool" + (insertOpen ? " on" : "")} title={tl("ins_title")}
                 onClick={() => { setInsertOpen((o) => !o); setStyleOpen(false); }}><Icon name="more" size={18} /></button>
-              {insertOpen && (
-                <div className="ed-menu ed-insert-menu">
-                  <div className="ed-menu-lbl mono">{tl("ins_title")}</div>
-                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertFootnote(); }}>
-                    <Icon name="note" size={15} /> <span>{tl("ins_footnote")}</span>
-                    <kbd className="mono">{FINE_POINTER ? KEYS.footnote : ""}</kbd></button>
-                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertPageBreak(); }}>
-                    <Icon name="book" size={15} /> <span>{tl("ins_pagebreak")}</span>
-                    <kbd className="mono">{FINE_POINTER ? KEYS.pagebreak : ""}</kbd></button>
-                  {project && (
-                    <button title={tl("ins_scene_hint")}
-                      onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertScene(); }}>
-                      <Icon name="panel" size={15} /> <span>{tl("ins_scene")}</span></button>
-                  )}
-                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); exec("insertHorizontalRule"); }}>
-                    <Icon name="hr" size={15} /> <span>{tl("ins_hr")}</span></button>
-                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertTable(); }}>
-                    <Icon name="table" size={15} /> <span>{tl("ins_table")}</span></button>
-                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertCodeBlock(); }}>
-                    <Icon name="code" size={15} /> <span>{tl("ins_code")}</span></button>
-                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertTaskList(); }}>
-                    <Icon name="check" size={15} /> <span>{tl("ins_tasklist")}</span></button>
-                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertImage(); }}>
-                    <Icon name="image" size={15} /> <span>{tl("ins_image")}</span></button>
-                  <div className="ed-menu-lbl mono">{tl("ins_align")}</div>
-                  <div className="ed-menu-aligns">
-                    {aligns.map(([cls, key]) => (
-                      <button key={cls} className={"ed-align-b" + (alignCls === cls ? " on" : "")} title={tl(key)}
-                        onMouseDown={(e) => { e.preventDefault(); setAlign(cls); }}>
-                        <span className={"align-pv align-pv--" + cls} />
-                      </button>
-                    ))}
-                  </div>
+              <BarMenu anchorRef={insertRef} open={insertOpen} align="right" className="ed-menu ed-insert-menu">
+                <div className="ed-menu-lbl mono">{tl("ins_title")}</div>
+                <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertFootnote(); }}>
+                  <Icon name="note" size={15} /> <span>{tl("ins_footnote")}</span>
+                  <kbd className="mono">{FINE_POINTER ? KEYS.footnote : ""}</kbd></button>
+                <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertPageBreak(); }}>
+                  <Icon name="book" size={15} /> <span>{tl("ins_pagebreak")}</span>
+                  <kbd className="mono">{FINE_POINTER ? KEYS.pagebreak : ""}</kbd></button>
+                {project && (
+                  <button title={tl("ins_scene_hint")}
+                    onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertScene(); }}>
+                    <Icon name="panel" size={15} /> <span>{tl("ins_scene")}</span></button>
+                )}
+                <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); exec("insertHorizontalRule"); }}>
+                  <Icon name="hr" size={15} /> <span>{tl("ins_hr")}</span></button>
+                <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertTable(); }}>
+                  <Icon name="table" size={15} /> <span>{tl("ins_table")}</span></button>
+                <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertCodeBlock(); }}>
+                  <Icon name="code" size={15} /> <span>{tl("ins_code")}</span></button>
+                <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertTaskList(); }}>
+                  <Icon name="check" size={15} /> <span>{tl("ins_tasklist")}</span></button>
+                <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertImage(); }}>
+                  <Icon name="image" size={15} /> <span>{tl("ins_image")}</span></button>
+                <div className="ed-menu-lbl mono">{tl("ins_align")}</div>
+                <div className="ed-menu-aligns">
+                  {aligns.map(([cls, key]) => (
+                    <button key={cls} className={"ed-align-b" + (alignCls === cls ? " on" : "")} title={tl(key)}
+                      onMouseDown={(e) => { e.preventDefault(); setAlign(cls); }}>
+                      <span className={"align-pv align-pv--" + cls} />
+                    </button>
+                  ))}
                 </div>
-              )}
+              </BarMenu>
             </div>
           </>
         )}
