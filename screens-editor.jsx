@@ -1598,12 +1598,20 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     };
   }, []);
 
-  /* the two toolbar menus close on an outside press, like the header one */
+  /* the two toolbar menus close on an outside press, like the header one.
+     BarMenu portals its content to document.body, so a tap *inside* the
+     menu never passes the anchor's .contains() check — on touch devices
+     (where this handler also has to listen for "touchstart", since a
+     button's onMouseDown fires too late, after the synthesized click) that
+     made every press on a menu item read as "outside" and close the menu
+     before its own onMouseDown ever ran. Recognizing the portaled menu by
+     its shared "ed-menu" class keeps a real outside press working. */
   useEffect(() => {
     if (!insertOpen && !styleOpen) return;
     function onDown(e) {
-      if (insertOpen && insertRef.current && !insertRef.current.contains(e.target)) setInsertOpen(false);
-      if (styleOpen && styleRef.current && !styleRef.current.contains(e.target)) setStyleOpen(false);
+      const inMenu = e.target.closest && e.target.closest(".ed-menu");
+      if (insertOpen && insertRef.current && !insertRef.current.contains(e.target) && !inMenu) setInsertOpen(false);
+      if (styleOpen && styleRef.current && !styleRef.current.contains(e.target) && !inMenu) setStyleOpen(false);
     }
     document.addEventListener("mousedown", onDown);
     document.addEventListener("touchstart", onDown);
