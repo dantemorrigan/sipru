@@ -109,7 +109,11 @@
      prose could pair with one inside a later code span and swallow the
      backticks into an <em>. The fence is a run of backticks closed by an
      equal run, so code containing backticks still has a way to be written. */
-  const INLINE_TOKEN = /(`+)([\s\S]*?)\1|\[\^([^\]\s]+)\]|\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|<u>([\s\S]*?)<\/u>|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_/;
+  /* Inline tokenizer expanded: images ![alt](url), highlight ==text==, and the
+     auto-link form <https://...> are now recognized alongside the existing
+     emphasis/link/code tokens. A code span still binds tightest so that
+     backticks protect their contents from every other marker. */
+  const INLINE_TOKEN = /(`+)([\s\S]*?)\1|\[\^([^\]\s]+)\]|\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)(?:\s+"([^"]*)")?\)|!\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)(?:\s+"([^"]*)")?\)|==([^=]+)==|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|<u>([\s\S]*?)<\/u>|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_/;
   const WORD_CH = /[0-9A-Za-zÀ-ɏЀ-ӿ]/;
   function mdInline(raw) {
     let s = String(raw == null ? "" : raw);
@@ -130,13 +134,21 @@
            document order when the editor opens it, so any label works */
         out += '<sup class="fn" data-fn="fn_' + esc(m[3]) + '">' + esc(m[3]) + "</sup>";
       } else if (m[4] !== undefined) {
+        /* [text](url) or [text](url "title") — a link with optional title */
         const href = safeHref(m[5]);
-        out += href ? ('<a href="' + esc(href) + '">' + mdInline(m[4]) + "</a>") : mdInline(m[4]);
-      } else if (m[6] !== undefined) out += "<strong><em>" + mdInline(m[6]) + "</em></strong>";
-      else if (m[7] !== undefined) out += "<strong>" + mdInline(m[7]) + "</strong>";
-      else if (m[8] !== undefined) out += "<u>" + mdInline(m[8]) + "</u>";
-      else if (m[9] !== undefined) out += "<s>" + mdInline(m[9]) + "</s>";
-      else if (m[10] !== undefined) out += "<em>" + mdInline(m[10]) + "</em>";
+        out += href ? ('<a href="' + esc(href) + '"' + (m[6] ? (' title="' + esc(m[6]) + '"') : '') + '>' + mdInline(m[4]) + "</a>") : mdInline(m[4]);
+      } else if (m[7] !== undefined) {
+        /* ![alt](url) or ![alt](url "title") — an image with optional title */
+        const src = safeHref(m[8]) || m[8];
+        const alt = esc(m[7]);
+        const title = m[9] ? (' title="' + esc(m[9]) + '"') : '';
+        out += '<img src="' + esc(src) + '" alt="' + alt + '"' + title + ' style="max-width:100%;height:auto;">';
+      } else if (m[10] !== undefined) out += "<strong><em>" + mdInline(m[10]) + "</em></strong>";
+      else if (m[11] !== undefined) out += "<strong>" + mdInline(m[11]) + "</strong>";
+      else if (m[12] !== undefined) out += "<u>" + mdInline(m[12]) + "</u>";
+      else if (m[13] !== undefined) out += "<s>" + mdInline(m[13]) + "</s>";
+      else if (m[14] !== undefined) out += "<em>" + mdInline(m[14]) + "</em>";
+      else if (m[15] !== undefined) out += "<mark>" + mdInline(m[15]) + "</mark>";
       else {
         /* An underscore inside a word is part of the word: snake_case_name
            is one identifier, not emphasis. Only a `_` with a non-word
@@ -148,7 +160,7 @@
           s = s.slice(m.index + 1);
           continue;
         }
-        out += "<em>" + mdInline(m[11]) + "</em>";
+        out += "<em>" + mdInline(m[16]) + "</em>";
       }
       s = s.slice(m.index + m[0].length);
     }
@@ -255,9 +267,18 @@
         return;
       }
       if (!line.trim()) { flushAll(); return; }
-      if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { flushAll(); out += "<h" + m[1].length + ">" + mdInlineTop(m[2]) + "</h" + m[1].length + ">"; return; }
+      /* Headings: now support all six levels H1-H6 as per full Markdown spec */
+      if ((m = line.match(/^(#{1,6})\s+(.*)$/))) { flushAll(); out += "<h" + m[1].length + ">" + mdInlineTop(m[2]) + "</h" + m[1].length + ">"; return; }
       if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) { flushAll(); out += "<hr>"; return; }
       if ((m = line.match(/^>\s?(.*)$/))) { flushPara(); flushList(); quote.push(m[1]); return; }
+      /* Checkbox / task list items: - [x] or - [ ] (also * or +) */
+      if ((m = line.match(/^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/))) {
+        flushPara(); flushQuote();
+        const checked = m[1].toLowerCase() === 'x' ? ' checked' : '';
+        if (!list || list.tag !== "ul") { flushList(); list = { tag: "ul", items: [] }; }
+        list.items.push('<input type="checkbox"' + checked + ' disabled class="task-list-item"> ' + m[2]);
+        return;
+      }
       if ((m = line.match(/^\s*[-*+]\s+(.*)$/))) { flushPara(); flushQuote();
         if (!list || list.tag !== "ul") { flushList(); list = { tag: "ul", items: [] }; }
         list.items.push(m[1]); return; }
