@@ -1758,15 +1758,6 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
                   <Icon name="check" size={15} /> <span>{tl("ins_tasklist")}</span></button>
                 <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertImage(); }}>
                   <Icon name="image" size={15} /> <span>{tl("ins_image")}</span></button>
-                <div className="ed-menu-lbl mono">{tl("ins_align")}</div>
-                <div className="ed-menu-aligns">
-                  {aligns.map(([cls, key]) => (
-                    <button key={cls} className={"ed-align-b" + (alignCls === cls ? " on" : "")} title={tl(key)}
-                      onMouseDown={(e) => { e.preventDefault(); setAlign(cls); }}>
-                      <span className={"align-pv align-pv--" + cls} />
-                    </button>
-                  ))}
-                </div>
               </BarMenu>
             </div>
           </>
