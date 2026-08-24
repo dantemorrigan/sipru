@@ -467,6 +467,45 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     }, 200);
   }
 
+  /* Shared undo-safe DOM helpers: raw insertBefore/replaceChild/remove()
+     never reach Chrome's contentEditable undo stack (only execCommand and
+     real typing do), so every structural edit below routes through
+     execCommand instead. A throwaway marker attribute is how we find the
+     node execCommand just created, since it hands back no reference. */
+  function execInsertHTML(range, html) {
+    const area = ref.current;
+    if (!area) return null;
+    const marker = "ins-" + Math.random().toString(36).slice(2, 9);
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(range);
+    document.execCommand("insertHTML", false, html.replace(/^<(\w+)/, '<$1 data-ins-marker="' + marker + '"'));
+    const real = area.querySelector('[data-ins-marker="' + marker + '"]');
+    if (real) real.removeAttribute("data-ins-marker");
+    return real;
+  }
+  function replaceNode(node, html) {
+    const range = document.createRange();
+    range.selectNode(node);
+    return execInsertHTML(range, html);
+  }
+  function insertAfterNode(node, html) {
+    const range = document.createRange();
+    range.setStartAfter(node); range.collapse(true);
+    return execInsertHTML(range, html);
+  }
+  function appendInside(parent, html) {
+    const range = document.createRange();
+    range.selectNodeContents(parent); range.collapse(false);
+    return execInsertHTML(range, html);
+  }
+  function removeNode(node) {
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNode(node);
+    sel.removeAllRanges(); sel.addRange(range);
+    document.execCommand("delete", false, null);
+  }
+
   /* ---- inline text replacement helper: swaps [start,end) of a text node
      for <tag>innerText</tag> and leaves the caret right after it ---- */
   function wrapRange(node, start, end, tagName, innerText) {
@@ -642,8 +681,9 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           const code = document.createElement("code");
           code.innerHTML = "<br>";
           pre.appendChild(code);
-          block.parentNode.replaceChild(pre, block);
-          caretTo(code, false);
+          const real = replaceNode(block, pre.outerHTML);
+          const realCode = real && real.querySelector("code");
+          if (realCode) caretTo(realCode, false);
           commitChange();
           schedulePaginate(true);
           return true;
@@ -801,10 +841,8 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
        just adds one more empty <blockquote> and typing resumes inside it. */
     const isEmptyQuote = block.tagName === "BLOCKQUOTE" && !(block.textContent || "").trim();
     if (isEmptyQuote) {
-      const p = document.createElement("p");
-      p.innerHTML = "<br>";
-      block.parentNode.replaceChild(p, block);
-      caretTo(p, false);
+      const real = replaceNode(block, "<p><br></p>");
+      if (real) caretTo(real, false);
       commitChange();
       schedulePaginate(true);
       return true;
@@ -816,16 +854,14 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       const quote = block.querySelector("blockquote");
       let cap = block.querySelector("figcaption");
       if (quote && (node === quote || quote.contains(node))) {
-        if (!cap) { cap = document.createElement("figcaption"); block.appendChild(cap); }
-        caretTo(cap, true);
+        if (!cap) cap = appendInside(block, "<figcaption></figcaption>");
+        if (cap) caretTo(cap, true);
         commitChange();
         return true;
       }
     }
-    const p = document.createElement("p");
-    p.innerHTML = "<br>";
-    block.parentNode.insertBefore(p, block.nextSibling);
-    caretTo(p, false);
+    const real = insertAfterNode(block, "<p><br></p>");
+    if (real) caretTo(real, false);
     commitChange();
     schedulePaginate(true);
     return true;
@@ -869,10 +905,8 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     return n;
   }
   function toParagraph(block) {
-    const p = document.createElement("p");
-    p.innerHTML = "<br>";
-    block.parentNode.replaceChild(p, block);
-    caretTo(p, false);
+    const real = replaceNode(block, "<p><br></p>");
+    if (real) caretTo(real, false);
     commitChange();
     schedulePaginate(true);
   }
@@ -894,7 +928,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     if (back && empty && block.tagName === "P") {
       const prev = siblingBlock(block, -1);
       if (prev && prev.tagName !== "HR") {
-        block.remove();
+        removeNode(block);
         caretTo(prev.tagName === "TABLE" ? (prev.querySelector("td, th") || prev) : prev, true);
         commitChange();
         schedulePaginate(true);
@@ -911,14 +945,14 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     if (near && near.tagName === "HR") {
       /* a page break or a scene marker: the one thing that made an extra
          page impossible to take back */
-      near.remove();
+      removeNode(near);
       commitChange();
       schedulePaginate(true);
       return true;
     }
     if (near && back && empty && SPECIAL_EMPTY[near.tagName] === undefined &&
         (near.tagName === "TABLE" || near.tagName === "PRE" || near.tagName === "FIGURE")) {
-      block.remove();
+      removeNode(block);
       caretTo(near.tagName === "TABLE" ? (near.querySelector("td, th") || near) : near, true);
       commitChange();
       schedulePaginate(true);
