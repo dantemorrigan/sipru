@@ -213,7 +213,14 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 
   function computeActive() {
     try {
-      const st = { bold: document.queryCommandState("bold"), italic: document.queryCommandState("italic"),
+      const sel0 = window.getSelection();
+      let inMark = false;
+      if (sel0 && sel0.anchorNode) {
+        const a = sel0.anchorNode.nodeType === 3 ? sel0.anchorNode.parentElement : sel0.anchorNode;
+        inMark = !!(a && a.closest && ref.current && ref.current.contains(a) && a.closest("mark"));
+      }
+      const st = { highlight: inMark,
+        bold: document.queryCommandState("bold"), italic: document.queryCommandState("italic"),
         underline: document.queryCommandState("underline"), strike: document.queryCommandState("strikeThrough"),
         ul: document.queryCommandState("insertUnorderedList"), ol: document.queryCommandState("insertOrderedList") };
       const sel = window.getSelection();
@@ -221,7 +228,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       if (sel && sel.anchorNode) {
         let n = sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode;
         while (n && n !== ref.current) { const tg = n.tagName && n.tagName.toLowerCase();
-          if (["h1","h2","h3","blockquote","p"].includes(tg)) { block = tg; break; } n = n.parentElement; }
+          if (["h1","h2","h3","h4","h5","h6","blockquote","p"].includes(tg)) { block = tg; break; } n = n.parentElement; }
       }
       st.block = block;
       setActive(st);
@@ -831,6 +838,89 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   function insertScene() {
     insertBlock(makeSceneEl(tl("ol_new_scene"), "draft"));
   }
+
+  /* execCommand has no highlight of its own, so <mark> is applied and
+     removed by hand. Unwrapping the whole mark on any overlap (rather than
+     splitting it) keeps the toggle predictable: pressing it again on text
+     you just highlighted always clears it. */
+  function toggleHighlight() {
+    const area = ref.current;
+    if (!area) return;
+    area.focus();
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    const anchor = sel.anchorNode && (sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode);
+    const existing = anchor && anchor.closest ? anchor.closest("mark") : null;
+    if (existing && area.contains(existing)) {
+      const parent = existing.parentNode;
+      while (existing.firstChild) parent.insertBefore(existing.firstChild, existing);
+      existing.remove();
+      parent.normalize();
+    } else {
+      if (range.collapsed) return;
+      const el = document.createElement("mark");
+      try { range.surroundContents(el); }
+      catch (e) { el.appendChild(range.extractContents()); range.insertNode(el); }
+      const after = document.createRange();
+      after.selectNodeContents(el);
+      sel.removeAllRanges(); sel.addRange(after);
+    }
+    commitChange();
+    schedulePaginate(true);
+    refreshActive();
+  }
+
+  function insertTable() {
+    const tbl = document.createElement("table");
+    const head = document.createElement("thead");
+    const hr2 = document.createElement("tr");
+    for (let c = 0; c < 3; c++) { const th = document.createElement("th"); th.innerHTML = "<br>"; hr2.appendChild(th); }
+    head.appendChild(hr2);
+    const body = document.createElement("tbody");
+    for (let r = 0; r < 2; r++) {
+      const tr = document.createElement("tr");
+      for (let c = 0; c < 3; c++) { const td = document.createElement("td"); td.innerHTML = "<br>"; tr.appendChild(td); }
+      body.appendChild(tr);
+    }
+    tbl.appendChild(head); tbl.appendChild(body);
+    insertBlock(tbl);
+    const first = tbl.querySelector("th");
+    if (first) caretTo(first, false);
+  }
+
+  function insertCodeBlock() {
+    const pre = document.createElement("pre");
+    const code = document.createElement("code");
+    code.innerHTML = "<br>";
+    pre.appendChild(code);
+    insertBlock(pre);
+    caretTo(code, false);
+  }
+
+  function insertTaskList() {
+    const ul = document.createElement("ul");
+    const li = document.createElement("li");
+    li.className = "task";
+    const box = document.createElement("input");
+    box.type = "checkbox"; box.disabled = true;
+    li.appendChild(box);
+    li.appendChild(document.createTextNode(" "));
+    ul.appendChild(li);
+    insertBlock(ul);
+    caretTo(li, true);
+  }
+
+  function insertImage() {
+    const url = window.prompt(tl("img_prompt"), "https://");
+    if (!url) return;
+    const src = String(url).trim();
+    if (!/^https?:\/\//i.test(src)) { if (onToast) onToast(tl("exp_err_popup")); return; }
+    const alt = window.prompt(tl("img_alt"), "") || "";
+    const img = document.createElement("img");
+    img.src = src; img.alt = alt;
+    insertBlock(img);
+  }
   /* A caret merely *after* a <sup class="fn"> still counts as inside it as
      far as the browser's typing style is concerned \u2014 exactly the trap
      wrapRange() works around for bold/italic/strike above. Left alone, a
@@ -1033,7 +1123,8 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 
   /* The compact contextual toolbar — inline marks only. Anything a writer
      reaches for once an hour lives behind "···" instead. */
-  const marks = [["bold", "bold"], ["italic", "italic"], ["underline", "underline"], ["strike", "strike"]];
+  const marks = [["bold", "bold"], ["italic", "italic"], ["underline", "underline"],
+    ["strike", "strike"], ["highlight", "highlight"]];
   const lists = [["quote", "quote"], ["ul", "ul"], ["ol", "ol"], ["link", "link"]];
   const aligns = [["al-l", "al_left"], ["al-c", "al_center"], ["al-r", "al_right"], ["al-j", "al_just"]];
 
@@ -1055,6 +1146,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 
   function runTool(cmd) {
     if (cmd === "quote") block("blockquote");
+    else if (cmd === "highlight") toggleHighlight();
     else if (cmd === "strike") exec("strikeThrough");
     else if (cmd === "ul") exec("insertUnorderedList");
     else if (cmd === "ol") exec("insertOrderedList");
@@ -1179,6 +1271,14 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
                   )}
                   <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); exec("insertHorizontalRule"); }}>
                     <Icon name="hr" size={15} /> <span>{tl("ins_hr")}</span></button>
+                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertTable(); }}>
+                    <Icon name="table" size={15} /> <span>{tl("ins_table")}</span></button>
+                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertCodeBlock(); }}>
+                    <Icon name="code" size={15} /> <span>{tl("ins_code")}</span></button>
+                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertTaskList(); }}>
+                    <Icon name="check" size={15} /> <span>{tl("ins_tasklist")}</span></button>
+                  <button onMouseDown={(e) => { e.preventDefault(); setInsertOpen(false); insertImage(); }}>
+                    <Icon name="image" size={15} /> <span>{tl("ins_image")}</span></button>
                   <div className="ed-menu-lbl mono">{tl("ins_align")}</div>
                   <div className="ed-menu-aligns">
                     {aligns.map(([cls, key]) => (

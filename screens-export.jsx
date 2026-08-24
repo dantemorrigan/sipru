@@ -102,13 +102,13 @@ function BookPreview({ html, title, edition, lang }) {
    arrived as one unbroken wall of prose with no paragraph anywhere in it,
    because textContent knows nothing about block boundaries. Walk instead,
    keeping one blank line between blocks and honouring <br> inside them. */
-const TXT_BLOCK = { P: 1, DIV: 1, H1: 1, H2: 1, H3: 1, BLOCKQUOTE: 1, LI: 1, UL: 1,
-  OL: 1, FIGURE: 1, FIGCAPTION: 1, ASIDE: 1, HR: 1, PRE: 1, TABLE: 1, TR: 1, SECTION: 1 };
+const TXT_BLOCK = { P: 1, DIV: 1, H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1, BLOCKQUOTE: 1,
+  LI: 1, UL: 1, OL: 1, FIGURE: 1, FIGCAPTION: 1, ASIDE: 1, HR: 1, PRE: 1, TABLE: 1, TR: 1, SECTION: 1 };
 function blockText(root) {
   const parts = [];
   let cur = "";
   const flush = () => {
-    const s = cur.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).join("\n").replace(/^\n+|\n+$/g, "");
+    const s = cur.split("\n").map((l) => l.replace(/[^\S\n]+/g, " ").trim()).join("\n").replace(/^\n+|\n+$/g, "");
     if (s) parts.push(s);
     cur = "";
   };
@@ -117,6 +117,29 @@ function blockText(root) {
       if (c.nodeType === 3) { cur += c.nodeValue; continue; }
       if (c.nodeType !== 1) continue;
       if (c.tagName === "BR") { cur += "\n"; continue; }
+      /* A code block is the one place whitespace *is* the content: its text
+         is taken verbatim, indentation and blank lines intact, instead of
+         being run through the space-collapsing pass below. */
+      if (c.tagName === "PRE") {
+        flush();
+        parts.push((c.textContent || "").replace(/^\n+|\n+$/g, ""));
+        continue;
+      }
+      /* Cells of one row stay on that row, separated rather than merged —
+         "AnnaIvanova28Moscow" is not a table, it is a mistake. */
+      if (c.tagName === "TD" || c.tagName === "TH") {
+        if (cur.trim()) cur += "  |  ";
+        walk(c);
+        continue;
+      }
+      /* An image contributes its alt text, so a caption-bearing figure does
+         not silently vanish from a plain-text export. */
+      if (c.tagName === "IMG") {
+        const alt = (c.getAttribute("alt") || "").trim();
+        if (alt) cur += "[" + alt + "]";
+        continue;
+      }
+      if (c.tagName === "INPUT") { cur += c.hasAttribute("checked") ? "[x] " : "[ ] "; continue; }
       if (TXT_BLOCK[c.tagName]) { flush(); walk(c); flush(); }
       else walk(c);
     }
@@ -171,15 +194,103 @@ function inlineToMd(node) {
       out += tick + pad + raw + pad + tick;
       return;
     }
+    /* An image is a leaf: it has no text of its own, so it is written from
+       its attributes rather than from any inner content. */
+    if (t === "img") {
+      const src = n.getAttribute("src") || "";
+      const title = n.getAttribute("title");
+      out += "![" + mdEscapeText(n.getAttribute("alt") || "") + "](" + src +
+        (title ? ' "' + title.replace(/"/g, "") + '"' : "") + ")";
+      return;
+    }
+    /* A task checkbox is written by the list serializer as "[x] " / "[ ] "
+       ahead of the item text; reaching one here means it is loose in prose,
+       where it has no markdown spelling worth inventing. */
+    if (t === "input") return;
     const inner = inlineToMd(n);
     if (t === "strong" || t === "b") out += "**" + inner + "**";
     else if (t === "em" || t === "i") out += "*" + inner + "*";
     else if (t === "u") out += "<u>" + inner + "</u>";
+    else if (t === "mark") out += "==" + inner + "==";
     else if (t === "s" || t === "strike") out += "~~" + inner + "~~";
-    else if (t === "a") out += "[" + inner + "](" + (n.getAttribute("href") || "") + ")";
+    else if (t === "a") {
+      const href = n.getAttribute("href") || "";
+      const title = n.getAttribute("title");
+      /* <https://…> when the link shows nothing but its own URL */
+      if (!title && inner.trim() === href.trim() && /^(https?:|mailto:)/i.test(href)) out += "<" + href + ">";
+      else out += "[" + inner + "](" + href + (title ? ' "' + title.replace(/"/g, "") + '"' : "") + ")";
+    }
     else out += inner;
   });
   return out;
+}
+
+/* A list goes back out with its nesting intact: each level is indented by
+   two spaces per depth, and a task item keeps its "[x]"/"[ ]" box. Reading
+   every <li> with querySelectorAll would flatten the tree, so only the
+   direct children of this list are walked and any nested list inside an
+   item recurses one level deeper. */
+function listToMd(el, depth, pad) {
+  const ordered = el.tagName.toLowerCase() === "ol";
+  /* A nested item has to be indented past its parent's marker to count as
+     nested at all — two spaces clears "- " but not "1. ", which other
+     renderers then read as a sibling rather than a sub-item. */
+  pad = pad || "";
+  let out = "", i = 1;
+  Array.prototype.forEach.call(el.children, (li) => {
+    if (li.tagName.toLowerCase() !== "li") return;
+    const sub = [];
+    /* the item's own text is everything except the lists nested under it */
+    const holder = document.createElement("div");
+    Array.prototype.forEach.call(li.childNodes, (c) => {
+      const tag = c.nodeType === 1 ? c.tagName.toLowerCase() : "";
+      if (tag === "ul" || tag === "ol") sub.push(c);
+      else holder.appendChild(c.cloneNode(true));
+    });
+    const box = li.querySelector(":scope > input[type=checkbox]")
+      ? (li.querySelector(":scope > input[type=checkbox]").hasAttribute("checked") ? "[x] " : "[ ] ")
+      : "";
+    const text = inlineToMd(holder).replace(/\s*\n\s*/g, " ").trim();
+    const marker = ordered ? (i++) + ". " : "- ";
+    out += pad + marker + box + text + "\n";
+    sub.forEach((sl) => { out += listToMd(sl, depth + 1, pad + " ".repeat(marker.length)); });
+  });
+  return out;
+}
+
+/* A quote inside a quote is another <blockquote>, not text — reading the
+   whole thing with the inline serializer flattened all three levels of
+   "> / >> / >>>" into one run-together line. Each nested quote is walked on
+   its own and comes back carrying one more ">" than its parent. */
+function quoteToMd(el) {
+  const parts = [];
+  let run = null;
+  Array.prototype.forEach.call(el.childNodes, (n) => {
+    const tag = n.nodeType === 1 ? n.tagName.toLowerCase() : "";
+    if (tag === "blockquote") {
+      run = null;
+      parts.push(quoteToMd(n).replace(/^/gm, "> "));
+      return;
+    }
+    if (!run) { run = document.createElement("div"); parts.push(run); }
+    run.appendChild(n.cloneNode(true));
+  });
+  return parts.map((p) => (typeof p === "string" ? p : inlineToMd(p)))
+    .filter((t) => t.trim()).join("\n").replace(/\s+$/, "");
+}
+
+/* A paragraph that happens to begin with "#", ">", "-" or "1." would be
+   read back as a heading, a quote or a list rather than the prose it is.
+   Only the first character needs the backslash, and only when it sits at
+   the very start — escaping these everywhere would litter ordinary
+   sentences with slashes. */
+function guardBlockStart(text) {
+  /* Every line, not just the first: a paragraph carries its own line breaks
+     through as "  \n", so a "# не заголовок" sitting after one starts a line
+     of its own on the way back in and would be read as a heading there. */
+  return String(text || "").split("\n").map((line) =>
+    line.replace(/^(\s*)(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|={3,}$|-{3,}$)/,
+      (all, pad, marker) => pad + "\\" + marker)).join("\n");
 }
 
 function htmlToMd(html) {
@@ -236,7 +347,16 @@ function htmlToMd(html) {
       if (!rows.length) return;
       const width = rows.reduce((w, r) => Math.max(w, r.length), 0);
       const pad = (r) => { const c = r.slice(); while (c.length < width) c.push(""); return "| " + c.join(" | ") + " |"; };
-      out += "\n" + pad(rows[0]) + "\n|" + " --- |".repeat(width) + "\n" +
+      /* the rule row carries each column's alignment back out as :--- / :---: / ---: */
+      const head = n.querySelector("tr");
+      const cells = head ? Array.prototype.slice.call(head.children) : [];
+      const rule = [];
+      for (let i = 0; i < width; i++) {
+        const cl = cells[i] ? (cells[i].getAttribute("class") || "") : "";
+        rule.push(cl.indexOf("ta-c") >= 0 ? ":---:" : cl.indexOf("ta-r") >= 0 ? "---:"
+          : cl.indexOf("ta-l") >= 0 ? ":---" : "---");
+      }
+      out += "\n" + pad(rows[0]) + "\n| " + rule.join(" | ") + " |\n" +
         rows.slice(1).map(pad).join("\n") + "\n\n";
       return;
     }
@@ -249,15 +369,12 @@ function htmlToMd(html) {
     const txt = inlineToMd(n);
     if (!txt.trim() && t !== "hr") return;
     const al = cls.match(/\bal-(l|c|r|j)\b/);
-    if (t === "h1") out += "\n# " + txt + "\n\n";
-    else if (t === "h2") out += "\n## " + txt + "\n\n";
-    else if (t === "h3") out += "\n### " + txt + "\n\n";
-    else if (t === "blockquote") out += "> " + txt.replace(/\n/g, "\n> ") + "\n\n";
+    if (/^h[1-6]$/.test(t)) out += "\n" + "#".repeat(+t.charAt(1)) + " " + txt + "\n\n";
+    else if (t === "blockquote") out += quoteToMd(n).replace(/^/gm, "> ") + "\n\n";
     else if (t === "hr") out += "\n---\n\n";
-    else if (t === "ul") n.querySelectorAll("li").forEach((li) => out += "- " + inlineToMd(li) + "\n"), out += "\n";
-    else if (t === "ol") { let i = 1; n.querySelectorAll("li").forEach((li) => out += (i++) + ". " + inlineToMd(li) + "\n"); out += "\n"; }
+    else if (t === "ul" || t === "ol") out += "\n" + listToMd(n, 0) + "\n";
     else if (t === "p" && al) out += '<p class="al-' + al[1] + '">' + txt.replace(/\n/g, " ") + "</p>\n\n";
-    else out += txt + "\n\n";
+    else out += guardBlockStart(txt) + "\n\n";
   });
   out = out.replace(/\n{3,}/g, "\n\n").trim();
   if (notes.length) {
@@ -585,6 +702,32 @@ const BLOCK_CSS = `
        address, a diagram, a few short verse lines) has too few words per
        line for that, and blows apart into huge gaps. */
     p:has(br) { text-align: left; }
+    /* ---- the wider markdown set, printed the way the editor shows it ---- */
+    blockquote blockquote { margin: .6em 0; border-left-color: #ddd7c8; }
+    li > ul, li > ol { margin: .35em 0 .1em; }
+    li.task { list-style: none; margin-left: -1.15em; }
+    li.task > input[type="checkbox"] { margin-right: .5em; }
+    mark { background: #f6e2b8; color: inherit; padding: .05em .18em; }
+    img { max-width: 100%; height: auto; display: block; margin: 1.2em auto; }
+    table { width: 100%; border-collapse: collapse; margin: 1.3em 0; text-indent: 0;
+      font-size: .94em; page-break-inside: avoid; break-inside: avoid; }
+    th, td { border: 1px solid #ddd7c8; padding: .42em .6em; text-align: left; vertical-align: top; }
+    thead th { background: #f4f0e6; font-weight: 600; }
+    .ta-l { text-align: left; } .ta-c { text-align: center; } .ta-r { text-align: right; }
+    pre { margin: 1.3em 0; padding: .85em 1em; text-indent: 0; overflow-x: auto;
+      background: #f4f0e6; border: 1px solid #e2ddcf; border-radius: 6px;
+      page-break-inside: avoid; break-inside: avoid; }
+    pre code { display: block; background: none; border: none; padding: 0;
+      font-size: .84em; line-height: 1.5; white-space: pre-wrap; }
+    pre[data-lang]::before { content: attr(data-lang); display: block; margin: -.25em 0 .5em;
+      font-family: 'JetBrains Mono', monospace; font-size: .66em; letter-spacing: .08em;
+      text-transform: uppercase; color: #a09a89; }
+    code { font-family: 'JetBrains Mono', monospace; font-size: .87em;
+      background: #f4f0e6; border: 1px solid #e2ddcf; border-radius: 3px; padding: .1em .35em; }
+    h4 { font-size: 1.05em; font-weight: 600; margin: 1.1em 0 .35em; text-indent: 0; }
+    h5 { font-size: 1em; font-weight: 600; margin: 1em 0 .3em; text-indent: 0; color: #5c564a; }
+    h6 { font-size: .92em; font-weight: 600; margin: 1em 0 .3em; text-indent: 0;
+      color: #8a8474; letter-spacing: .04em; text-transform: uppercase; }
 `;
 
 /* Footnote definitions live hidden inside the text; on the way out they

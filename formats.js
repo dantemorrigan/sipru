@@ -5,20 +5,47 @@
 (function () {
 
   /* ---------------- shared ---------------- */
-  const BLOCKS = ["p","br","h1","h2","h3","blockquote","ul","ol","li","hr",
+  const BLOCKS = ["p","br","h1","h2","h3","h4","h5","h6","blockquote","ul","ol","li","hr",
     "figure","figcaption","aside","pre","table","thead","tbody","tr","th","td"];
-  const INLINE = ["strong","b","em","i","u","s","strike","sup","code"];
+  const INLINE = ["strong","b","em","i","u","s","strike","sup","sub","code","mark","a","img","input"];
   const ALLOWED = new Set(BLOCKS.concat(INLINE));
+  /* Void elements have no closing tag and no children to walk into. */
+  const VOID = new Set(["br","hr","img","input"]);
   /* The only attributes that ever survive a sanitise: the handful of marker
      classes and data-* keys the editor uses to tell its own block types
      apart. Everything else — style, href, on*, id — is still dropped. */
   const CLASS_OK = new Set(["epigraph","note","page-break","scene-sep","fn","fn-defs",
-    "al-l","al-c","al-r","al-j","math"]);
+    "al-l","al-c","al-r","al-j","math","task","task-list","ta-l","ta-c","ta-r","mermaid"]);
   const DATA_OK = ["data-fn","data-t","data-s","data-id","data-lang"];
-  function keepMarkers(src, el) {
-    const cls = (src.getAttribute("class") || "").split(/\s+/).filter((c) => CLASS_OK.has(c));
+  function keepMarkers(node, el) {
+    const cls = (node.getAttribute("class") || "").split(/\s+/).filter((c) => CLASS_OK.has(c));
     if (cls.length) el.setAttribute("class", cls.join(" "));
-    DATA_OK.forEach((k) => { if (src.hasAttribute(k)) el.setAttribute(k, src.getAttribute(k)); });
+    DATA_OK.forEach((k) => { if (node.hasAttribute(k)) el.setAttribute(k, node.getAttribute(k)); });
+    /* Links, images and task checkboxes are meaningless without the one
+       attribute that carries their content, so those specific attributes
+       survive — each re-validated here rather than trusted, since this runs
+       on imported and pasted HTML from anywhere. Everything else (style,
+       on*, id, srcset, formaction …) is still dropped. */
+    const tag = el.tagName.toLowerCase();
+    if (tag === "a") {
+      const href = safeHref(node.getAttribute("href"));
+      if (href) {
+        el.setAttribute("href", href);
+        el.setAttribute("target", "_blank");
+        el.setAttribute("rel", "noopener noreferrer");
+      }
+    } else if (tag === "img") {
+      const src = safeSrc(node.getAttribute("src"));
+      if (src) el.setAttribute("src", src);
+      el.setAttribute("alt", node.getAttribute("alt") || "");
+    } else if (tag === "input") {
+      /* only the disabled task-list checkbox shape, never a live control */
+      el.setAttribute("type", "checkbox");
+      el.setAttribute("disabled", "");
+      if (node.hasAttribute("checked")) el.setAttribute("checked", "");
+    }
+    const title = node.getAttribute && node.getAttribute("title");
+    if (title && (tag === "a" || tag === "img")) el.setAttribute("title", title);
   }
 
   const esc = (s) => String(s == null ? "" : s)
@@ -45,11 +72,17 @@
            unwrapped exactly as it always was */
         const isFnBox = tag === "div" && (n.getAttribute("class") || "").indexOf("fn-defs") >= 0;
         if (!ALLOWED.has(tag) && !isFnBox) { walk(n, into); return; }   // unwrap unknown tags
+        /* an <input> only survives as a task-list checkbox; any other kind
+           of form control is dropped rather than rebuilt as one */
+        if (tag === "input" && (n.getAttribute("type") || "").toLowerCase() !== "checkbox") return;
+        /* an image whose source did not survive validation is not an image
+           any more — drop it rather than leave an empty broken frame */
+        if (tag === "img" && !safeSrc(n.getAttribute("src"))) return;
         const norm = tag === "strike" ? "s" : tag;
         const el = document.createElement(norm);
         keepMarkers(n, el);
         into.appendChild(el);
-        if (norm !== "br" && norm !== "hr") walk(n, el);
+        if (!VOID.has(norm)) walk(n, el);
       });
     }
     walk(src, out);
@@ -76,7 +109,12 @@
      mdEscapeText so a literal "*" in prose can't be mistaken for markup — is
      protected behind a sentinel before the tokenizer runs, so it survives
      as plain text rather than being read back as emphasis. */
-  const ESCAPABLE = /\\([\\*_~[\]`$])/g;
+  /* Every character markdown gives a meaning to can be written literally by
+     escaping it, so the reader accepts a backslash before any of them —
+     "\\# не заголовок" is a paragraph beginning with a hash, not an H1. The
+     writer (mdEscapeText in the export) escapes only the subset that would
+     actually be ambiguous where it stands, so ordinary prose stays clean. */
+  const ESCAPABLE = /\\([\\`*_{}[\]()#+\-.!|>~=$])/g;
   const SENTINEL_RE = /\x01(\d+)\x02/g;
   function protectEscapes(s) {
     return String(s || "").replace(ESCAPABLE, (_, c) => "\x01" + c.charCodeAt(0) + "\x02");
@@ -92,76 +130,140 @@
     const h = String(href || "").trim();
     return /^(https?:|mailto:)/i.test(h) ? h : null;
   }
+  /* An <img> source is the same trust boundary, plus inline data: images.
+     Only the raster types are let through — "data:image/svg+xml" carries a
+     whole document, script included, so it is deliberately not on the
+     list. */
+  function safeSrc(src) {
+    const u = String(src || "").trim();
+    if (/^https?:/i.test(u)) return u;
+    if (/^data:image\/(png|jpe?g|gif|webp|avif);base64,[a-z0-9+/=\s]+$/i.test(u)) return u;
+    return null;
+  }
 
   /* Leftmost-token recursive descent: literal runs between tokens are
      HTML-escaped as they're appended, and a token's captured inner text is
      re-entered through mdInline — never a blanket escape of the whole
      string, which would also mangle the HTML this function itself emits. */
-  /* Bold+italic over exactly the same span comes out of htmlToMd as
-     "***text***" (the natural result of wrapping "*text*" in "**…**"); it
-     has to be matched before the plain "**" case or the third asterisk
-     reads as a stray literal one side and a lone italic marker the other.
-     The link URL allows one level of nested parens — real URLs (Wikipedia
-     disambiguation pages, for one) routinely have them, and a bare "(1)"
-     shouldn't truncate the match at its first close-paren. */
-  /* A code span binds tighter than every emphasis marker, so it has to be
-     the first alternative: with `_` or `*` tried first, an underscore in
-     prose could pair with one inside a later code span and swallow the
-     backticks into an <em>. The fence is a run of backticks closed by an
-     equal run, so code containing backticks still has a way to be written. */
-  /* Inline tokenizer expanded: images ![alt](url), highlight ==text==, and the
-     auto-link form <https://...> are now recognized alongside the existing
-     emphasis/link/code tokens. A code span still binds tightest so that
-     backticks protect their contents from every other marker. */
-  const INLINE_TOKEN = /(`+)([\s\S]*?)\1|\[\^([^\]\s]+)\]|\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)(?:\s+"([^"]*)")?\)|!\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)(?:\s+"([^"]*)")?\)|==([^=]+)==|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|<u>([\s\S]*?)<\/u>|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_/;
+  /* ---------------- inline tokenizer ----------------
+
+     One combined regex, but assembled from a table rather than written out
+     by hand: each rule declares how many capture groups it owns, and the
+     offsets are computed from that. Hand-numbering is what broke this
+     before — inserting ==highlight== in the middle shifted every rule after
+     it by one, so bold rendered as <u>, italic as <mark>, strike as <em>
+     and so on, all the way down. With the offsets derived, a new rule can
+     be dropped in anywhere and nothing after it can silently renumber.
+
+     Order is meaning here:
+       - a code span binds tightest, so it comes first: with `_` or `*`
+         tried earlier, an underscore in prose could pair with one inside a
+         later code span and swallow the backticks into an <em>;
+       - an entity is next so &copy; survives the literal-run escaper;
+       - the image rule precedes the link rule, since ![x](y) also contains
+         a valid [x](y);
+       - ***both*** precedes **bold** precedes *italic*, or the extra
+         asterisk reads as a stray literal on one side and a lone marker on
+         the other.
+
+     A rule's fn returns the HTML for the token, or null to decline the
+     match — the tokenizer then emits one literal character and rescans,
+     which is how an underscore inside snake_case stays part of the word. */
   const WORD_CH = /[0-9A-Za-zÀ-ɏЀ-ӿ]/;
+  /* A URL runs to the first whitespace, but may carry balanced parens —
+     real URLs (Wikipedia disambiguation pages, for one) routinely do, and a
+     bare "(1)" shouldn't truncate the match at its first close-paren. The
+     optional "title" is quoted and sits after whitespace, so it can never
+     be mistaken for part of the URL. */
+  const URL_PART = '((?:[^\\s()]|\\([^()]*\\))+)(?:\\s+"([^"]*)")?';
+  const INLINE_RULES = [
+    { re: '(`+)([\\s\\S]*?)\\1', n: 2, fn: (g) => {
+        /* literal — no nested markdown inside a code span. One padding
+           space either side is dropped, which is how a span can hold code
+           that itself starts or ends with a backtick. */
+        let code = g[1];
+        if (/^ [\s\S]* $/.test(code) && code.trim()) code = code.slice(1, -1);
+        return "<code>" + esc(code) + "</code>";
+      } },
+    /* &copy; &#169; &#x00A9; — a named or numeric entity is passed through
+       as itself. Without this the literal-run escaper turns every "&" into
+       "&amp;" and the reader sees "&copy;" spelled out instead of "©". */
+    { re: '&(#\\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,31});', n: 1,
+      fn: (g) => "&" + g[0] + ";" },
+    /* [^1] — a footnote reference; the number is re-derived from document
+       order when the editor opens it, so any label works */
+    { re: '\\[\\^([^\\]\\s]+)\\]', n: 1,
+      fn: (g) => '<sup class="fn" data-fn="fn_' + esc(g[0]) + '">' + esc(g[0]) + "</sup>" },
+    { re: '!\\[([^\\]]*)\\]\\(\\s*' + URL_PART + '\\s*\\)', n: 3, fn: (g) => {
+        const src = safeSrc(g[1]);
+        if (!src) return esc(g[0]);            /* unusable source: keep the alt text */
+        return '<img src="' + esc(src) + '" alt="' + esc(g[0]) + '"' +
+          (g[2] ? ' title="' + esc(g[2]) + '"' : "") + ">";
+      } },
+    { re: '\\[([^\\]]*)\\]\\(\\s*' + URL_PART + '\\s*\\)', n: 3, fn: (g, rec) => {
+        const href = safeHref(g[1]);
+        return href
+          ? '<a href="' + esc(href) + '"' + (g[2] ? ' title="' + esc(g[2]) + '"' : "") +
+            ">" + rec(g[0]) + "</a>"
+          : rec(g[0]);
+      } },
+    /* <https://example.com> — an autolink shows its own URL as the text */
+    { re: '<((?:https?:|mailto:)[^>\\s]+)>', n: 1, fn: (g) => {
+        const href = safeHref(g[0]);
+        return href ? '<a href="' + esc(href) + '">' + esc(g[0]) + "</a>" : esc("<" + g[0] + ">");
+      } },
+    { re: '\\*\\*\\*([^*]+)\\*\\*\\*', n: 1, fn: (g, rec) => "<strong><em>" + rec(g[0]) + "</em></strong>" },
+    { re: '___([^_]+)___', n: 1, fn: (g, rec) => "<strong><em>" + rec(g[0]) + "</em></strong>" },
+    { re: '\\*\\*([^*]+)\\*\\*', n: 1, fn: (g, rec) => "<strong>" + rec(g[0]) + "</strong>" },
+    { re: '__([^_]+)__', n: 1, fn: (g, rec) => "<strong>" + rec(g[0]) + "</strong>" },
+    { re: '<u>([\\s\\S]*?)</u>', n: 1, fn: (g, rec) => "<u>" + rec(g[0]) + "</u>" },
+    { re: '<mark>([\\s\\S]*?)</mark>', n: 1, fn: (g, rec) => "<mark>" + rec(g[0]) + "</mark>" },
+    { re: '==([^=]+)==', n: 1, fn: (g, rec) => "<mark>" + rec(g[0]) + "</mark>" },
+    { re: '~~([^~]+)~~', n: 1, fn: (g, rec) => "<s>" + rec(g[0]) + "</s>" },
+    { re: '\\*([^*\\n]+)\\*', n: 1, fn: (g, rec) => "<em>" + rec(g[0]) + "</em>" },
+    /* An underscore inside a word is part of the word: snake_case_name is
+       one identifier, not emphasis. Only a "_" with a non-word character
+       (or nothing) on both outer sides opens a span. */
+    { re: '_([^_\\n]+)_', n: 1, fn: (g, rec, ctx) => {
+        if (WORD_CH.test(ctx.before) || WORD_CH.test(ctx.after)) return null;
+        return "<em>" + rec(g[0]) + "</em>";
+      } },
+  ];
+  /* group 0 of the combined match is the whole thing, so the first rule's
+     captures start at 1 and each rule's base is the running total */
+  (function assignBases() {
+    let base = 1;
+    INLINE_RULES.forEach((r) => { r.base = base; base += r.n; });
+  })();
+  const INLINE_TOKEN = new RegExp(INLINE_RULES.map((r) => r.re).join("|"));
+
   function mdInline(raw) {
     let s = String(raw == null ? "" : raw);
     let out = "";
     while (s.length) {
       const m = INLINE_TOKEN.exec(s);
       if (!m) { out += esc(s); break; }
-      out += esc(s.slice(0, m.index));
-      if (m[2] !== undefined) {
-        /* literal — no nested markdown inside a code span. One padding
-           space either side is dropped, which is how a span can hold code
-           that itself starts or ends with a backtick. */
-        let code = m[2];
-        if (/^ [\s\S]* $/.test(code) && code.trim()) code = code.slice(1, -1);
-        out += "<code>" + esc(code) + "</code>";
-      } else if (m[3] !== undefined) {
-        /* [^1] — a footnote reference; the number is re-derived from
-           document order when the editor opens it, so any label works */
-        out += '<sup class="fn" data-fn="fn_' + esc(m[3]) + '">' + esc(m[3]) + "</sup>";
-      } else if (m[4] !== undefined) {
-        /* [text](url) or [text](url "title") — a link with optional title */
-        const href = safeHref(m[5]);
-        out += href ? ('<a href="' + esc(href) + '"' + (m[6] ? (' title="' + esc(m[6]) + '"') : '') + '>' + mdInline(m[4]) + "</a>") : mdInline(m[4]);
-      } else if (m[7] !== undefined) {
-        /* ![alt](url) or ![alt](url "title") — an image with optional title */
-        const src = safeHref(m[8]) || m[8];
-        const alt = esc(m[7]);
-        const title = m[9] ? (' title="' + esc(m[9]) + '"') : '';
-        out += '<img src="' + esc(src) + '" alt="' + alt + '"' + title + ' style="max-width:100%;height:auto;">';
-      } else if (m[10] !== undefined) out += "<strong><em>" + mdInline(m[10]) + "</em></strong>";
-      else if (m[11] !== undefined) out += "<strong>" + mdInline(m[11]) + "</strong>";
-      else if (m[12] !== undefined) out += "<u>" + mdInline(m[12]) + "</u>";
-      else if (m[13] !== undefined) out += "<s>" + mdInline(m[13]) + "</s>";
-      else if (m[14] !== undefined) out += "<em>" + mdInline(m[14]) + "</em>";
-      else if (m[15] !== undefined) out += "<mark>" + mdInline(m[15]) + "</mark>";
-      else {
-        /* An underscore inside a word is part of the word: snake_case_name
-           is one identifier, not emphasis. Only a `_` with a non-word
-           character (or nothing) on both outer sides opens a span. */
-        const before = m.index > 0 ? s.charAt(m.index - 1) : "";
-        const after = s.charAt(m.index + m[0].length);
-        if (WORD_CH.test(before) || WORD_CH.test(after)) {
-          out += esc("_");
-          s = s.slice(m.index + 1);
-          continue;
-        }
-        out += "<em>" + mdInline(m[16]) + "</em>";
+      /* which rule fired: the first whose own capture slots came back set */
+      let rule = null;
+      for (let i = 0; i < INLINE_RULES.length && !rule; i++) {
+        const r = INLINE_RULES[i];
+        for (let k = 0; k < r.n; k++) if (m[r.base + k] !== undefined) { rule = r; break; }
       }
+      if (!rule) { out += esc(s.slice(0, m.index + 1)); s = s.slice(m.index + 1); continue; }
+      const groups = [];
+      for (let k = 0; k < rule.n; k++) groups.push(m[rule.base + k]);
+      const ctx = {
+        before: m.index > 0 ? s.charAt(m.index - 1) : "",
+        after: s.charAt(m.index + m[0].length),
+      };
+      const html = rule.fn(groups, mdInline, ctx);
+      if (html === null) {
+        /* rule declined — emit the run plus one literal char and rescan */
+        out += esc(s.slice(0, m.index + 1));
+        s = s.slice(m.index + 1);
+        continue;
+      }
+      out += esc(s.slice(0, m.index)) + html;
       s = s.slice(m.index + m[0].length);
     }
     return out;
@@ -197,9 +299,19 @@
       verb = null; verbLang = "";
     };
     let table = null;
+    /* ":---" left, ":---:" centre, "---:" right — the colons in the rule row
+       set each column's alignment, carried onto every cell in that column as
+       a marker class the editor and every export already understand. */
+    const alignOf = (spec) => {
+      const t = String(spec || "").trim();
+      const l = t.charAt(0) === ":", r = t.charAt(t.length - 1) === ":";
+      return l && r ? " class=\"ta-c\"" : r ? " class=\"ta-r\"" : l ? " class=\"ta-l\"" : "";
+    };
     const flushTable = () => {
       if (!table) return;
-      const row = (cells, tag) => "<tr>" + cells.map((c) => "<" + tag + ">" + mdInlineTop(c) + "</" + tag + ">").join("") + "</tr>";
+      const al = table.align || [];
+      const row = (cells, tag) => "<tr>" + cells.map((c, i) =>
+        "<" + tag + (al[i] || "") + ">" + mdInlineTop(c) + "</" + tag + ">").join("") + "</tr>";
       out += "<table><thead>" + row(table.head, "th") + "</thead><tbody>" +
         table.rows.map((r) => row(r, "td")).join("") + "</tbody></table>";
       table = null;
@@ -207,8 +319,63 @@
     const splitRow = (l) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
     const notes = [];
     const flushPara = () => { if (para.length) { out += "<p>" + para.map(mdInlineTop).join("<br>") + "</p>"; para = []; } };
-    const flushQuote = () => { if (quote.length) { out += "<blockquote>" + quote.map(mdInlineTop).join("<br>") + "</blockquote>"; quote = []; } };
-    const flushList = () => { if (list) { out += "<" + list.tag + ">" + list.items.map((i) => "<li>" + mdInlineTop(i) + "</li>").join("") + "</" + list.tag + ">"; list = null; } };
+    /* A quote line keeps whatever ">" markers are left after this level has
+       taken its own, so ">> deeper" arrives here as "> deeper" and recurses
+       into a nested <blockquote> instead of printing a literal "&gt;". */
+    const renderQuote = (lines) => {
+      let html = "<blockquote>", i = 0;
+      while (i < lines.length) {
+        if (/^>/.test(lines[i])) {
+          const sub = [];
+          while (i < lines.length && /^>/.test(lines[i])) { sub.push(lines[i].replace(/^>\s?/, "")); i++; }
+          html += renderQuote(sub);
+        } else {
+          const run = [];
+          while (i < lines.length && !/^>/.test(lines[i])) { run.push(lines[i]); i++; }
+          const body = run.map(mdInlineTop).join("<br>");
+          if (body.trim()) html += body;
+        }
+      }
+      return html + "</blockquote>";
+    };
+    const flushQuote = () => { if (quote.length) { out += renderQuote(quote); quote = []; } };
+    /* Items carry the indent they were written at; a deeper one becomes a
+       list nested inside the previous item rather than another sibling, so
+       "  - a" under "- one" reads as a sub-list the way it does everywhere
+       else. Runs of differing marker type at one level stay separate lists,
+       so a bulleted group followed by a numbered one is two lists, not a
+       numbered continuation of the first. */
+    const renderItems = (items) => {
+      let html = "", i = 0;
+      while (i < items.length) {
+        const tag = items[i].tag;
+        html += "<" + tag + ">";
+        while (i < items.length && items[i].tag === tag) {
+          const it = items[i];
+          const box = it.checked == null ? ""
+            : '<input type="checkbox"' + (it.checked ? " checked" : "") + " disabled> ";
+          html += "<li" + (it.checked == null ? "" : ' class="task"') + ">" + box + mdInlineTop(it.text) +
+            (it.kids.length ? renderItems(it.kids) : "") + "</li>";
+          i++;
+        }
+        html += "</" + tag + ">";
+      }
+      return html;
+    };
+    const pushItem = (indent, tag, text, checked) => {
+      const item = { indent, tag, text, checked, kids: [] };
+      if (!list) { list = { items: [item] }; return; }
+      /* walk down from the root to the deepest run whose indent is still
+         smaller than this one, and append there */
+      let level = list.items;
+      for (;;) {
+        const last = level[level.length - 1];
+        if (last && indent > last.indent) { level = last.kids; if (!level.length) { level.push(item); return; } continue; }
+        level.push(item);
+        return;
+      }
+    };
+    const flushList = () => { if (list) { out += renderItems(list.items); list = null; } };
     const flushAll = () => { flushPara(); flushQuote(); flushList(); flushTable(); };
     const flushFence = () => {
       if (!fence) return;
@@ -271,25 +438,30 @@
       if ((m = line.match(/^(#{1,6})\s+(.*)$/))) { flushAll(); out += "<h" + m[1].length + ">" + mdInlineTop(m[2]) + "</h" + m[1].length + ">"; return; }
       if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) { flushAll(); out += "<hr>"; return; }
       if ((m = line.match(/^>\s?(.*)$/))) { flushPara(); flushList(); quote.push(m[1]); return; }
-      /* Checkbox / task list items: - [x] or - [ ] (also * or +) */
-      if ((m = line.match(/^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/))) {
-        flushPara(); flushQuote();
-        const checked = m[1].toLowerCase() === 'x' ? ' checked' : '';
-        if (!list || list.tag !== "ul") { flushList(); list = { tag: "ul", items: [] }; }
-        list.items.push('<input type="checkbox"' + checked + ' disabled class="task-list-item"> ' + m[2]);
+      /* A tab indents as far as four spaces do, so both styles nest alike. */
+      const indentOf = (t) => t.replace(/\t/g, "    ").match(/^ */)[0].length;
+      /* "- [x] done" / "- [ ] todo" — a task item is a list item that also
+         carries a checkbox, so it goes through the same nesting path. */
+      if ((m = line.match(/^(\s*)[-*+]\s+\[([ xX])\]\s+(.*)$/))) {
+        flushPara(); flushQuote(); flushTable();
+        pushItem(indentOf(m[1]), "ul", m[3], m[2].toLowerCase() === "x");
         return;
       }
-      if ((m = line.match(/^\s*[-*+]\s+(.*)$/))) { flushPara(); flushQuote();
-        if (!list || list.tag !== "ul") { flushList(); list = { tag: "ul", items: [] }; }
-        list.items.push(m[1]); return; }
-      if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { flushPara(); flushQuote();
-        if (!list || list.tag !== "ol") { flushList(); list = { tag: "ol", items: [] }; }
-        list.items.push(m[1]); return; }
+      if ((m = line.match(/^(\s*)[-*+]\s+(.*)$/))) {
+        flushPara(); flushQuote(); flushTable();
+        pushItem(indentOf(m[1]), "ul", m[2], null);
+        return;
+      }
+      if ((m = line.match(/^(\s*)\d+[.)]\s+(.*)$/))) {
+        flushPara(); flushQuote(); flushTable();
+        pushItem(indentOf(m[1]), "ol", m[2], null);
+        return;
+      }
       /* A pipe table: a header row, a |---|---| rule, then body rows. The
          rule is what tells a table apart from a paragraph that merely
          contains a pipe, so it is required before any row is claimed. */
       const isRule = /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(line) && /\|/.test(line);
-      if (table && isRule) return;                       // the header rule itself
+      if (table && isRule) { table.align = splitRow(line).map(alignOf); return; }   // the header rule itself
       if (/\|/.test(line)) {
         if (table) { table.rows.push(splitRow(line)); return; }
         const next = lines[li + 1];
@@ -442,6 +614,19 @@
       if (tag === "em" || tag === "i") next.i = true;
       if (tag === "u") next.u = true;
       if (tag === "s" || tag === "strike" || tag === "del") next.s = true;
+      if (tag === "sub") next.sub = true;
+      if (tag === "mark") next.hl = true;
+      /* an <img> carries no text of its own; Word gets its alt text so the
+         sentence around it still reads, rather than a silent gap */
+      if (tag === "img") {
+        const alt = (n.getAttribute("alt") || "").trim();
+        if (alt) runs.push({ text: "[" + alt + "]", i: true, ...fmt });
+        return;
+      }
+      if (tag === "input") {
+        runs.push({ text: n.hasAttribute("checked") ? "\u2611 " : "\u2610 ", ...fmt });
+        return;
+      }
       runsFrom(n, next, runs);
     });
     return runs;
@@ -454,6 +639,8 @@
     if (r.u) rpr += '<w:u w:val="single"/>';
     if (r.s) rpr += "<w:strike/>";
     if (r.sup) rpr += '<w:vertAlign w:val="superscript"/>';
+    if (r.sub) rpr += '<w:vertAlign w:val="subscript"/>';
+    if (r.hl) rpr += '<w:highlight w:val="yellow"/>';
     return "<w:r>" + (rpr ? "<w:rPr>" + rpr + "</w:rPr>" : "") +
       '<w:t xml:space="preserve">' + esc(r.text) + "</w:t></w:r>";
   }
@@ -461,6 +648,38 @@
     const ppr = (style ? '<w:pStyle w:val="' + style + '"/>' : "") +
       (numId ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="' + numId + '"/></w:numPr>' : "");
     return "<w:p>" + (ppr ? "<w:pPr>" + ppr + "</w:pPr>" : "") + runs.map(runXML).join("") + "</w:p>";
+  }
+
+  /* A real Word table rather than the run-together paragraphs a <table>
+     used to collapse into. Column widths are left to Word (autofit), and a
+     cell's alignment marker class rides across as the paragraph's own
+     justification so ":---:" still centres in the .docx. */
+  const CELL_JC = { "ta-c": "center", "ta-r": "right", "ta-l": "left" };
+  function tableXML(tbl) {
+    const rows = tbl.querySelectorAll("tr");
+    if (!rows.length) return "";
+    let xml = '<w:tbl><w:tblPr>' +
+      '<w:tblW w:w="0" w:type="auto"/>' +
+      '<w:tblBorders>' +
+      ["top", "left", "bottom", "right", "insideH", "insideV"].map((e) =>
+        '<w:' + e + ' w:val="single" w:sz="4" w:space="0" w:color="BFBAAB"/>').join("") +
+      "</w:tblBorders></w:tblPr>";
+    Array.prototype.forEach.call(rows, (tr) => {
+      xml += "<w:tr>";
+      Array.prototype.forEach.call(tr.children, (cell) => {
+        const head = cell.tagName.toLowerCase() === "th";
+        const cls = cell.getAttribute("class") || "";
+        const jc = Object.keys(CELL_JC).reduce((a, k) => (cls.indexOf(k) >= 0 ? CELL_JC[k] : a), "");
+        const runs = runsFrom(cell, head ? { b: true } : {}, []);
+        const ppr = "<w:pPr>" + (jc ? '<w:jc w:val="' + jc + '"/>' : "") +
+          '<w:spacing w:after="0"/><w:ind w:firstLine="0"/></w:pPr>';
+        xml += "<w:tc><w:tcPr><w:tcW w:w=\"0\" w:type=\"auto\"/>" +
+          (head ? '<w:shd w:val="clear" w:fill="F4F0E6"/>' : "") + "</w:tcPr>" +
+          "<w:p>" + ppr + (runs.length ? runs.map(runXML).join("") : "") + "</w:p></w:tc>";
+      });
+      xml += "</w:tr>";
+    });
+    return xml + "</w:tbl>";
   }
 
   /* Converts a chunk of editor HTML into an array of <w:p> strings. */
@@ -484,9 +703,13 @@
         const tag = n.tagName.toLowerCase();
         const cls = n.getAttribute ? (n.getAttribute("class") || "") : "";
         if (tag === "div" && cls.indexOf("fn-defs") >= 0) return;   /* collected separately */
+        if (tag === "table") { out.push(tableXML(n)); return; }
         if (tag === "h1") emit(n, "Heading1");
         else if (tag === "h2") emit(n, "Heading2");
         else if (tag === "h3") emit(n, "Heading3");
+        else if (tag === "h4") emit(n, "Heading4");
+        else if (tag === "h5") emit(n, "Heading5");
+        else if (tag === "h6") emit(n, "Heading6");
         else if (tag === "blockquote") emit(n, "Quote");
         else if (tag === "figure" && cls.indexOf("epigraph") >= 0) {
           const body = n.querySelector("blockquote");
@@ -560,6 +783,9 @@
       heading("Heading1", "heading 1", "40", "360") +
       heading("Heading2", "heading 2", "32", "280") +
       heading("Heading3", "heading 3", "28", "240") +
+      heading("Heading4", "heading 4", "26", "220") +
+      heading("Heading5", "heading 5", "24", "200") +
+      heading("Heading6", "heading 6", "22", "200") +
       '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/>' +
       '<w:pPr><w:jc w:val="center"/><w:spacing w:before="480" w:after="240"/></w:pPr>' +
       '<w:rPr><w:b/><w:sz w:val="56"/></w:rPr></w:style>' +

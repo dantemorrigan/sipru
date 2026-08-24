@@ -416,7 +416,7 @@ function joinScenes(segs) {
 /* ============================================================
    Paragraph styles
    ============================================================ */
-const BLOCK_STYLES = ["p", "h1", "h2", "h3", "blockquote", "epigraph", "note"];
+const BLOCK_STYLES = ["p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "epigraph", "note"];
 
 function topBlock(area) {
   const sel = window.getSelection();
@@ -433,7 +433,7 @@ function blockStyleOf(el) {
   const tag = (el.tagName || "").toLowerCase();
   if (tag === "figure" && el.classList.contains("epigraph")) return "epigraph";
   if (tag === "aside" && el.classList.contains("note")) return "note";
-  if (["h1", "h2", "h3", "blockquote", "p"].indexOf(tag) >= 0) return tag;
+  if (["h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "p"].indexOf(tag) >= 0) return tag;
   return "";
 }
 function caretTo(node, atEnd) {
@@ -492,7 +492,7 @@ function applyBlockStyle(area, style, tl) {
   const cur = topBlock(area);
   const curStyle = blockStyleOf(cur);
   if (!cur) {
-    if (["p", "h1", "h2", "h3", "blockquote"].indexOf(style) >= 0) {
+    if (["p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote"].indexOf(style) >= 0) {
       document.execCommand("formatBlock", false, style === "p" ? "p" : style);
     }
     return;
