@@ -283,8 +283,15 @@ const FONT_LABEL = { book: "Newsreader", article: "Spectral", mono: "JetBrains M
    same fix a native <select> or Radix/Headless popover relies on. */
 function BarMenu({ anchorRef, open, className, children, align }) {
   const [rect, setRect] = useState(null);
+  const boxRef = useRef(null);
+  /* First pass places the menu near the anchor so it can measure its own
+     (invisible) size; the second pass clamps *that* size into the
+     viewport. Clamping only the anchor's own left/right earlier still let
+     a menu wider than the room to its right run straight off the far edge
+     — the anchor was on-screen, the menu's far edge wasn't. */
+  const [fit, setFit] = useState(null);
   useEffect(() => {
-    if (!open || !anchorRef.current) { setRect(null); return; }
+    if (!open || !anchorRef.current) { setRect(null); setFit(null); return; }
     const place = () => {
       if (!anchorRef.current) return;
       setRect(anchorRef.current.getBoundingClientRect());
@@ -294,18 +301,32 @@ function BarMenu({ anchorRef, open, className, children, align }) {
     window.addEventListener("scroll", place, true);
     return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
   }, [open, anchorRef]);
+  useEffect(() => {
+    if (!rect || !boxRef.current) return;
+    const margin = 8;
+    const el = boxRef.current;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let left = align === "right" ? rect.right - w : rect.left;
+    left = Math.max(margin, Math.min(left, vw - w - margin));
+    let top, useBottom = false, val;
+    if (rect.bottom + h + 10 > vh && rect.top - h - 10 > margin) {
+      useBottom = true; val = Math.max(margin, vh - rect.top + 10);
+    } else {
+      val = Math.max(margin, Math.min(rect.bottom + 10, vh - h - margin));
+    }
+    setFit({ left, top: useBottom ? undefined : val, bottom: useBottom ? val : undefined });
+  }, [rect, align]);
   if (!open || !rect) return null;
   const margin = 8;
-  const style = { position: "fixed", zIndex: 70 };
-  if (rect.bottom + 260 > window.innerHeight && rect.top > 260) {
-    style.bottom = Math.max(margin, window.innerHeight - rect.top + 10);
-  } else {
-    style.top = Math.min(rect.bottom + 10, window.innerHeight - margin);
-  }
-  if (align === "right") style.right = Math.max(margin, window.innerWidth - rect.right);
-  else style.left = Math.min(rect.left, window.innerWidth - margin);
+  const style = fit
+    ? { position: "fixed", zIndex: 70, left: fit.left, top: fit.top, bottom: fit.bottom, visibility: "visible" }
+    /* invisible pre-measure pass: placed near the anchor, off the
+       accessibility tree's radar, so offsetWidth/Height are real before
+       anything is clamped or shown */
+    : { position: "fixed", zIndex: 70, left: Math.max(margin, rect.left), top: Math.min(rect.bottom + 10, window.innerHeight - margin), visibility: "hidden" };
   return ReactDOM.createPortal(
-    <div className={className} style={style} onMouseDown={(e) => e.stopPropagation()}>{children}</div>,
+    <div ref={boxRef} className={className} style={style} onMouseDown={(e) => e.stopPropagation()}>{children}</div>,
     document.body
   );
 }
