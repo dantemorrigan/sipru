@@ -156,8 +156,12 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   useEffect(() => {
     if (ref.current && doc) {
       const html = withFallbackHTML(doc.content);
-      saved.current = html;
       ref.current.innerHTML = html;
+      /* Documents written before the list nesting was fixed are still on
+         disk holding <p><ul>…</ul></p>; repair them on the way in so the
+         damage doesn't outlive the bug. */
+      if (unwrapNestedBlocks(ref.current)) saved.current = serializeArea(ref.current);
+      else saved.current = html;
       try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch (e) {}
       setWords(store.countWords(html));
       depth.current = { u: 0, r: 0 };
@@ -388,6 +392,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
           else if (marker === ">") document.execCommand("formatBlock", false, "blockquote");
           else if (marker === "-" || marker === "*") document.execCommand("insertUnorderedList", false, null);
           else document.execCommand("insertOrderedList", false, null);
+          unwrapNestedBlocks(ref.current);
           refreshActive();
           return true;
         }
@@ -477,6 +482,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       ? box.firstElementChild.innerHTML
       : box.innerHTML;
     document.execCommand("insertHTML", false, html);
+    unwrapNestedBlocks(ref.current);
     commitChange();
     schedulePaginate(true);
   }
@@ -555,8 +561,66 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     schedulePaginate(true);
   }
 
+  /* Epigraph and note are one-shot blocks: a figure holding a quote and its
+     author line, and a single-paragraph aside. contentEditable's own Enter
+     just splits whatever element the caret is in, which inside these means
+     an endless chain of <figcaption>s or a second <aside> — with no way back
+     out to ordinary prose. Everything typed after inserting an epigraph
+     silently became part of the epigraph. Word and Docs both treat Enter at
+     the end of a caption-like block as "leave it", so: inside an epigraph's
+     quote, Enter moves to the author line; at the end of the author line (or
+     anywhere in a note), it closes the block and opens a plain paragraph
+     after it. Shift+Enter still gives a line break inside the block. */
+  function exitSpecialBlock() {
+    const area = ref.current;
+    if (!area) return false;
+    const sel = window.getSelection();
+    if (!sel || !sel.isCollapsed || !sel.anchorNode) return false;
+    const block = topBlock(area);
+    if (!block) return false;
+    const cls = block.classList;
+    const isEpi = block.tagName === "FIGURE" && cls && cls.contains("epigraph");
+    const isNote = block.tagName === "ASIDE" && cls && cls.contains("note");
+    /* A blockquote is a repeating block — Enter opening another quote line
+       is right — but on an *empty* one it has to let go, the way Enter on
+       an empty list item ends the list (which Chrome already does for us).
+       Without this the only way out of a quote is the toolbar: every Enter
+       just adds one more empty <blockquote> and typing resumes inside it. */
+    const isEmptyQuote = block.tagName === "BLOCKQUOTE" && !(block.textContent || "").trim();
+    if (isEmptyQuote) {
+      const p = document.createElement("p");
+      p.innerHTML = "<br>";
+      block.parentNode.replaceChild(p, block);
+      caretTo(p, false);
+      commitChange();
+      schedulePaginate(true);
+      return true;
+    }
+    if (!isEpi && !isNote) return false;
+
+    let node = sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode;
+    if (isEpi) {
+      const quote = block.querySelector("blockquote");
+      let cap = block.querySelector("figcaption");
+      if (quote && (node === quote || quote.contains(node))) {
+        if (!cap) { cap = document.createElement("figcaption"); block.appendChild(cap); }
+        caretTo(cap, true);
+        commitChange();
+        return true;
+      }
+    }
+    const p = document.createElement("p");
+    p.innerHTML = "<br>";
+    block.parentNode.insertBefore(p, block.nextSibling);
+    caretTo(p, false);
+    commitChange();
+    schedulePaginate(true);
+    return true;
+  }
+
   function onKeyDown(e) {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); insertPageBreak(); return; }
+    if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey && exitSpecialBlock()) { e.preventDefault(); return; }
     if (!(e.metaKey || e.ctrlKey)) return;
     const k = (e.key || "").toLowerCase();
     if (k === "z") { e.preventDefault(); runHistory(e.shiftKey ? "redo" : "undo"); }

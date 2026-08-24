@@ -98,6 +98,32 @@ function BookPreview({ html, title, edition, lang }) {
 }
 
 /* ---- html → plain / markdown ---- */
+/* Reading plain textContent ran every block together — a whole chapter
+   arrived as one unbroken wall of prose with no paragraph anywhere in it,
+   because textContent knows nothing about block boundaries. Walk instead,
+   keeping one blank line between blocks and honouring <br> inside them. */
+const TXT_BLOCK = { P: 1, DIV: 1, H1: 1, H2: 1, H3: 1, BLOCKQUOTE: 1, LI: 1, UL: 1,
+  OL: 1, FIGURE: 1, FIGCAPTION: 1, ASIDE: 1, HR: 1, PRE: 1, TABLE: 1, TR: 1, SECTION: 1 };
+function blockText(root) {
+  const parts = [];
+  let cur = "";
+  const flush = () => {
+    const s = cur.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).join("\n").replace(/^\n+|\n+$/g, "");
+    if (s) parts.push(s);
+    cur = "";
+  };
+  (function walk(n) {
+    for (let c = n.firstChild; c; c = c.nextSibling) {
+      if (c.nodeType === 3) { cur += c.nodeValue; continue; }
+      if (c.nodeType !== 1) continue;
+      if (c.tagName === "BR") { cur += "\n"; continue; }
+      if (TXT_BLOCK[c.tagName]) { flush(); walk(c); flush(); }
+      else walk(c);
+    }
+  })(root);
+  flush();
+  return parts.join("\n\n");
+}
 function htmlToText(html) {
   const d = document.createElement("div"); d.innerHTML = html || "";
   const box = d.querySelector(".fn-defs");
@@ -107,7 +133,7 @@ function htmlToText(html) {
     box.remove();
     if (notes.length) tail = "\n\n---\n" + notes.join("\n");
   }
-  return ((d.textContent || "") + tail).replace(/\n{3,}/g, "\n\n").trim();
+  return (blockText(d) + tail).replace(/\n{3,}/g, "\n\n").trim();
 }
 /* A literal *, _, ~, [, ] in prose would otherwise be misread as markup by
    mdToHTML (formats.js) on the way back in — escape it so the vault's md
@@ -328,12 +354,19 @@ function PaginatedChapter({ html, geom, title }) {
   }
 
   useEffect(() => {
-    if (areaRef.current) areaRef.current.innerHTML = html || "";
+    /* The chapter's title heads its first page, exactly as it does in the
+       built HTML/PDF and .docx — the preview is meant to be what the
+       export produces, and the title arrived here as a prop that nothing
+       ever rendered. It goes through the same pagination as the prose, so
+       an <h1> stranded at the foot of a page moves on with its text. */
+    if (areaRef.current) {
+      areaRef.current.innerHTML = (title ? "<h1>" + escText(title) + "</h1>" : "") + (html || "");
+    }
     reserveRef.current = [];
     passRef.current = 0;
     repaginate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [html, geom]);
+  }, [html, geom, title]);
 
   function onFootnoteHeights(hs) {
     const prev = reserveRef.current;
@@ -587,7 +620,7 @@ function buildBookHTML(project, opts) {
     body += `<section class="b-toc"><h2>${t("toc_title", opts.lang || "ru")}</h2><ol>${chapters.map((c) => `<li><span>${c.title}</span></li>`).join("")}</ol></section>`;
   }
   chapters.forEach((c, i) => {
-    body += `<section class="b-chap">${chapterBody(c.content || "")}</section>`;
+    body += `<section class="b-chap"><h1>${escText(c.title)}</h1>${chapterBody(c.content || "")}</section>`;
   });
   return `<!doctype html><html><head><meta charset="utf-8"><title>${project.title}</title>
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,600;1,400&family=Spectral:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
@@ -636,7 +669,14 @@ function buildPlain(project, opts, md) {
   let out = "";
   if (opts.titlePage) out += project.title.toUpperCase() + "\n" + (project.synopsis || "") + "\n\n\n";
   if (opts.toc) out += t("toc_title", opts.lang || "en").toUpperCase() + "\n" + chapters.map((c, i) => (i + 1) + ". " + c.title).join("\n") + "\n\n\n";
-  chapters.forEach((c) => { out += (md ? htmlToMd(c.content) : htmlToText(c.content)) + "\n\n\n"; });
+  /* The chapter's own title heads its text. Without it the table of
+     contents promises ten chapters and the body delivers one unbroken run
+     of prose with nothing marking where any of them begin. */
+  chapters.forEach((c) => {
+    const title = (c.title || "").trim();
+    if (title) out += (md ? "# " + title : title.toUpperCase()) + "\n\n";
+    out += (md ? htmlToMd(c.content) : htmlToText(c.content)) + "\n\n\n";
+  });
   return out.trim() + "\n";
 }
 
@@ -653,6 +693,7 @@ function buildBookDocx(project, opts) {
   }
   chapters.forEach((c, i) => {
     sections.push({
+      heading: c.title || "",
       html: c.content || "",
       pageBreakBefore: i > 0 || opts.toc || opts.titlePage,
     });

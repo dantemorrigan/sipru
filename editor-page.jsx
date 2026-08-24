@@ -232,6 +232,54 @@ function paginateArea(area, geom, reserved) {
   return { total, notes, cycle, step };
 }
 
+/* ------------------------------------------------------------
+   Block nesting repair.
+
+   execCommand("insertUnorderedList") on an empty paragraph does not
+   replace that paragraph in Chrome — it builds the list *inside* it,
+   leaving <p><ul><li>…</li></ul></p>. That is invalid HTML, and it
+   compounds: a second list typed after the first nests one level deeper
+   again. Everything downstream then treats the whole pile as a single
+   block — pagination can't break a long list across pages, the style
+   dropdown reports the wrapper rather than the list, and converting it to
+   a note or epigraph collapses every item into one run-together line.
+
+   Hoisting a block out of a <p> can strand the <p>'s own inline content as
+   a bare text node under the editable root, which is its own bug (see
+   EMPTY_DOC_HTML in the editor), so loose runs are re-wrapped in real
+   paragraphs on the way out. Nodes are moved rather than rebuilt, so a
+   caret sitting inside one of them rides along untouched. */
+const NEST_BLOCK = { UL: 1, OL: 1, P: 1, BLOCKQUOTE: 1, H1: 1, H2: 1, H3: 1,
+  FIGURE: 1, ASIDE: 1, HR: 1, PRE: 1, TABLE: 1, DIV: 1 };
+function unwrapNestedBlocks(area) {
+  if (!area) return false;
+  let changed = false;
+  for (let guard = 0; guard < 16; guard++) {
+    let target = null;
+    const ps = area.querySelectorAll("p");
+    for (let i = 0; i < ps.length && !target; i++) {
+      for (let c = ps[i].firstChild; c; c = c.nextSibling) {
+        if (c.nodeType === 1 && NEST_BLOCK[c.tagName]) { target = ps[i]; break; }
+      }
+    }
+    if (!target) break;
+    const frag = document.createDocumentFragment();
+    let run = null;
+    while (target.firstChild) {
+      const c = target.firstChild;
+      if (c.nodeType === 1 && NEST_BLOCK[c.tagName]) { run = null; frag.appendChild(c); }
+      else {
+        if (!run) { run = document.createElement("p"); frag.appendChild(run); }
+        run.appendChild(c);
+      }
+    }
+    target.parentNode.insertBefore(frag, target);
+    target.remove();
+    changed = true;
+  }
+  return changed;
+}
+
 /* Pagination artefacts never reach storage: the saved HTML of a document
    is exactly what it would have been without any of this. */
 function serializeArea(el) {
@@ -398,21 +446,46 @@ function caretTo(node, atEnd) {
 
 /* Epigraph and note are real block types rather than a styled paragraph:
    they survive export, markdown round-trip and re-import as themselves. */
+/* The text of a block as the lines a reader sees: one per list item, one
+   per <br>-separated run everywhere else. Reading plain textContent instead
+   ran every line of a list or a multi-line quote together into a single
+   unbroken string ("firstseconthird"), which is what a converted block used
+   to be left holding. */
+function blockLines(el) {
+  if (!el) return [];
+  const items = el.querySelectorAll ? el.querySelectorAll(":scope > li") : [];
+  if (items.length) return Array.prototype.map.call(items, (li) => (li.textContent || "").trim()).filter(Boolean);
+  const out = [];
+  let cur = "";
+  Array.prototype.forEach.call(el.childNodes, function walk(n) {
+    if (n.nodeType === 3) { cur += n.nodeValue; return; }
+    if (n.nodeType !== 1) return;
+    if (n.tagName === "BR") { out.push(cur); cur = ""; return; }
+    Array.prototype.forEach.call(n.childNodes, walk);
+  });
+  out.push(cur);
+  return out.map((s) => s.trim()).filter(Boolean);
+}
+function fillLines(el, lines) {
+  const ls = (Array.isArray(lines) ? lines : [lines]).filter((s) => s != null && s !== "");
+  ls.forEach((line, i) => {
+    if (i) el.appendChild(document.createElement("br"));
+    el.appendChild(document.createTextNode(line));
+  });
+  return el;
+}
 function makeEpigraph(text, author) {
   const fig = document.createElement("figure");
   fig.className = "epigraph";
-  const q = document.createElement("blockquote");
-  q.textContent = text || "";
-  const cap = document.createElement("figcaption");
-  cap.textContent = author || "";
+  const q = fillLines(document.createElement("blockquote"), text || "");
+  const cap = fillLines(document.createElement("figcaption"), author || "");
   fig.appendChild(q); fig.appendChild(cap);
   return fig;
 }
 function makeNoteBlock(text) {
   const el = document.createElement("aside");
   el.className = "note";
-  el.textContent = text || "";
-  return el;
+  return fillLines(el, text || "");
 }
 
 function applyBlockStyle(area, style, tl) {
@@ -427,17 +500,17 @@ function applyBlockStyle(area, style, tl) {
   const next = curStyle === style ? "p" : style;
 
   if (next === "epigraph" || next === "note") {
-    const text = cur.textContent || "";
+    const lines = blockLines(cur);
     const el = next === "epigraph"
-      ? makeEpigraph(text || tl("epi_text_hint"), "")
-      : makeNoteBlock(text || tl("note_text_hint"));
+      ? makeEpigraph(lines.length ? lines : tl("epi_text_hint"), "")
+      : makeNoteBlock(lines.length ? lines : tl("note_text_hint"));
     cur.replaceWith(el);
     caretTo(next === "epigraph" ? el.firstChild : el, true);
     return;
   }
   if (curStyle === "epigraph" || curStyle === "note") {
-    const p = document.createElement("p");
-    p.textContent = (cur.textContent || "").trim();
+    const lines = blockLines(cur);
+    const p = fillLines(document.createElement("p"), lines);
     cur.replaceWith(p);
     caretTo(p, true);
     if (next !== "p") document.execCommand("formatBlock", false, next);
@@ -784,6 +857,7 @@ function FootnotePopup({ n, text, anchor, lang, onApply, onDelete, onClose }) {
 
 Object.assign(window, {
   PX_PER_MM, PAGE_SIZES, PAGE_SIZE_ORDER, pageDims, pageGeometry, paginateArea, serializeArea,
+  unwrapNestedBlocks, blockLines,
   fnDefs, fnText, setFnText, renumberFootnotes, footnoteList,
   splitScenes, joinScenes, sceneEls, makeSceneEl,
   BLOCK_STYLES, topBlock, blockStyleOf, applyBlockStyle, makeEpigraph, makeNoteBlock, caretTo,
