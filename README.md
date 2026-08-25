@@ -2,7 +2,7 @@
 
 Минималистичный редактор для писателей — бумага и чернила, швейцарская типографика, ноль отвлечений.
 
-**→ [sipru. live](https://dantemorrigan.github.io/sipru./)**
+**→ [sipru. live]([https://dantemorrigan.github.io/sipru./](https://dantemorrigan.github.io/sipru/))**
 
 ---
 
