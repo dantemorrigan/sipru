@@ -50,4 +50,11 @@ spawnSync(process.execPath, [path.join(root, "build.js")], { stdio: "inherit" })
      class of bug the markdown round-trip above can never see. */
   const editor = spawnSync(process.execPath, [path.join(__dirname, "editor.js")], { stdio: "inherit" });
   if (editor.status) process.exit(editor.status);
+
+  /* pagination.js drives every page size × orientation combo and checks
+     the rendered geometry directly — the class of bug neither of the
+     above can see, since it is invisible to both the serializer and a
+     single fixed page size. */
+  const pagination = spawnSync(process.execPath, [path.join(__dirname, "pagination.js")], { stdio: "inherit" });
+  if (pagination.status) process.exit(pagination.status);
 })();

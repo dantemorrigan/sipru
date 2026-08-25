@@ -443,6 +443,7 @@
 .ed-area th, .ed-area td { border: 1px solid var(--line); padding: .42em .6em; text-align: left;
   vertical-align: top; hyphens: none; -webkit-hyphens: none; overflow-wrap: anywhere; }
 .ed-area thead th { background: var(--paper-2); font-weight: 600; }
+.ed-area tr.pg-spacer td { border: none; padding: 0; background: none; }
 .ed-area .ta-l { text-align: left; }
 .ed-area .ta-c { text-align: center; }
 .ed-area .ta-r { text-align: right; }

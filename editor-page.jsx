@@ -117,8 +117,11 @@ function paginateArea(area, geom, reserved) {
   const step = geom.mt + geom.mb + geom.gap;      /* dead space between two content areas */
   const cycle = geom.contentH + step;             /* content-area top to content-area top */
   /* Stale spacers from the previous pass would themselves shift every
-     later offsetTop — clear them before measuring anything. */
-  const stale = area.querySelectorAll(":scope > .pg-spacer");
+     later offsetTop — clear them before measuring anything. Table row
+     spacers (see tableRowShifts below) live nested inside a <table>
+     rather than as a direct child of the area, so this has to reach past
+     :scope to find them too. */
+  const stale = area.querySelectorAll(".pg-spacer");
   for (let i = 0; i < stale.length; i++) stale[i].remove();
   const blocks = [];
   for (let i = 0; i < area.children.length; i++) {
@@ -152,6 +155,46 @@ function paginateArea(area, geom, reserved) {
   const avail = (p) => Math.max(60, geom.contentH - (reserved && reserved[p] ? reserved[p] : 0));
   const pushes = new Array(blocks.length).fill(0);
   const pageOf = new Array(blocks.length).fill(0);
+  const tableRowPushes = new Array(blocks.length);
+
+  /* A table taller than one page is still a single block as far as the
+     loop below is concerned, so without this its rows just run past the
+     page's bottom edge and pick up again on the next sheet — the border
+     and background of whatever row straddled the break sliced clean
+     through by the page gap. This finds every row that would straddle a
+     break and reports how far it (and everything after it, within the
+     table) needs to move to land whole on the following page — the same
+     move the outer loop makes for a block, one level deeper. Measured
+     against tableTop/startPage rather than re-reading the DOM, since the
+     block-level spacer this table itself may need hasn't been inserted
+     yet (that happens in the write pass below) and rows haven't moved. */
+  function tableRowShifts(table, tableTop, startPage) {
+    const rows = table.querySelectorAll("tr");
+    if (rows.length < 2) return { pushes: [], extra: 0 };
+    /* A <tr> with no positioned ancestor treats its own <table> as the
+       offsetParent (per spec, tables are one of the legacy offsetParent
+       boundaries alongside td/th) — so row.offsetTop already comes back
+       relative to the table's own top, not to .ed-area, and needs no
+       further subtraction. */
+    let acc = 0, p = startPage;
+    const pushes = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const h = row.offsetHeight;
+      let t = tableTop + row.offsetTop + acc;
+      const room = avail(p);
+      const pageTop = p * cycle;
+      const pageEnd = pageTop + room;
+      const atPageTop = t <= pageTop + 1;
+      if (t + h > pageEnd && !atPageTop) {
+        const nextPage = Math.max(p + 1, Math.ceil(t / cycle));
+        const shift = nextPage * cycle - t;
+        pushes.push({ row, shift });
+        acc += shift; p = nextPage;
+      }
+    }
+    return { pushes, extra: acc };
+  }
 
   let acc = 0, page = 0, forceBreak = false;
   for (let i = 0; i < blocks.length; i++) {
@@ -193,10 +236,19 @@ function paginateArea(area, geom, reserved) {
       forceBreak = false;
     }
     pageOf[i] = page;
-    /* A single block taller than a whole page (a very long paragraph) has
-       nowhere to break — it flows on, and the page counter catches up to
-       wherever it actually ended. */
-    if (h > avail(page)) page = Math.max(page, Math.floor((top + h - 1) / cycle));
+    /* A table's rows get their own pass at landing whole on a page; the
+       total height it adds counts toward where the rest of the document
+       picks up, same as the block's own height does below. */
+    let extra = 0;
+    if (blocks[i].tagName === "TABLE") {
+      const rp = tableRowShifts(blocks[i], top, page);
+      if (rp.pushes.length) { tableRowPushes[i] = rp.pushes; extra = rp.extra; acc += extra; }
+    }
+    /* A single block taller than a whole page (a very long paragraph, or a
+       table whose rows still don't all fit after the pass above) has
+       nowhere left to break — it flows on, and the page counter catches
+       up to wherever it actually ended. */
+    if (h + extra > avail(page)) page = Math.max(page, Math.floor((top + h + extra - 1) / cycle));
     if (isPageBreak(blocks[i])) forceBreak = true;
   }
 
@@ -215,6 +267,31 @@ function paginateArea(area, geom, reserved) {
     spacer.setAttribute("aria-hidden", "true");
     spacer.style.height = (pushes[i] - collapses[i]) + "px";
     blocks[i].parentNode.insertBefore(spacer, blocks[i]);
+  }
+
+  /* Same idea, one row at a time: a blank <tr> ahead of the row that would
+     otherwise straddle the break, sized to push it (and every row after,
+     already accounted for in each push) onto the next page. Cell borders
+     live on the row's own <td>s, so — unlike the block spacer above — a
+     row spacer needs to be a real row for the border it displaces not to
+     just get inherited by the blank space instead. */
+  for (let i = 0; i < blocks.length; i++) {
+    const rp = tableRowPushes[i];
+    if (!rp || !rp.length) continue;
+    const firstRow = blocks[i].querySelector("tr");
+    const cols = firstRow ? firstRow.children.length : 1;
+    for (let j = 0; j < rp.length; j++) {
+      const { row, shift } = rp[j];
+      const spacer = document.createElement("tr");
+      spacer.className = "pg-spacer";
+      spacer.contentEditable = "false";
+      spacer.setAttribute("aria-hidden", "true");
+      const cell = document.createElement("td");
+      cell.colSpan = Math.max(1, cols);
+      cell.style.height = Math.max(0, shift) + "px";
+      spacer.appendChild(cell);
+      row.parentNode.insertBefore(spacer, row);
+    }
   }
 
   const total = Math.max(1, page + 1);
