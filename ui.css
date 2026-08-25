@@ -448,14 +448,18 @@
 .ed-area .ta-c { text-align: center; }
 .ed-area .ta-r { text-align: right; }
 /* ---- fenced code ---- */
-/* A code block on a *page* has nowhere to scroll to — a horizontal
-   scrollbar inside a sheet is not a thing a printed page can do, and the
-   overflow drew straight over the margin and into the next sheet. Long
-   lines wrap instead, the way Docs wraps them. */
-.ed-area pre { margin: 1.3em 0; padding: .85em 1em; text-indent: 0; max-width: 100%; overflow: hidden;
+/* Wrapping a code line breaks anything that depends on its columns lining
+   up — an ASCII box-drawing diagram most of all: wrap one line of a
+   `║ … ║`-bordered box and its closing edge lands on the next line down,
+   nowhere near where it belongs. This is the editor's own on-screen view
+   (not the printed page, which has nowhere to scroll and still wraps —
+   see BLOCK_CSS in screens-export.jsx), so a horizontal scrollbar inside
+   the block is the one that keeps every line's columns intact; a reader
+   scrolls the block, not the page. */
+.ed-area pre { margin: 1.3em 0; padding: .85em 1em; text-indent: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden;
   background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r-md); }
 .ed-area pre code { display: block; background: none; border: none; padding: 0;
-  font-size: .86em; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-size: .86em; line-height: 1.55; white-space: pre; overflow-wrap: normal;
   text-align: left; hyphens: none; -webkit-hyphens: none; }
 /* the language sits in the corner of its own block, so a reader can tell a
    Python sample from a SQL one without reading either */

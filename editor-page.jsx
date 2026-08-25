@@ -140,9 +140,17 @@ function paginateArea(area, geom, reserved) {
   const collapses = new Array(blocks.length).fill(0);
   const mTop = new Array(blocks.length);
   const mBot = new Array(blocks.length);
+  /* offsetTop/offsetHeight round to the nearest device pixel; on a long
+     document that rounding compounds with every block pushed (each one
+     starting from the last one's already-rounded position), and a few
+     hundred blocks in, the drift is large enough that a block lands
+     visibly outside the page frame its own math said it would land in.
+     getBoundingClientRect keeps the sub-pixel value instead. */
+  const areaRect = area.getBoundingClientRect();
   for (let i = 0; i < blocks.length; i++) {
-    tops[i] = blocks[i].offsetTop;
-    heights[i] = blocks[i].offsetHeight;
+    const r = blocks[i].getBoundingClientRect();
+    tops[i] = r.top - areaRect.top;
+    heights[i] = r.height;
     const cs = getComputedStyle(blocks[i]);
     mTop[i] = parseFloat(cs.marginTop) || 0;
     mBot[i] = parseFloat(cs.marginBottom) || 0;
@@ -154,7 +162,6 @@ function paginateArea(area, geom, reserved) {
   const avail = (p) => Math.max(60, geom.contentH - (reserved && reserved[p] ? reserved[p] : 0));
   const pushes = new Array(blocks.length).fill(0);
   const pageOf = new Array(blocks.length).fill(0);
-  const tableRowPushes = new Array(blocks.length);
 
   /* A table taller than one page is still a single block as far as the
      loop below is concerned, so without this its rows just run past the
@@ -163,24 +170,34 @@ function paginateArea(area, geom, reserved) {
      through by the page gap. This finds every row that would straddle a
      break and reports how far it (and everything after it, within the
      table) needs to move to land whole on the following page — the same
-     move the outer loop makes for a block, one level deeper. Measured
-     against tableTop/startPage rather than re-reading the DOM, since the
-     block-level spacer this table itself may need hasn't been inserted
-     yet (that happens in the write pass below) and rows haven't moved. */
+     move the outer loop makes for a block, one level deeper.
+
+     Called twice: once inline below, against the *predicted* tableTop —
+     good enough to estimate how much taller the table's own row breaks
+     make it, which is all the rest of this loop needs to keep later
+     blocks off its tail. Reproducing a margin collapse's exact size by
+     hand (see the block write pass) is right almost everywhere, but a
+     tall block whose own margin is a meaningful fraction of the page (a
+     table with a multi-line header row on a small format, most often)
+     can still land a handful of pixels off from the page top that math
+     intended — invisible for the block itself, but enough for a row
+     landing right at that boundary to bleed into the gap above it. So
+     the *real* row breaks get computed again, after the block write
+     pass below, against the table's now-actual on-page position. */
   function tableRowShifts(table, tableTop, startPage) {
     const rows = table.querySelectorAll("tr");
     if (rows.length < 2) return { pushes: [], extra: 0 };
-    /* A <tr> with no positioned ancestor treats its own <table> as the
-       offsetParent (per spec, tables are one of the legacy offsetParent
-       boundaries alongside td/th) — so row.offsetTop already comes back
-       relative to the table's own top, not to .ed-area, and needs no
-       further subtraction. */
+    /* Sub-pixel, and relative to the table's own rect rather than via
+       offsetTop's rounded, table-relative offsetParent value — same
+       reasoning as areaRect above, one level deeper. */
+    const tableRect = table.getBoundingClientRect();
     let acc = 0, p = startPage;
     const pushes = [];
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const h = row.offsetHeight;
-      let t = tableTop + row.offsetTop + acc;
+      const rowRect = row.getBoundingClientRect();
+      const h = rowRect.height;
+      let t = tableTop + (rowRect.top - tableRect.top) + acc;
       const room = avail(p);
       const pageTop = p * cycle;
       const pageEnd = pageTop + room;
@@ -254,8 +271,8 @@ function paginateArea(area, geom, reserved) {
        picks up, same as the block's own height does below. */
     let extra = 0;
     if (blocks[i].tagName === "TABLE") {
-      const rp = tableRowShifts(blocks[i], top, page);
-      if (rp.pushes.length) { tableRowPushes[i] = rp.pushes; extra = rp.extra; acc += extra; }
+      extra = tableRowShifts(blocks[i], top, page).extra;
+      acc += extra;
     }
     /* A single block taller than a whole page (a very long paragraph, or a
        table whose rows still don't all fit after the pass above) has
@@ -287,10 +304,18 @@ function paginateArea(area, geom, reserved) {
      already accounted for in each push) onto the next page. Cell borders
      live on the row's own <td>s, so — unlike the block spacer above — a
      row spacer needs to be a real row for the border it displaces not to
-     just get inherited by the blank space instead. */
+     just get inherited by the blank space instead.
+
+     Recomputed here, against each table's real post-push position (the
+     block spacers above are already in the DOM) rather than the estimate
+     the main loop used — see the comment on tableRowShifts for why that
+     estimate can be a few pixels off exactly where it matters. */
+  const finalAreaTop = area.getBoundingClientRect().top;
   for (let i = 0; i < blocks.length; i++) {
-    const rp = tableRowPushes[i];
-    if (!rp || !rp.length) continue;
+    if (blocks[i].tagName !== "TABLE") continue;
+    const realTop = blocks[i].getBoundingClientRect().top - finalAreaTop;
+    const rp = tableRowShifts(blocks[i], realTop, pageOf[i]).pushes;
+    if (!rp.length) continue;
     const firstRow = blocks[i].querySelector("tr");
     const cols = firstRow ? firstRow.children.length : 1;
     for (let j = 0; j < rp.length; j++) {
