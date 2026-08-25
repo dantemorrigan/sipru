@@ -118,13 +118,16 @@ function buildTourSteps(nav, store) {
     eyebrow: tl("tour_filter_eyebrow"), title: tl("tour_filter_title"),
     body: tl("tour_filter_body"),
   });
-  steps.push({
-    screen: "dashboard", selector: ".card-grid .card--project", prefer: "right",
-    eyebrow: tl("tour_card_eyebrow"), title: tl("tour_card_title"),
-    body: tl("tour_card_body"),
-  });
-
   if (proj) {
+    /* Only pushed when a project actually exists — on a brand-new vault
+       there is no .card--project in the grid yet, and pointing the
+       spotlight at a selector that matches nothing left it stuck on
+       whatever the previous step had highlighted. */
+    steps.push({
+      screen: "dashboard", selector: ".card-grid .card--project", prefer: "right",
+      eyebrow: tl("tour_card_eyebrow"), title: tl("tour_card_title"),
+      body: tl("tour_card_body"),
+    });
     steps.push({
       screen: "project", goto: () => nav.project(proj.id),
       selector: ".proj-title", prefer: "bottom",
