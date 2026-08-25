@@ -213,6 +213,53 @@ stable("full document", DOC, ({ h1, m1 }) => {
   schema("an empty document still holds one block", "", "<p><br></p>");
 }
 
+/* ---- .docx table export ----
+
+   Reported from the field: exported tables came out crushed to a narrow
+   strip down the page. The cause was OOXML-legal but reader-hostile:
+   <w:tblW w:type="auto"> with no <w:tblGrid> at all gives Word nothing to
+   base column widths on, so it falls back to sizing each column off its
+   own (often very short) cell content. A real .docx table needs an
+   explicit grid whose widths sum to the page it will sit on. */
+{
+  /* buildDocx's zip is store-mode (no compression, see "Minimal ZIP
+     writer" in formats.js): each local file header names its entry and is
+     immediately followed by that many raw bytes, so extracting one part
+     back out only means reading the same header layout in reverse. */
+  function readStoredZipEntry(bytes, wantName) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let p = 0;
+    while (p + 30 <= bytes.length && dv.getUint32(p, true) === 0x04034b50) {
+      const nameLen = dv.getUint16(p + 26, true);
+      const extraLen = dv.getUint16(p + 28, true);
+      const size = dv.getUint32(p + 22, true);
+      const nameStart = p + 30;
+      const name = new TextDecoder().decode(bytes.subarray(nameStart, nameStart + nameLen));
+      const dataStart = nameStart + nameLen + extraLen;
+      if (name === wantName) return new TextDecoder("utf-8").decode(bytes.subarray(dataStart, dataStart + size));
+      p = dataStart + size;
+    }
+    return null;
+  }
+  const html = '<table><thead><tr><th>A</th><th>B</th><th>C</th></tr></thead>' +
+    '<tbody><tr><td>1</td><td>2</td><td>3</td></tr></tbody></table>';
+  const bytes = window.SipruFormats.buildDocx({ sections: [{ html }] });
+  const docXml = readStoredZipEntry(bytes, "word/document.xml") || "";
+
+  check("docx table :: has an explicit column grid",
+    /<w:tblGrid>(<w:gridCol[^>]*\/>){3}<\/w:tblGrid>/.test(docXml), docXml.slice(0, 400));
+  check("docx table :: uses a fixed layout, not content-fit",
+    docXml.indexOf('<w:tblLayout w:type="fixed"/>') >= 0, docXml.slice(0, 400));
+  check("docx table :: is not zero-width auto",
+    !/<w:tblW w:w="0" w:type="auto"/.test(docXml), docXml.slice(0, 400));
+  const gridWidths = (docXml.match(/<w:gridCol w:w="(\d+)"\/>/g) || [])
+    .map((m) => +m.match(/"(\d+)"/)[1]);
+  const tblW = +((docXml.match(/<w:tblW w:w="(\d+)" w:type="dxa"/) || [])[1] || 0);
+  check("docx table :: column widths sum to the table's own width",
+    gridWidths.length === 3 && gridWidths.reduce((a, b) => a + b, 0) === tblW,
+    JSON.stringify(gridWidths) + " vs " + tblW);
+}
+
 const failed = results.filter((r) => !r.ok);
 const summary = {
   total: results.length,

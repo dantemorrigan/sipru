@@ -651,29 +651,52 @@
   }
 
   /* A real Word table rather than the run-together paragraphs a <table>
-     used to collapse into. Column widths are left to Word (autofit), and a
-     cell's alignment marker class rides across as the paragraph's own
-     justification so ":---:" still centres in the .docx. */
+     used to collapse into.
+
+     OOXML requires a <w:tblGrid> — one <w:gridCol> per column, stating its
+     width — as the basis every cell's own width is read against. Without
+     it (the previous "w:type=auto, no grid" version) Word has nothing to
+     distribute the page width across and falls back to sizing each column
+     off its own content, which for the short cells a table usually holds
+     (a name, a number, a date) means every column comes in a few
+     characters wide and the whole table renders crushed into a strip down
+     the page — this was that. Explicit widths that already sum to the
+     page's own text width, plus a fixed layout so Word does not recompute
+     them off content, is what a table export actually needs.
+
+     Column widths are even; a cell's alignment marker class rides across
+     as the paragraph's own justification so ":---:" still centres. */
   const CELL_JC = { "ta-c": "center", "ta-r": "right", "ta-l": "left" };
-  function tableXML(tbl) {
+  function tableXML(tbl, pageWidth) {
     const rows = tbl.querySelectorAll("tr");
     if (!rows.length) return "";
+    const cols = Math.max.apply(null, Array.prototype.map.call(rows, (tr) => tr.children.length));
+    if (!cols) return "";
+    /* pageWidth may be unset (a caller with no page geometry to hand):
+       6.5in of usable width, Word's own default page minus 1in margins,
+       is a sane floor rather than falling back to "auto" again. */
+    const total = Math.max(cols * 400, Math.round(pageWidth) || 9360);
+    const colW = Math.floor(total / cols);
+    const widths = new Array(cols).fill(colW);
+    widths[cols - 1] += total - colW * cols;    /* remainder to the last column, not lost to rounding */
     let xml = '<w:tbl><w:tblPr>' +
-      '<w:tblW w:w="0" w:type="auto"/>' +
+      '<w:tblW w:w="' + total + '" w:type="dxa"/>' +
+      '<w:tblLayout w:type="fixed"/>' +
       '<w:tblBorders>' +
       ["top", "left", "bottom", "right", "insideH", "insideV"].map((e) =>
         '<w:' + e + ' w:val="single" w:sz="4" w:space="0" w:color="BFBAAB"/>').join("") +
-      "</w:tblBorders></w:tblPr>";
+      "</w:tblBorders></w:tblPr>" +
+      "<w:tblGrid>" + widths.map((w) => '<w:gridCol w:w="' + w + '"/>').join("") + "</w:tblGrid>";
     Array.prototype.forEach.call(rows, (tr) => {
       xml += "<w:tr>";
-      Array.prototype.forEach.call(tr.children, (cell) => {
+      Array.prototype.forEach.call(tr.children, (cell, i) => {
         const head = cell.tagName.toLowerCase() === "th";
         const cls = cell.getAttribute("class") || "";
         const jc = Object.keys(CELL_JC).reduce((a, k) => (cls.indexOf(k) >= 0 ? CELL_JC[k] : a), "");
         const runs = runsFrom(cell, head ? { b: true } : {}, []);
         const ppr = "<w:pPr>" + (jc ? '<w:jc w:val="' + jc + '"/>' : "") +
           '<w:spacing w:after="0"/><w:ind w:firstLine="0"/></w:pPr>';
-        xml += "<w:tc><w:tcPr><w:tcW w:w=\"0\" w:type=\"auto\"/>" +
+        xml += '<w:tc><w:tcPr><w:tcW w:w="' + (widths[i] || colW) + '" w:type="dxa"/>' +
           (head ? '<w:shd w:val="clear" w:fill="F4F0E6"/>' : "") + "</w:tcPr>" +
           "<w:p>" + ppr + (runs.length ? runs.map(runXML).join("") : "") + "</w:p></w:tc>";
       });
@@ -682,8 +705,12 @@
     return xml + "</w:tbl>";
   }
 
-  /* Converts a chunk of editor HTML into an array of <w:p> strings. */
-  function htmlToDocxParas(html) {
+  /* Converts a chunk of editor HTML into an array of <w:p> strings.
+     pageWidth (twips, usable width — page minus margins) sizes any table
+     in the chunk to the page it will actually sit on; omit it only when
+     no page geometry exists yet, and tableXML falls back to a standard
+     page's width rather than to Word's own content-fit sizing. */
+  function htmlToDocxParas(html, pageWidth) {
     const holder = document.createElement("div");
     holder.innerHTML = html || "";
     const out = [];
@@ -703,7 +730,7 @@
         const tag = n.tagName.toLowerCase();
         const cls = n.getAttribute ? (n.getAttribute("class") || "") : "";
         if (tag === "div" && cls.indexOf("fn-defs") >= 0) return;   /* collected separately */
-        if (tag === "table") { out.push(tableXML(n)); return; }
+        if (tag === "table") { out.push(tableXML(n, pageWidth)); return; }
         if (tag === "h1") emit(n, "Heading1");
         else if (tag === "h2") emit(n, "Heading2");
         else if (tag === "h3") emit(n, "Heading3");
@@ -886,6 +913,7 @@
       mgB = Math.round(pg.mb * MM_TO_TW); mgL = Math.round(pg.ml * MM_TO_TW);
     }
 
+    const width = size.w - mgL - mgR;
     let body = "";
     if (o.title) {
       body += paraXML([{ text: o.title }], "Title");
@@ -894,7 +922,7 @@
     (o.sections || []).forEach((sec, i) => {
       if (sec.pageBreakBefore && (body || i > 0)) body += PAGE_BREAK;
       if (sec.heading) body += paraXML([{ text: sec.heading }], "Heading1");
-      body += htmlToDocxParas(sec.html).join("");
+      body += htmlToDocxParas(sec.html, width).join("");
     });
     if (!body) body = paraXML([{ text: "" }], null);
 
@@ -909,7 +937,6 @@
     let refs = "";
     let rid = 4;
     const ctx = { title: o.title || o.bookTitle || "", author: o.author || "" };
-    const width = size.w - mgL - mgR;
     if (pg) {
       [["hdr", "hdr", "header"], ["ftr", "ftr", "footer"]].forEach(([key, , kind]) => {
         const band = pg[key];
