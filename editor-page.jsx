@@ -251,6 +251,61 @@ function paginateArea(area, geom, reserved) {
     return { pushes, extra: acc };
   }
 
+  /* Same idea a third time, for the one common block lineShifts can't
+     reach: a <pre> holds its line breaks as plain "\n" characters in a
+     text node (see htmlToDocxParas' raw mode in formats.js — the same
+     reason), not <br> elements, so there is no element to anchor a
+     spacer beside. The anchor here is a text position instead — a
+     {node, offset} pair right after one of those newlines — and the
+     spacer gets there via Range.insertNode, which splits the text node
+     at that offset for it exactly the way typing there would. */
+  function preLineShifts(pre, blockTop, startPage) {
+    /* Removing a stale spacer (the pass above) leaves the text node it
+       split still split — merge it back so a "\n" that used to fall
+       right on that seam is still findable as one. */
+    pre.normalize();
+    const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+    const texts = [];
+    let n;
+    while ((n = walker.nextNode())) texts.push(n);
+    if (!texts.length) return { pushes: [], extra: 0 };
+    const points = [{ node: texts[0], offset: 0 }];
+    texts.forEach((t) => {
+      const s = t.nodeValue;
+      for (let i = 0; i < s.length; i++) {
+        if (s[i] === "\n" && i + 1 < s.length) points.push({ node: t, offset: i + 1 });
+      }
+    });
+    if (points.length < 2) return { pushes: [], extra: 0 };
+    const blockRect = pre.getBoundingClientRect();
+    let acc = 0, p = startPage;
+    const pushes = [];
+    for (let i = 0; i < points.length; i++) {
+      const range = document.createRange();
+      range.setStart(points[i].node, points[i].offset);
+      const next = points[i + 1];
+      if (next) range.setEnd(next.node, next.offset);
+      else range.setEndAfter(texts[texts.length - 1]);
+      const rects = Array.prototype.filter.call(range.getClientRects(), (r) => r.width >= 1 && r.height >= 1);
+      if (!rects.length) continue;
+      const top = Math.min.apply(null, Array.prototype.map.call(rects, (r) => r.top));
+      const bottom = Math.max.apply(null, Array.prototype.map.call(rects, (r) => r.bottom));
+      const h = Math.max(1, bottom - top);
+      const t = blockTop + (top - blockRect.top) + acc;
+      const room = avail(p);
+      const pageTop = p * cycle;
+      const pageEnd = pageTop + room;
+      const atPageTop = t <= pageTop + 1;
+      if (t + h > pageEnd && !atPageTop) {
+        const nextPage = Math.max(p + 1, Math.ceil(t / cycle));
+        const shift = nextPage * cycle - t;
+        pushes.push({ point: points[i], shift });
+        acc += shift; p = nextPage;
+      }
+    }
+    return { pushes, extra: acc };
+  }
+
   /* top tracks each block against page boundaries in the same coordinate
      space the page frames themselves are drawn in — area.offsetTop 0 is
      page 0's own content top, full stop. A block's own natural offsetTop
@@ -313,7 +368,7 @@ function paginateArea(area, geom, reserved) {
       extra = tableRowShifts(blocks[i], top, page).extra;
       acc += extra;
     } else if (h > avail(page)) {
-      extra = lineShifts(blocks[i], top, page).extra;
+      extra = (blocks[i].tagName === "PRE" ? preLineShifts : lineShifts)(blocks[i], top, page).extra;
       acc += extra;
     }
     /* A single block taller than a whole page (a very long paragraph, or a
@@ -378,7 +433,7 @@ function paginateArea(area, geom, reserved) {
      Recomputed against each block's real post-push position, same reason
      as the table pass just above. */
   for (let i = 0; i < blocks.length; i++) {
-    if (blocks[i].tagName === "TABLE") continue;
+    if (blocks[i].tagName === "TABLE" || blocks[i].tagName === "PRE") continue;
     const realTop = blocks[i].getBoundingClientRect().top - finalAreaTop;
     const lp = lineShifts(blocks[i], realTop, pageOf[i]).pushes;
     for (let j = 0; j < lp.length; j++) {
@@ -399,6 +454,32 @@ function paginateArea(area, geom, reserved) {
       spacer.style.height = Math.max(0, shift) + "px";
       if (anchor) anchor.parentNode.insertBefore(spacer, anchor.nextSibling);
       else blocks[i].insertBefore(spacer, blocks[i].firstChild);
+    }
+  }
+
+  /* Same idea once more, for <pre> — see the comment on preLineShifts.
+     Pushes come back in document order, but applying them in that order
+     would invalidate every later one: inserting at an earlier text
+     position splits that text node, and the *other* half — the one every
+     later point's offset was measured against — becomes a new node the
+     recorded offset no longer means anything in. Walking back to front
+     inserts each spacer into text nothing later has already touched. */
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i].tagName !== "PRE") continue;
+    const realTop = blocks[i].getBoundingClientRect().top - finalAreaTop;
+    const pp = preLineShifts(blocks[i], realTop, pageOf[i]).pushes;
+    for (let j = pp.length - 1; j >= 0; j--) {
+      const { point, shift } = pp[j];
+      const spacer = document.createElement("span");
+      spacer.className = "pg-spacer";
+      spacer.contentEditable = "false";
+      spacer.setAttribute("aria-hidden", "true");
+      spacer.style.display = "block";
+      spacer.style.height = Math.max(0, shift) + "px";
+      const range = document.createRange();
+      range.setStart(point.node, point.offset);
+      range.collapse(true);
+      range.insertNode(spacer);
     }
   }
 
