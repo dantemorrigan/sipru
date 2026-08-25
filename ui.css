@@ -335,8 +335,16 @@
    but the browser gives up its own two-finger pinch-zoom over this area
    so the JS pinch handler in screens-editor.jsx can claim the gesture
    for the page's own zoom instead of the whole browser tab's. */
+/* scrollbar-gutter reserves the scrollbar's own width whether or not it is
+   currently showing — without it, a paste that pushes the page count over
+   the fold adds a scrollbar, which narrows clientWidth, which the
+   ResizeObserver below reads as a resize and repaginates against, which
+   can flip the page count back under the fold, which removes the
+   scrollbar again — a real oscillation, not just a slow one, that took a
+   dozen-plus rounds to damp out and painted every intermediate one along
+   the way. */
 .ed-scroll { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; touch-action: pan-y;
-  padding: 34px 0 0; background: var(--paper-2); }
+  scrollbar-gutter: stable; padding: 34px 0 0; background: var(--paper-2); }
 .ed-paper { position: relative; margin: 0 auto; }
 /* Smooth resize for the zoom slider only — a brief window applied by JS
    right after it changes, never during ordinary pagination (which
