@@ -420,6 +420,14 @@
    of the two, so it keeps the tracking but drops the transform. */
 .ed-area h6 { font-size: .86em; font-weight: 600; margin: 1em 0 .3em; text-indent: 0;
   letter-spacing: .03em; }
+/* No typesetter hyphenates a heading — and this editor least of all: a
+   bold, oversized title wrapped into a column as narrow as A6 at a small
+   zoom breaks into so many short lines that auto-hyphenation chops nearly
+   every one of them, several syllables from the same long word landing
+   stacked directly on top of each other line after line and reading as
+   if the title were repeating itself. */
+.ed-area h1, .ed-area h2, .ed-area h3, .ed-area h4, .ed-area h5, .ed-area h6 {
+  hyphens: none; -webkit-hyphens: none; }
 .ed-area blockquote { margin: 1.3em 0; padding-left: 1.1em; border-left: 2px solid var(--accent);
   color: var(--ink-2); font-style: italic; text-indent: 0; }
 /* a quote inside a quote steps in again and loses the accent, so the nesting
