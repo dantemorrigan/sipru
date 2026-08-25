@@ -598,10 +598,10 @@
   /* ============================================================
      HTML → Office Open XML (WordprocessingML)
      ============================================================ */
-  function runsFrom(node, fmt, runs) {
+  function runsFrom(node, fmt, runs, raw) {
     node.childNodes.forEach((n) => {
       if (n.nodeType === 3) {
-        const text = n.nodeValue.replace(/\s+/g, " ");
+        const text = raw ? n.nodeValue : n.nodeValue.replace(/\s+/g, " ");
         if (text) runs.push({ text, ...fmt });
         return;
       }
@@ -627,9 +627,24 @@
         runs.push({ text: n.hasAttribute("checked") ? "\u2611 " : "\u2610 ", ...fmt });
         return;
       }
-      runsFrom(n, next, runs);
+      runsFrom(n, next, runs, raw);
     });
     return runs;
+  }
+  /* <pre> keeps every space and line break verbatim (an ASCII diagram or
+     box-drawing table lives or dies on exact column alignment), so its
+     text goes through runsFrom in "raw" mode and each embedded newline
+     becomes its own run break rather than collapsing like normal prose. */
+  function expandPreBreaks(runs) {
+    const out = [];
+    runs.forEach((r) => {
+      if (r.br) { out.push(r); return; }
+      String(r.text).split("\n").forEach((part, i) => {
+        if (i > 0) out.push({ br: true });
+        if (part) out.push({ ...r, text: part });
+      });
+    });
+    return out;
   }
   function runXML(r) {
     if (r.br) return "<w:r><w:br/></w:r>";
@@ -747,6 +762,10 @@
           }
         }
         else if (tag === "aside" && cls.indexOf("note") >= 0) emit(n, "NoteBlock");
+        else if (tag === "pre") {
+          const runs = expandPreBreaks(runsFrom(n, {}, [], true));
+          if (runs.length) out.push(paraXML(runs, "Code", null));
+        }
         else if (tag === "hr" && cls.indexOf("page-break") >= 0) out.push(PAGE_BREAK);
         else if (tag === "hr" && cls.indexOf("scene-sep") >= 0) {
           const t = n.getAttribute("data-t");
@@ -833,6 +852,9 @@
       '<w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="240"/></w:pPr></w:style>' +
       '<w:style w:type="paragraph" w:styleId="RunHead"><w:name w:val="Running Head"/><w:basedOn w:val="Normal"/>' +
       '<w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:sz w:val="18"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Code"><w:name w:val="Code"/><w:basedOn w:val="Normal"/>' +
+      '<w:pPr><w:ind w:left="0" w:firstLine="0"/><w:spacing w:before="120" w:after="120" w:line="264" w:lineRule="auto"/></w:pPr>' +
+      '<w:rPr><w:rFonts w:ascii="JetBrains Mono" w:hAnsi="JetBrains Mono" w:cs="JetBrains Mono"/><w:sz w:val="19"/></w:rPr></w:style>' +
       '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/>' +
       '<w:pPr><w:ind w:left="720"/><w:spacing w:after="60"/></w:pPr></w:style>' +
       '</w:styles>';
