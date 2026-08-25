@@ -306,6 +306,93 @@ function paginateArea(area, geom, reserved) {
     return { pushes, extra: acc };
   }
 
+  /* Same idea a fourth time, for the block lineShifts and preLineShifts
+     both miss: ordinary wrapped prose — a paragraph, heading, list or
+     quote with no manual <br>s and no "\n" text nodes to anchor on, just
+     the browser's own word wrap. Unlike a <pre>'s newlines, there is no
+     character in the DOM that marks where one wrapped line ends and the
+     next begins — only Range.getClientRects(), which hands back one rect
+     per rendered line for a range spanning the block's whole content,
+     bold/italic runs and all.
+
+     Without this, a block taller than a page but unsplittable by either
+     of the two passes above just kept "flowing on" past its own page's
+     bottom margin — visibly, since the text itself never paused there,
+     only the page decoration and the running page count did. A wrapped
+     line landing a few pixels into that margin is exactly as common as
+     a long paragraph, which on a small page format is not rare at all. */
+  function wrapLineShifts(block, blockTop, startPage) {
+    if (block.getBoundingClientRect().height <= avail(startPage)) return { pushes: [], extra: 0 };
+    const range = document.createRange();
+    range.selectNodeContents(block);
+    const rects = Array.prototype.filter.call(range.getClientRects(), (r) => r.width >= 1 && r.height >= 1);
+    if (rects.length < 2) return { pushes: [], extra: 0 };
+    /* Turns a line's own top back into a {node, offset} the insertNode
+       trick above can split at — walking text nodes and, for the rare one
+       that itself renders across more than one line, binary-searching its
+       own offsets by re-measuring shrinking ranges. Pure Range geometry,
+       same as the rest of this pass: unlike caretRangeFromPoint (or its
+       Firefox -Position cousin), it never depends on the point actually
+       being inside the current scrolled viewport — which, on any page
+       past the first, most of a long document's own text is not. */
+    function findLineStart(targetTop) {
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = walker.nextNode())) {
+        if (!n.nodeValue.length) continue;
+        const nr = document.createRange();
+        nr.selectNodeContents(n);
+        const nrects = Array.prototype.filter.call(nr.getClientRects(), (r) => r.width >= 1 && r.height >= 1);
+        for (let ri = 0; ri < nrects.length; ri++) {
+          if (Math.abs(nrects[ri].top - targetTop) >= 1) continue;
+          if (ri === 0) return { node: n, offset: 0 };
+          let lo = 1, hi = n.nodeValue.length;
+          while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            const r2 = document.createRange();
+            r2.setStart(n, 0);
+            r2.setEnd(n, mid);
+            const rr = Array.prototype.filter.call(r2.getClientRects(), (r) => r.width >= 1 && r.height >= 1);
+            const lastTop = rr.length ? rr[rr.length - 1].top : -Infinity;
+            if (lastTop >= targetTop - 1) hi = mid; else lo = mid + 1;
+          }
+          return { node: n, offset: lo };
+        }
+      }
+      return null;
+    }
+    const blockRect = block.getBoundingClientRect();
+    let acc = 0, p = startPage, lastTop = null;
+    const pushes = [];
+    for (let i = 0; i < rects.length; i++) {
+      const r = rects[i];
+      /* several inline runs on one visual line (plain text next to bold
+         text, say) each contribute their own rect at the same top —
+         only the first one is this line's start. */
+      if (lastTop !== null && Math.abs(r.top - lastTop) < 1) continue;
+      lastTop = r.top;
+      const h = r.height;
+      const t = blockTop + (r.top - blockRect.top) + acc;
+      const room = avail(p);
+      const pageTop = p * cycle;
+      const pageEnd = pageTop + room;
+      const atPageTop = t <= pageTop + 1;
+      if (t + h > pageEnd && !atPageTop) {
+        const point = findLineStart(r.top);
+        /* No text node happened to measure back to exactly this line's
+           top (sub-pixel rounding on an unusual font/zoom combo) — leave
+           this one flowing rather than shift the page count for a spacer
+           that never actually gets inserted. */
+        if (!point) continue;
+        const nextPage = Math.max(p + 1, Math.ceil(t / cycle));
+        const shift = nextPage * cycle - t;
+        pushes.push({ point, shift });
+        acc += shift; p = nextPage;
+      }
+    }
+    return { pushes, extra: acc };
+  }
+
   /* top tracks each block against page boundaries in the same coordinate
      space the page frames themselves are drawn in — area.offsetTop 0 is
      page 0's own content top, full stop. A block's own natural offsetTop
@@ -368,7 +455,12 @@ function paginateArea(area, geom, reserved) {
       extra = tableRowShifts(blocks[i], top, page).extra;
       acc += extra;
     } else if (h > avail(page)) {
-      extra = (blocks[i].tagName === "PRE" ? preLineShifts : lineShifts)(blocks[i], top, page).extra;
+      if (blocks[i].tagName === "PRE") {
+        extra = preLineShifts(blocks[i], top, page).extra;
+      } else {
+        const ls = lineShifts(blocks[i], top, page);
+        extra = ls.pushes.length ? ls.extra : wrapLineShifts(blocks[i], top, page).extra;
+      }
       acc += extra;
     }
     /* A single block taller than a whole page (a very long paragraph, or a
@@ -431,9 +523,17 @@ function paginateArea(area, geom, reserved) {
 
   /* Same idea again, one line at a time — see the comment on lineShifts.
      Recomputed against each block's real post-push position, same reason
-     as the table pass just above. */
+     as the table pass just above. wrapLineShifts (see its own comment) is
+     tried only when this finds nothing: a block with real manual breaks
+     stays on this path, the other is purely the fallback for plain
+     word-wrapped text. Both are decided and applied right here, in the
+     same pass — querying lineShifts again afterward, once its own spacers
+     already sit in the DOM, would find nothing left to do on a block it
+     already fixed and wrongly hand that block to wrapLineShifts too,
+     doubling up on a straddle that was already resolved. */
   for (let i = 0; i < blocks.length; i++) {
-    if (blocks[i].tagName === "TABLE" || blocks[i].tagName === "PRE") continue;
+    const tag = blocks[i].tagName;
+    if (tag === "TABLE" || tag === "PRE") continue;
     const realTop = blocks[i].getBoundingClientRect().top - finalAreaTop;
     const lp = lineShifts(blocks[i], realTop, pageOf[i]).pushes;
     for (let j = 0; j < lp.length; j++) {
@@ -454,6 +554,21 @@ function paginateArea(area, geom, reserved) {
       spacer.style.height = Math.max(0, shift) + "px";
       if (anchor) anchor.parentNode.insertBefore(spacer, anchor.nextSibling);
       else blocks[i].insertBefore(spacer, blocks[i].firstChild);
+    }
+    if (lp.length) continue;
+    const wp = wrapLineShifts(blocks[i], realTop, pageOf[i]).pushes;
+    for (let j = wp.length - 1; j >= 0; j--) {
+      const { point, shift } = wp[j];
+      const spacer = document.createElement("span");
+      spacer.className = "pg-spacer";
+      spacer.contentEditable = "false";
+      spacer.setAttribute("aria-hidden", "true");
+      spacer.style.display = "block";
+      spacer.style.height = Math.max(0, shift) + "px";
+      const range = document.createRange();
+      range.setStart(point.node, point.offset);
+      range.collapse(true);
+      range.insertNode(spacer);
     }
   }
 
