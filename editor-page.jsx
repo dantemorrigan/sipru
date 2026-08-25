@@ -238,51 +238,29 @@ function paginateArea(area, geom, reserved) {
 }
 
 /* ------------------------------------------------------------
-   Block nesting repair.
+   Schema repair — one call into the text engine (engine.js).
 
-   execCommand("insertUnorderedList") on an empty paragraph does not
-   replace that paragraph in Chrome — it builds the list *inside* it,
-   leaving <p><ul><li>…</li></ul></p>. That is invalid HTML, and it
-   compounds: a second list typed after the first nests one level deeper
-   again. Everything downstream then treats the whole pile as a single
-   block — pagination can't break a long list across pages, the style
-   dropdown reports the wrapper rather than the list, and converting it to
-   a note or epigraph collapses every item into one run-together line.
+   contentEditable produces shapes the app's own block model cannot
+   describe, and it does it constantly: execCommand("insertUnorderedList")
+   on an empty paragraph builds the list *inside* it (<p><ul>…</ul></p>);
+   a multi-block paste lands wholesale inside whatever block the caret sat
+   in (<h1><p>…</p><p>…</p></h1> — the whole document swallowed by one
+   heading); an Enter in the wrong place strands a bare text run directly
+   under the editable root. Every one of those makes the document
+   undescribable downstream: pagination sees one unbreakable block, the
+   style dropdown reports the wrapper rather than the text, and "back to
+   body text" has nothing valid to convert.
 
-   Hoisting a block out of a <p> can strand the <p>'s own inline content as
-   a bare text node under the editable root, which is its own bug (see
-   EMPTY_DOC_HTML in the editor), so loose runs are re-wrapped in real
-   paragraphs on the way out. Nodes are moved rather than rebuilt, so a
-   caret sitting inside one of them rides along untouched. */
-const NEST_BLOCK = { UL: 1, OL: 1, P: 1, BLOCKQUOTE: 1, H1: 1, H2: 1, H3: 1,
-  FIGURE: 1, ASIDE: 1, HR: 1, PRE: 1, TABLE: 1, DIV: 1 };
+   So rather than fixing each shape as it is discovered, every mutation
+   goes through the engine's normaliser, which re-establishes the whole
+   schema: leaf blocks hold inline content only, lists hold items, the
+   root holds blocks. Nodes are moved rather than rebuilt, so a caret
+   sitting inside one of them rides along untouched.
+
+   The name is kept for its callers: this has always been the "put the
+   document back into a shape the app understands" call. */
 function unwrapNestedBlocks(area) {
-  if (!area) return false;
-  let changed = false;
-  for (let guard = 0; guard < 16; guard++) {
-    let target = null;
-    const ps = area.querySelectorAll("p");
-    for (let i = 0; i < ps.length && !target; i++) {
-      for (let c = ps[i].firstChild; c; c = c.nextSibling) {
-        if (c.nodeType === 1 && NEST_BLOCK[c.tagName]) { target = ps[i]; break; }
-      }
-    }
-    if (!target) break;
-    const frag = document.createDocumentFragment();
-    let run = null;
-    while (target.firstChild) {
-      const c = target.firstChild;
-      if (c.nodeType === 1 && NEST_BLOCK[c.tagName]) { run = null; frag.appendChild(c); }
-      else {
-        if (!run) { run = document.createElement("p"); frag.appendChild(run); }
-        run.appendChild(c);
-      }
-    }
-    target.parentNode.insertBefore(frag, target);
-    target.remove();
-    changed = true;
-  }
-  return changed;
+  return !!(area && window.SipruEngine && window.SipruEngine.normalize(area));
 }
 
 /* Pagination artefacts never reach storage: the saved HTML of a document
@@ -493,45 +471,134 @@ function makeNoteBlock(text) {
   return fillLines(el, text || "");
 }
 
-function applyBlockStyle(area, style, tl) {
+/* ---- block conversion ----
+
+   Converting a block is a document-model edit: the block keeps its
+   content and its own markers (alignment) and changes type, and a block
+   that holds several lines of content (a list, a multi-line quote)
+   becomes several blocks of the new type rather than one run-together
+   line.
+
+   This is deliberately *not* execCommand("formatBlock"). Chrome applies
+   that command to a multi-block selection by merging the whole selection
+   into a single element — press "Heading 1" with a chapter selected and
+   thirty paragraphs come back as one heading holding twenty-nine line
+   breaks, which no later press can take apart again, because there is no
+   longer any block structure left to convert. Building the new blocks
+   here keeps every boundary the writer typed. */
+const HEADINGS = { h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
+const CONVERTIBLE = (el) => !!el && el.tagName !== "HR" && el.tagName !== "TABLE" &&
+  !(el.classList && (el.classList.contains("pg-spacer") || el.classList.contains("fn-defs")));
+
+/* The inline content of a block, one entry per line the reader sees, as
+   HTML (so bold, links and footnote markers survive a conversion). */
+function blockRuns(el) {
+  const items = el.querySelectorAll ? el.querySelectorAll(":scope > li") : [];
+  if (items.length) return Array.prototype.map.call(items, (li) => inlineHTML(li));
+  /* An epigraph is a quotation and its author: both are content, so both
+     survive the conversion — the author as its own line. */
+  if (el.tagName === "FIGURE") {
+    const q = el.querySelector("blockquote");
+    const cap = el.querySelector("figcaption");
+    const out = [];
+    (q ? inlineHTML(q) : inlineHTML(el)).split(/<br\s*\/?>/i).forEach((r) => out.push(r));
+    if (cap && (cap.textContent || "").trim()) out.push(inlineHTML(cap));
+    return out;
+  }
+  if (el.tagName === "PRE") {
+    return (el.textContent || "").split("\n").map((line) => escapeText(line));
+  }
+  const inner = inlineHTML(el);
+  return inner.split(/<br\s*\/?>/i);
+}
+/* Nested blocks inside the source (a quote inside a list item) flatten to
+   their text: the target type holds inline content only. */
+function inlineHTML(el) {
+  const box = el.cloneNode(true);
+  const kids = box.querySelectorAll("ul, ol, li, p, blockquote, figure, aside, div, table");
+  for (let i = 0; i < kids.length; i++) {
+    const k = kids[i];
+    while (k.firstChild) k.parentNode.insertBefore(k.firstChild, k);
+    k.remove();
+  }
+  return box.innerHTML;
+}
+function escapeText(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function alignClassOf(el) {
+  const cls = ["al-l", "al-c", "al-r", "al-j"].filter((c) => el.classList && el.classList.contains(c));
+  return cls.length ? ' class="' + cls.join(" ") + '"' : "";
+}
+/* One source block → the HTML of the block(s) it becomes. */
+function blockHTMLAs(el, style, tl) {
+  const runs = blockRuns(el).map((r) => r.trim()).filter((r) => r !== "" && r !== "<br>");
+  const align = alignClassOf(el);
+  if (style === "epigraph" || style === "note") {
+    const lines = blockLines(el);
+    const made = style === "epigraph"
+      ? makeEpigraph(lines.length ? lines : tl("epi_text_hint"), "")
+      : makeNoteBlock(lines.length ? lines : tl("note_text_hint"));
+    return made.outerHTML;
+  }
+  const tag = (HEADINGS[style] || style === "blockquote") ? style : "p";
+  const body = runs.length ? runs : ["<br>"];
+  /* A list or a multi-line block becomes one target block per line —
+     three bullet points turned into three headings, not one heading with
+     the bullets run together. A quote keeps its lines inside one block,
+     since that is what a quote is. */
+  if (tag === "blockquote") return "<blockquote" + align + ">" + body.join("<br>") + "</blockquote>";
+  return body.map((line) => "<" + tag + align + ">" + line + "</" + tag + ">").join("");
+}
+
+/* Applying a block style is a document-model edit: every block the
+   selection touches takes the new type, and pressing the type it already
+   has takes it off again. `blocks` is that list (the caret's own block
+   when nothing is selected); `replaceRange(first, last, html)` is
+   the caller's way of putting the converted blocks back — one document
+   edit, one entry in the editor's history. */
+function applyBlockStyle(area, style, tl, blocks, replaceRange) {
   const cur = topBlock(area);
-  const curStyle = blockStyleOf(cur);
-  if (!cur) {
+  const list = (blocks && blocks.length ? blocks : [cur]).filter((el) => el && area.contains(el) && CONVERTIBLE(el));
+  if (!list.length) {
+    /* Nothing to convert — an empty document, or a selection that holds
+       only a page break. Let the browser start the block off. */
     if (["p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote"].indexOf(style) >= 0) {
       document.execCommand("formatBlock", false, style === "p" ? "p" : style);
     }
     return;
   }
+  /* Which type "pressing it again" toggles off is read from the block the
+     caret is in — or, when the selection is anchored on the editable
+     itself (select-all does exactly that, and topBlock has no single
+     block to name), from the first block it covers. */
+  const head = cur && CONVERTIBLE(cur) ? cur : list[0];
+  const curStyle = blockStyleOf(head);
   const next = curStyle === style ? "p" : style;
 
-  /* "Body text" on a list has to end the list — formatBlock cannot touch a
-     <li>, so without this the style picker (and ⌘⌥0) silently did nothing
-     on any bulleted or numbered line. */
-  if (next === "p" && (cur.tagName === "UL" || cur.tagName === "OL")) {
-    document.execCommand(cur.tagName === "UL" ? "insertUnorderedList" : "insertOrderedList", false, null);
+  /* "Body text" on a list has to end the list — the list command is what
+     unmakes a list, and it keeps the browser's own item-by-item
+     conversion (and its undo entry) rather than rebuilding the block. */
+  if (next === "p" && (head.tagName === "UL" || head.tagName === "OL")) {
+    document.execCommand(head.tagName === "UL" ? "insertUnorderedList" : "insertOrderedList", false, null);
     return;
   }
 
-  if (next === "epigraph" || next === "note") {
-    const lines = blockLines(cur);
-    const el = next === "epigraph"
-      ? makeEpigraph(lines.length ? lines : tl("epi_text_hint"), "")
-      : makeNoteBlock(lines.length ? lines : tl("note_text_hint"));
-    cur.replaceWith(el);
-    caretTo(next === "epigraph" ? el.firstChild : el, true);
-    return;
-  }
-  if (curStyle === "epigraph" || curStyle === "note") {
-    const lines = blockLines(cur);
-    const p = fillLines(document.createElement("p"), lines);
-    cur.replaceWith(p);
-    caretTo(p, true);
-    if (next !== "p") document.execCommand("formatBlock", false, next);
-    return;
-  }
-  document.execCommand("formatBlock", false, next);
+  const html = list.map((el) => blockHTMLAs(el, next, tl)).join("");
+  if (replaceRange && replaceRange(list[0], list[list.length - 1], html)) return;
+
+  /* No undo-safe applier was handed in: swap the nodes directly rather
+     than do nothing. */
+  const box = document.createElement("div");
+  box.innerHTML = html;
+  const made = Array.prototype.slice.call(box.children);
+  const frag = document.createDocumentFragment();
+  made.forEach((el) => frag.appendChild(el));
+  list[0].parentNode.insertBefore(frag, list[0]);
+  list.forEach((el) => el.remove());
+  const tail = made[made.length - 1];
+  if (tail) caretTo(tail.tagName === "FIGURE" ? tail.firstChild : tail, true);
 }
-
 /* ============================================================
    Header / footer slots
    ============================================================ */

@@ -4,6 +4,7 @@
 <body>
 <pre id="out">running…</pre>
 <script src="../formats.js"></script>
+<script src="../engine.js"></script>
 <script src="../build/screens-export.js"></script>
 <script>
 /* Markdown round-trip regression tests.
@@ -173,6 +174,44 @@ stable("full document", DOC, ({ h1, m1 }) => {
   check("doc :: code intact", m1.indexOf("    return 0;  /* a_b * c */") >= 0, JSON.stringify(m1));
   check("doc :: table intact", /\| density \| \\?\\rho \|/.test(m1), JSON.stringify(m1));
 });
+
+/* ---- the document schema, as the engine enforces it ----
+
+   Every one of these is a shape contentEditable really produces (a paste
+   into a heading, a list built inside a paragraph, an Enter that strands
+   a bare text run) and none of them is describable by the app's own block
+   model — so the normaliser has to turn each back into one that is. */
+{
+  const E = window.SipruEngine;
+  const norm = (html) => { const d = document.createElement("div"); d.innerHTML = html; E.normalize(d); return d.innerHTML; };
+  const schema = (name, input, want) => check("schema :: " + name, norm(input) === want, norm(input));
+
+  schema("a heading cannot swallow the document",
+    "<h1><p>a</p><p>b</p></h1>", "<p>a</p><p>b</p>");
+  schema("text around a hoisted block keeps its own type",
+    "<h1>title<p>body</p>tail</h1>", "<h1>title</h1><p>body</p><h1>tail</h1>");
+  schema("a bare run under the root becomes a paragraph",
+    "loose<p>a</p>", "<p>loose</p><p>a</p>");
+  schema("an unknown container is unwrapped",
+    "<div>a</div><div><p>b</p></div>", "<p>a</p><p>b</p>");
+  schema("the footnote store survives",
+    '<p>a</p><div class="fn-defs"><p data-fn="1">n</p></div>',
+    '<p>a</p><div class="fn-defs"><p data-fn="1">n</p></div>');
+  schema("the layout's own spacers survive",
+    '<p>a</p><div class="pg-spacer"></div><p>b</p>',
+    '<p>a</p><div class="pg-spacer"></div><p>b</p>');
+  schema("a list holds items only",
+    "<ul>loose<li>a</li><p>b</p></ul>", "<ul><li>loose</li><li>a</li><li>b</li></ul>");
+  schema("a nested list is left alone",
+    "<ul><li>a<ul><li>b</li></ul></li></ul>", "<ul><li>a<ul><li>b</li></ul></li></ul>");
+  schema("a table cell flattens rather than splits its row",
+    "<table><tbody><tr><td>a<p>b</p></td></tr></tbody></table>",
+    "<table><tbody><tr><td>a<br>b</td></tr></tbody></table>");
+  schema("an epigraph is left alone",
+    '<figure class="epigraph"><blockquote>q</blockquote><figcaption>a</figcaption></figure>',
+    '<figure class="epigraph"><blockquote>q</blockquote><figcaption>a</figcaption></figure>');
+  schema("an empty document still holds one block", "", "<p><br></p>");
+}
 
 const failed = results.filter((r) => !r.ok);
 const summary = {

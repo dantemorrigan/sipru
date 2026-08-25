@@ -251,6 +251,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
       try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch (e) {}
       setWords(store.countWords(html));
       depth.current = { u: 0, r: 0 };
+      structural.current = { undo: [], redo: [] };
       setHist({ undo: false, redo: false });
       /* on touch devices, autofocus pops the keyboard before the user has
          asked to type — only desktop (fine pointer) gets it on open.
@@ -711,15 +712,48 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
      fallback below: text in, markdown-transformed HTML into the caret. */
   function insertMarkdownText(text) {
     if (!text) return;
-    const box = document.createElement("div");
-    box.innerHTML = window.SipruFormats.mdToHTML(text);
-    const html = box.children.length === 1 && box.firstElementChild.tagName === "P"
-      ? box.firstElementChild.innerHTML
-      : box.innerHTML;
-    document.execCommand("insertHTML", false, html);
+    /* The engine normalises the pasted document *before* a node of it
+       reaches the editable, and says whether it is one paragraph (goes in
+       inline, mid-sentence) or a sequence of blocks. */
+    const frag = window.SipruEngine.normalizeFragment(window.SipruFormats.mdToHTML(text));
+    /* A multi-block paste is not content of the block the caret sits in:
+       Chrome would drop all of it *inside* that block, and a paste into a
+       heading turned the entire pasted document into one heading. Ending
+       the caret's block first means the blocks arrive as siblings, each
+       keeping its own type. */
+    if (frag.blocks > 1) endCurrentBlock();
+    document.execCommand("insertHTML", false, frag.inline != null ? frag.inline : frag.html);
     unwrapNestedBlocks(ref.current);
     commitChange();
     schedulePaginate(true);
+  }
+  /* Splits the block the caret is in at the caret, so what follows is
+     inserted between two blocks rather than into one. Uses the browser's
+     own paragraph split (execCommand), which is both undo-safe and the
+     only thing that knows how to divide a list item or a quote. */
+  function endCurrentBlock() {
+    const area = ref.current;
+    const cur = topBlock(area);
+    if (!cur) return;
+    const kind = window.SipruEngine.blockKind(cur);
+    /* Body text can hold the paste as it stands; every other block type
+       would lend it a heading, a quote or a list it should not have. */
+    if (kind === "p") return;
+    /* An empty block has nothing to split away from — pasting into a
+       heading the writer never typed into simply means the paste is not a
+       heading. (This is the exact shape the bug arrived in: a brand-new
+       note whose one empty block had been switched to Heading 1.) */
+    if (window.SipruEngine.isEmptyBlock(cur)) {
+      document.execCommand("formatBlock", false, "p");
+      return;
+    }
+    document.execCommand("insertParagraph", false, null);
+    /* The split leaves an empty half behind whichever way it fell; the
+       normaliser after the insert clears it. */
+    const now = topBlock(area);
+    if (now && window.SipruEngine.blockKind(now) !== "p") {
+      document.execCommand("formatBlock", false, "p");
+    }
   }
   function onPaste(e) {
     const cd = e.clipboardData;
@@ -797,6 +831,22 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     if (!el) return;
     const before = el.innerHTML;
     el.focus();
+    /* A structural edit (a block conversion) is not on the browser's undo
+       stack — it is on ours, and it is the most recent thing that happened
+       only while the document still stands exactly as it left it. */
+    if (undoStructural(cmd)) {
+      const d0 = depth.current;
+      if (cmd === "undo") { d0.u = Math.max(0, d0.u - 1); d0.r++; }
+      else { d0.r = Math.max(0, d0.r - 1); d0.u++; }
+      const html = serializeArea(el);
+      saved.current = html;
+      setWords(store.countWords(html));
+      doSave(html);
+      setHist({ undo: d0.u > 0, redo: d0.r > 0 });
+      refreshActive();
+      schedulePaginate(true);
+      return;
+    }
     try { document.execCommand(cmd, false, null); } catch (e) { return; }
     const d = depth.current;
     if (el.innerHTML === before) {
@@ -1043,9 +1093,13 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     if (BLOCK_CMD[cmd]) unwrapNestedBlocks(ref.current);
     onInput(); refreshActive();
   }
+  /* The toolbar's heading and quote buttons are the same document-model
+     edit as the style dropdown, and go the same way — a selection spanning
+     several paragraphs must come back as several headings, which is
+     exactly what execCommand("formatBlock") cannot do (it merges them into
+     one). */
   function block(tag) {
-    const cur = active.block;
-    exec("formatBlock", cur === tag ? "p" : tag);
+    setStyle(tag);
   }
   function persistNow() {
     if (!ref.current) return null;
@@ -1498,12 +1552,90 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   }
 
   /* ---- block-level style & alignment ---- */
+  /* Puts a converted run of blocks in place of the ones it replaces, and
+     re-selects the result — so pressing a style and pressing it again to
+     take it off works on the same passage, without the writer having to
+     re-select the text in between.
+
+     The swap is a plain DOM edit on purpose. execCommand("insertHTML")
+     would put it on Chrome's own undo stack, but Chrome does not actually
+     replace what the range covers: asked to swap an epigraph for two
+     paragraphs it keeps the <figure> shell, drops the new blocks inside
+     it and swallows the paragraph after it. A structural edit has to
+     produce exactly the blocks it says it does, so it is done by hand and
+     its undo entry is recorded here (see undoStructural). */
+  const structural = useRef({ undo: [], redo: [] });
+  function replaceBlockRange(first, last, html) {
+    const area = ref.current;
+    if (!area || !first || !last || first.parentNode !== area) return false;
+    const before = serializeArea(area);
+    const box = document.createElement("div");
+    box.innerHTML = html;
+    const made = Array.prototype.slice.call(box.children);
+    if (!made.length) return false;
+    const frag = document.createDocumentFragment();
+    made.forEach((el) => frag.appendChild(el));
+    area.insertBefore(frag, first);
+    /* everything from the first replaced block to the last goes, the
+       layout's own spacers between them included (they are redrawn) */
+    let node = first;
+    while (node) {
+      const next = node.nextSibling;
+      const done = node === last;
+      node.remove();
+      if (done) break;
+      node = next;
+    }
+    const head = made[0], tail = made[made.length - 1];
+    const sel = window.getSelection();
+    const r = document.createRange();
+    /* An epigraph is a quote and a caption: the caret belongs in the quote,
+       where the writing continues, not on the figure that wraps them. */
+    if (made.length === 1 && head.tagName === "FIGURE" && head.firstChild) {
+      r.selectNodeContents(head.firstChild);
+      r.collapse(false);
+    } else {
+      r.setStart(head, 0);
+      r.setEnd(tail, tail.childNodes.length);
+    }
+    sel.removeAllRanges(); sel.addRange(r);
+    lastRange.current = r.cloneRange();
+    pushStructural(before, serializeArea(area));
+    return true;
+  }
+  /* One entry per structural edit: the document before it and after it,
+     both in storage form (no pagination spacers), so the two can be
+     compared against the live document whatever the layout has drawn. */
+  function pushStructural(before, after) {
+    const s = structural.current;
+    s.undo.push({ before, after });
+    if (s.undo.length > 60) s.undo.shift();
+    s.redo.length = 0;
+  }
+  /* Undo/redo for those edits. It only ever fires when the document is
+     still *exactly* in the state the edit left it in — otherwise the
+     browser's own stack owns whatever happened since, and this defers to
+     it. That keeps one history, in order, without tracking Chrome's. */
+  function undoStructural(cmd) {
+    const area = ref.current;
+    const s = structural.current;
+    const from = cmd === "undo" ? s.undo : s.redo;
+    if (!area || !from.length) return false;
+    const top = from[from.length - 1];
+    const want = cmd === "undo" ? top.after : top.before;
+    if (serializeArea(area) !== want) return false;
+    from.pop();
+    (cmd === "undo" ? s.redo : s.undo).push(top);
+    area.innerHTML = withFallbackHTML(cmd === "undo" ? top.before : top.after);
+    unwrapNestedBlocks(area);
+    return true;
+  }
   function setStyle(name) {
     const area = ref.current;
     if (!area) return;
     restoreCaret(area);
     area.focus();
-    applyBlockStyle(area, name, tl);
+    applyBlockStyle(area, name, tl, selectedBlocks(area), replaceBlockRange);
     unwrapNestedBlocks(area);
     setStyleOpen(false);
     commitChange();

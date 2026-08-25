@@ -50,6 +50,43 @@ const isMac = process.platform === "darwin";
 const MOD = isMac ? "Meta" : "Control";
 async function undo(page) { await page.keyboard.press(MOD + "+z"); }
 
+/* A real clipboard paste of plain text, the way one arrives from another
+   app — the editor reads text/plain and renders it as markdown. */
+async function pasteText(page, text) {
+  await page.evaluate((t) => {
+    const area = document.querySelector(".ed-area");
+    area.focus();
+    const dt = new DataTransfer();
+    dt.setData("text/plain", t);
+    area.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, text);
+  await page.waitForTimeout(250);
+}
+/* The block types of the document, ignoring the layout's own spacers. */
+function topTags(page) {
+  return page.$eval(".ed-area", (area) => Array.prototype.filter
+    .call(area.children, (el) => !el.classList.contains("pg-spacer") && !el.classList.contains("fn-defs"))
+    .map((el) => el.tagName));
+}
+async function selectAll(page) {
+  await page.evaluate(() => {
+    const area = document.querySelector(".ed-area");
+    area.focus();
+    const r = document.createRange();
+    r.selectNodeContents(area);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  });
+  await page.waitForTimeout(80);
+}
+/* Presses an entry of the style dropdown the way the toolbar does
+   (mousedown, so the selection in the document is never dropped). */
+async function setStyle(page, label) {
+  await page.click(".ed-style-btn");
+  await page.waitForSelector(".ed-style-menu");
+  await page.locator(".ed-style-menu button", { hasText: label }).first().dispatchEvent("mousedown");
+  await page.waitForTimeout(400);
+}
+
 async function openInsertMenu(page) {
   await page.click('.ed-insert > button[title="Insert"]');
   await page.waitForSelector(".ed-insert-menu");
@@ -130,6 +167,128 @@ async function openInsertMenu(page) {
     await item.tap();
     const inserted = await page.$$eval("sup.fn", (els) => els.length);
     check("mobile tap :: overflow menu item runs its action", inserted === 1, "count=" + inserted);
+    await context.close();
+  }
+
+  /* ---- the document schema holds under a paste ----
+
+     Reported from the field: text copied out of a web page and dropped
+     into a note whose one (empty) block had been switched to Heading 1
+     came back as <h1><p>…</p><p>…</p></h1> — the whole pasted document
+     swallowed by one heading. From there pagination had a single
+     unbreakable block to lay out (text ran off the sheet), and no press
+     of the style picker could take the heading off again, because there
+     was no block structure left to convert. ---- */
+  {
+    const { context, page } = await openEditor(browser);
+    await page.evaluate(() => {
+      const area = document.querySelector(".ed-area");
+      area.focus();
+      document.execCommand("formatBlock", false, "h1");
+    });
+    await pasteText(page, "First paragraph.\n\nSecond paragraph.\n\nThird paragraph.");
+    const tags = await topTags(page);
+    check("paste :: multi-block paste lands as top-level blocks",
+      tags.join(",") === "P,P,P", tags.join(","));
+    const nested = await page.$$eval(".ed-area h1 p, .ed-area p p, .ed-area p h1", (els) => els.length);
+    check("paste :: no block ends up nested inside another", nested === 0, "count=" + nested);
+    await context.close();
+  }
+
+  /* Pasting into a heading that has text keeps the heading and puts the
+     pasted blocks after it — the paste is not part of the title. */
+  {
+    const { context, page } = await openEditor(browser);
+    await page.keyboard.type("Chapter one");
+    await page.evaluate(() => {
+      document.querySelector(".ed-area").focus();
+      document.execCommand("formatBlock", false, "h1");
+    });
+    await pasteText(page, "First paragraph.\n\nSecond paragraph.");
+    const tags = await topTags(page);
+    check("paste :: into a heading with text keeps the heading",
+      tags.join(",") === "H1,P,P", tags.join(","));
+    await context.close();
+  }
+
+  /* A short paste mid-sentence still belongs to the sentence. */
+  {
+    const { context, page } = await openEditor(browser);
+    await page.keyboard.type("start end");
+    await page.evaluate(() => {
+      const t = document.querySelector(".ed-area p").firstChild;
+      const r = document.createRange();
+      r.setStart(t, 6); r.collapse(true);
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    });
+    await pasteText(page, "middle ");
+    const tags = await topTags(page);
+    const text = await page.$eval(".ed-area", (el) => el.textContent);
+    check("paste :: one line pastes inline, not as a new block",
+      tags.join(",") === "P" && text.replace(/\s+/g, "") === "startmiddleend",
+      tags.join(",") + " / " + text);
+    await context.close();
+  }
+
+  /* ---- a block style applies to every block the selection touches ----
+
+     execCommand("formatBlock") answers a multi-block selection by merging
+     it into one element: press Heading 1 with a chapter selected and
+     thirty paragraphs come back as a single heading holding line breaks,
+     which is both wrong and unconvertible afterwards. ---- */
+  {
+    const { context, page } = await openEditor(browser);
+    await pasteText(page, "One.\n\nTwo.\n\nThree.\n\nFour.");
+    const before = await topTags(page);
+    check("style :: paste produced four paragraphs", before.join(",") === "P,P,P,P", before.join(","));
+
+    await selectAll(page);
+    await setStyle(page, "Heading 1");
+    const headed = await topTags(page);
+    check("style :: heading applies to every selected block",
+      headed.join(",") === "H1,H1,H1,H1", headed.join(","));
+
+    await selectAll(page);
+    await setStyle(page, "Body");
+    const back = await topTags(page);
+    const text = await page.$eval(".ed-area", (el) => el.textContent);
+    check("style :: pressing body text takes the heading off again",
+      back.join(",") === "P,P,P,P", back.join(","));
+    check("style :: no text is lost converting there and back",
+      text === "One.Two.Three.Four.", JSON.stringify(text));
+    await context.close();
+  }
+
+  /* Epigraph and note are whole blocks of their own, and converting one
+     back has to replace the block — not leave its shell standing with the
+     new paragraph tucked inside it (which is what the browser's own
+     insertHTML does when asked to replace a <figure>). */
+  {
+    const { context, page } = await openEditor(browser);
+    await page.keyboard.type("A line worth quoting");
+    await setStyle(page, "Epigraph");
+    const asEpigraph = await topTags(page);
+    check("style :: paragraph becomes an epigraph",
+      asEpigraph.join(",") === "FIGURE", asEpigraph.join(","));
+    await setStyle(page, "Body");
+    const back = await topTags(page);
+    const text = await page.$eval(".ed-area", (el) => el.textContent);
+    check("style :: an epigraph converts back to a plain paragraph",
+      back.join(",") === "P" && text === "A line worth quoting",
+      back.join(",") + " / " + JSON.stringify(text));
+    await context.close();
+  }
+
+  /* The style press is one edit, so one undo puts the blocks back. */
+  {
+    const { context, page } = await openEditor(browser);
+    await pasteText(page, "One.\n\nTwo.");
+    await selectAll(page);
+    await setStyle(page, "Heading 1");
+    await undo(page);
+    const tags = await topTags(page);
+    check("style :: undo restores the blocks the style replaced",
+      tags.join(",") === "P,P", tags.join(","));
     await context.close();
   }
 
