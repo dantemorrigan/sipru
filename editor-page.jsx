@@ -150,7 +150,6 @@ function paginateArea(area, geom, reserved) {
   for (let i = 1; i < blocks.length; i++) {
     if (blocks[i].previousElementSibling === blocks[i - 1]) collapses[i] = Math.min(mTop[i], mBot[i - 1]);
   }
-  const baseTop = blocks.length ? tops[0] : 0;
 
   const avail = (p) => Math.max(60, geom.contentH - (reserved && reserved[p] ? reserved[p] : 0));
   const pushes = new Array(blocks.length).fill(0);
@@ -196,10 +195,24 @@ function paginateArea(area, geom, reserved) {
     return { pushes, extra: acc };
   }
 
+  /* top tracks each block against page boundaries in the same coordinate
+     space the page frames themselves are drawn in — area.offsetTop 0 is
+     page 0's own content top, full stop. A block's own natural offsetTop
+     already includes whatever leading margin the very first block in the
+     area carries (a heading opens with one, a paragraph doesn't) as real,
+     visible space at the top of page 0, exactly as it should — the room
+     that space takes up is genuinely spent. An earlier version of this
+     subtracted that leading offset back out of every block's `top` before
+     comparing it to a page boundary, to keep page 0 accounting simple —
+     but the page frames drawn from `page * cycle` never had a matching
+     offset applied, so on any push (any block moving to a later page)
+     the block landed exactly one leading margin below where its own page
+     frame actually starts. Invisible for plain text; visibly slicing
+     through the border of whatever table or bordered block landed there. */
   let acc = 0, page = 0, forceBreak = false;
   for (let i = 0; i < blocks.length; i++) {
     const h = heights[i];
-    let top = tops[i] - baseTop + acc;
+    let top = tops[i] + acc;
     const room = avail(page);
     const pageTop = page * cycle;
     const pageEnd = pageTop + room;

@@ -43,8 +43,13 @@ function tableRows(n, cols) {
   }
   return rows.join("");
 }
+/* Starts with a heading, not a paragraph: a heading's own top margin is
+   what exposed the "every pushed block lands one leading-margin's worth
+   below where its page box actually starts" bug — a paragraph's top
+   margin is 0, so a document opening on one never touched that path. */
 const CONTENT =
-  "<p>Вступительный текст перед таблицей, чтобы часть первой страницы уже была занята прозой.</p>" +
+  "<h2>Вступительный заголовок</h2>" +
+  "<p>Текст перед таблицей, чтобы часть первой страницы уже была занята прозой.</p>" +
   "<table><thead><tr><th>Показатель</th><th>Латверия</th><th>Средняя Европа</th><th>Разница</th></tr></thead>" +
   "<tbody>" + tableRows(24, 4) + "</tbody></table>" +
   "<p>" + "Очень длинный абзац, который должен переноситься по словам и не должен вылезать за пределы страницы независимо от формата и ориентации листа. ".repeat(12) + "</p>";

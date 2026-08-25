@@ -1198,6 +1198,18 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   }
   useEffect(() => () => { clearTimeout(pgTimer.current); cancelAnimationFrame(scrollRaf.current); }, []);
   useEffect(() => { schedulePaginate(true); }, [geom, mode, docId]);
+  /* schedulePaginate measures live offsetTop/offsetHeight, which — while
+     the zoom slider's own CSS transition (.zoom-live, 220ms) is still
+     running — read the sheet mid-animation rather than at its landing
+     size. A pass taken there sizes every page-break spacer off a
+     transient width, and since nothing re-measures once the transition
+     actually finishes, that wrong size is what stays: a fast drag of the
+     slider is exactly the case (each tick restarts the transition, so
+     the *only* passes that ever ran happened mid-flight). Kept fresh by
+     ref because the callback below fires long after the render that
+     scheduled it. */
+  const schedulePaginateRef = useRef(schedulePaginate);
+  schedulePaginateRef.current = schedulePaginate;
 
   /* Footnotes take room away from the text on the page they belong to, and
      how much is only knowable once they are rendered — so the measurement
@@ -1703,7 +1715,13 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     if (patch && Object.prototype.hasOwnProperty.call(patch, "zoom")) {
       setZoomLive(true);
       clearTimeout(zoomTimer.current);
-      zoomTimer.current = setTimeout(() => setZoomLive(false), 260);
+      zoomTimer.current = setTimeout(() => {
+        setZoomLive(false);
+        /* The transition has now actually reached its landing size — one
+           more pass re-measures it for real, replacing whatever a pass
+           mid-transition got wrong. */
+        schedulePaginateRef.current(true);
+      }, 260);
     }
   }
   const setPageRef = useRef(setPage);
