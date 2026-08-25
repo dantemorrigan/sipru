@@ -758,6 +758,23 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   function onPaste(e) {
     const cd = e.clipboardData;
     if (!cd) return;
+    /* Rich text (bold/italic/strike, from this editor or any other app)
+       only exists on the html flavor — text/plain is always the bare
+       rendered text, with no markers to reconstruct it from. Reading
+       plain text unconditionally silently dropped every bit of copied
+       formatting. html is sanitised through the same allowlist as file
+       import before it ever reaches the document. */
+    const html = cd.getData("text/html");
+    if (html) {
+      e.preventDefault();
+      const frag = window.SipruEngine.normalizeFragment(window.SipruFormats.sanitizeHTML(html));
+      if (frag.blocks > 1) endCurrentBlock();
+      document.execCommand("insertHTML", false, frag.inline != null ? frag.inline : frag.html);
+      unwrapNestedBlocks(ref.current);
+      commitChange();
+      schedulePaginate(true);
+      return;
+    }
     const text = cd.getData("text/plain");
     if (!text) return;
     e.preventDefault();
@@ -1129,6 +1146,11 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     setWords(store.countWords(snap.content));
     depth.current = { u: 0, r: 0 };
     setHist({ undo: false, redo: false });
+    /* Every other spot that replaces the document's innerHTML repaginates
+       right after — restoring a snapshot swapped the content but left the
+       page-break spacers sized for whatever was on screen before, so the
+       old boundaries no longer matched the restored text. */
+    schedulePaginate(true);
     setRestoreTarget(null);
     setSnapOpen(false);
     if (onToast) onToast(tl("snap_restored"));
