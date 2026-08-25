@@ -212,6 +212,45 @@ function paginateArea(area, geom, reserved) {
     return { pushes, extra: acc };
   }
 
+  /* The same problem again, one level deeper still: a block taller than a
+     page has nowhere to break either (the very long paragraph the comment
+     below already calls out) — except when it is *made* of hard line
+     breaks, which a manually-typed line-broken block, or an "everything
+     joined with <br> because there was no blank line to split on" plain-
+     text paste, both are. Each <br> is already a break the writer put
+     there; a blank <br class="pg-spacer"> inserted right after one, sized
+     to cover the remaining page room, pushes everything from there on
+     down exactly the way a spacer row does inside a table — and unlike a
+     table cell's content, no schema rule stops a <br> from living inline
+     next to another one, so this never needs its own hoist-proofing.
+     A block with fewer than two <br>s (ordinary wrapped prose, no manual
+     breaks to anchor on) is left to the existing "flows on" behavior —
+     nothing here can find a safe place to cut it either. */
+  function lineShifts(block, blockTop, startPage) {
+    const brs = Array.prototype.slice.call(block.querySelectorAll(":scope > br:not(.pg-spacer)"));
+    if (brs.length < 2) return { pushes: [], extra: 0 };
+    const blockRect = block.getBoundingClientRect();
+    let acc = 0, p = startPage, lineTop = 0;
+    const pushes = [];
+    for (let i = 0; i < brs.length; i++) {
+      const rect = brs[i].getBoundingClientRect();
+      const h = Math.max(1, rect.bottom - (blockRect.top + lineTop));
+      const t = blockTop + lineTop + acc;
+      const room = avail(p);
+      const pageTop = p * cycle;
+      const pageEnd = pageTop + room;
+      const atPageTop = t <= pageTop + 1;
+      if (t + h > pageEnd && !atPageTop) {
+        const nextPage = Math.max(p + 1, Math.ceil(t / cycle));
+        const shift = nextPage * cycle - t;
+        pushes.push({ anchor: i > 0 ? brs[i - 1] : null, shift });
+        acc += shift; p = nextPage;
+      }
+      lineTop = rect.bottom - blockRect.top;
+    }
+    return { pushes, extra: acc };
+  }
+
   /* top tracks each block against page boundaries in the same coordinate
      space the page frames themselves are drawn in — area.offsetTop 0 is
      page 0's own content top, full stop. A block's own natural offsetTop
@@ -273,6 +312,9 @@ function paginateArea(area, geom, reserved) {
     if (blocks[i].tagName === "TABLE") {
       extra = tableRowShifts(blocks[i], top, page).extra;
       acc += extra;
+    } else if (h > avail(page)) {
+      extra = lineShifts(blocks[i], top, page).extra;
+      acc += extra;
     }
     /* A single block taller than a whole page (a very long paragraph, or a
        table whose rows still don't all fit after the pass above) has
@@ -329,6 +371,34 @@ function paginateArea(area, geom, reserved) {
       cell.style.height = Math.max(0, shift) + "px";
       spacer.appendChild(cell);
       row.parentNode.insertBefore(spacer, row);
+    }
+  }
+
+  /* Same idea again, one line at a time — see the comment on lineShifts.
+     Recomputed against each block's real post-push position, same reason
+     as the table pass just above. */
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i].tagName === "TABLE") continue;
+    const realTop = blocks[i].getBoundingClientRect().top - finalAreaTop;
+    const lp = lineShifts(blocks[i], realTop, pageOf[i]).pushes;
+    for (let j = 0; j < lp.length; j++) {
+      const { anchor, shift } = lp[j];
+      /* A <br> ignores an explicit height in every layout engine that
+         matters here — getComputedStyle echoes the value back, but the
+         box it actually paints stays one line tall regardless, so the
+         gap this is supposed to open never showed up and everything
+         after it landed short of the next page. A <span> is already
+         schema-inline (see the INLINE set in engine.js) exactly like
+         <br>, but unlike <br> it is a real box once given display:block
+         and genuinely reserves the height it is asked for. */
+      const spacer = document.createElement("span");
+      spacer.className = "pg-spacer";
+      spacer.contentEditable = "false";
+      spacer.setAttribute("aria-hidden", "true");
+      spacer.style.display = "block";
+      spacer.style.height = Math.max(0, shift) + "px";
+      if (anchor) anchor.parentNode.insertBefore(spacer, anchor.nextSibling);
+      else blocks[i].insertBefore(spacer, blocks[i].firstChild);
     }
   }
 

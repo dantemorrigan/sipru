@@ -99,6 +99,10 @@ ${mdTable(6, 3)}
 ## Ещё один заголовок
 
 ${"Длинный абзац прозы, много раз повторённый, чтобы гарантированно растянуться на несколько страниц при любом разумном масштабе и формате. ".repeat(20)}
+
+## Вставленный текст без пустых строк
+
+${Array.from({ length: 60 }, (_, i) => "Строка номер " + i + " из текста, вставленного без пустых строк между абзацами — ровно то, что превращает весь этот блок в один гигантский <br>-разделённый параграф, который раньше просто прошивал границы страниц насквозь.").join("\n")}
 `;
 
 (async () => {
@@ -144,6 +148,42 @@ ${"Длинный абзац прозы, много раз повторённы�
           const rows = Array.from(document.querySelectorAll(".ed-area table tr")).filter((tr) => !tr.classList.contains("pg-spacer"));
           const rowRects = rows.map((tr) => tr.getBoundingClientRect());
           const straddling = rowRects.filter((r) => !bands.some((b) => r.top >= b.top - 2 && r.bottom <= b.bottom + 2)).length;
+          /* The one paragraph built from many <br>-joined lines (no blank
+             line between them, exactly what a plain-text paste with no
+             empty lines between "paragraphs" produces). Checked per
+             *logical* line — the run of text between two real <br>s,
+             which is the unit the fix actually moves as one — using each
+             line's overall bounding box rather than every individual
+             wrapped sub-line's rect, since a line that itself wraps to
+             several visual rows is expected to do that inside one page,
+             not to additionally be split sub-line by sub-line. */
+          let lineStraddling = 0, lineTotal = 0;
+          const megaP = Array.from(document.querySelectorAll(".ed-area p")).find((p) => p.querySelectorAll(":scope > br").length > 10);
+          if (megaP) {
+            /* pg-spacer <br>s (the fix's own page-break markers) are not
+               part of any line's real content — skip past them so a
+               line's measured box starts at its actual first character,
+               not at the blank spacer sitting in front of it. */
+            const skipSpacers = (n) => {
+              while (n && n.nodeType === 1 && n.classList.contains("pg-spacer")) n = n.nextSibling;
+              return n;
+            };
+            const brs = Array.from(megaP.querySelectorAll(":scope > br")).filter((b) => !b.classList.contains("pg-spacer"));
+            let start = skipSpacers(megaP.firstChild);
+            brs.concat([null]).forEach((br) => {
+              const range = document.createRange();
+              range.setStartBefore(start);
+              if (br) range.setEndBefore(br); else range.setEndAfter(megaP.lastChild);
+              const rects = Array.from(range.getClientRects()).filter((r) => r.width >= 1 && r.height >= 1);
+              if (rects.length) {
+                const top = Math.min(...rects.map((r) => r.top));
+                const bottom = Math.max(...rects.map((r) => r.bottom));
+                lineTotal++;
+                if (!bands.some((b) => top >= b.top - 3 && bottom <= b.bottom + 3)) lineStraddling++;
+              }
+              if (br) start = skipSpacers(br.nextSibling);
+            });
+          }
           const pres = Array.from(document.querySelectorAll(".ed-area pre"));
           /* A wrapped line shows up as the block's own rendered width
              capping its content — scrollWidth (the content's natural,
@@ -156,6 +196,7 @@ ${"Длинный абзац прозы, много раз повторённы�
             overflowsH: area.scrollWidth > area.clientWidth + 1,
             scrollWidth: area.scrollWidth, clientWidth: area.clientWidth,
             bandCount: bands.length, rowCount: rows.length, straddling,
+            lineTotal, lineStraddling,
             preCount: pres.length,
           };
         });
@@ -165,6 +206,8 @@ ${"Длинный абзац прозы, много раз повторённы�
           "scrollWidth=" + info.scrollWidth + " clientWidth=" + info.clientWidth);
         check("no table row straddles a page boundary :: " + label, info.straddling === 0,
           info.straddling + " of " + info.rowCount + " rows straddle a page (bands=" + info.bandCount + ")");
+        check("no line of the <br>-joined paragraph straddles a page boundary :: " + label, info.lineStraddling === 0,
+          info.lineStraddling + " of " + info.lineTotal + " line rects straddle a page (bands=" + info.bandCount + ")");
         check("code block present and paginated :: " + label, info.preCount > 0, "preCount=" + info.preCount);
       }
     }
