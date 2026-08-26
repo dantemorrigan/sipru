@@ -432,7 +432,7 @@ function NoteCard({ n, nav, idx, onDelete, lang }) {
    file). Reading them from there keeps the counter the writer sees and the
    limit that actually applies from drifting apart. */
 const SYNOPSIS_MIN_WORDS = SipruStore.LIMITS.synopsisMinWords;
-const SYNOPSIS_MAX_WORDS = SipruStore.LIMITS.synopsisMaxWords;
+const SYNOPSIS_MAX_CHARS = SipruStore.LIMITS.synopsisMaxChars;
 const TITLE_MAX = SipruStore.LIMITS.titleMax;
 
 function countWords(text) {
@@ -511,13 +511,8 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
               )}
               {editSynopsis ? (
                 <>
-                  <textarea className="proj-syn-input" autoFocus value={synDraft} rows={3}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      const words = val.match(/\S+/g) || [];
-                      if (words.length > SYNOPSIS_MAX_WORDS) return;
-                      setSynDraft(val);
-                    }}
+                  <textarea className="proj-syn-input" autoFocus value={synDraft} rows={3} maxLength={SYNOPSIS_MAX_CHARS}
+                    onChange={(e) => setSynDraft(e.target.value)}
                     onBlur={(e) => {
                       const trimmed = synDraft.trim();
                       const wc = countWords(trimmed);
@@ -527,7 +522,7 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
                     }}
                     onKeyDown={(e) => { if (e.key === "Escape") { setEditSynopsis(false); } }} />
                   <p className={"proj-syn-hint mono" + (countWords(synDraft) > 0 && countWords(synDraft) < SYNOPSIS_MIN_WORDS ? " warn" : "")}>
-                    {countWords(synDraft)} / {SYNOPSIS_MIN_WORDS}–{SYNOPSIS_MAX_WORDS} {tl("synopsis_words_unit")}
+                    {synDraft.length} / {SYNOPSIS_MAX_CHARS} {tl("synopsis_chars_unit")}
                   </p>
                 </>
               ) : p.synopsis ? (
