@@ -89,8 +89,8 @@ function freshStore(opts) {
 
   const words = Array.from({ length: 200 }, (_, i) => "слово" + i).join(" ");
   store.updateProject(pid, { synopsis: words });
-  const synWords = p().synopsis.split(/\s+/).length;
-  eq("a too-long synopsis is capped to the word limit", synWords, store.LIMITS.synopsisMaxWords);
+  check("a too-long synopsis is capped to the char limit",
+    p().synopsis.length <= store.LIMITS.synopsisMaxChars, p().synopsis.length);
   check("the capped synopsis keeps the first words, in order",
     p().synopsis.indexOf("слово0 слово1 слово2") === 0, p().synopsis.slice(0, 40));
 
@@ -169,7 +169,8 @@ function freshStore(opts) {
   check("an oversized backup restores", store.importAll(oversize) === true);
   const p3 = store.get().projects[0];
   eq("a restored title is capped", p3.title.length, store.LIMITS.titleMax);
-  eq("a restored synopsis is capped", p3.synopsis.split(/\s+/).length, store.LIMITS.synopsisMaxWords);
+  check("a restored synopsis is capped",
+    p3.synopsis.length <= store.LIMITS.synopsisMaxChars, p3.synopsis.length);
 
   /* a chapter pointing at a part that isn't there must not vanish */
   const orphan = JSON.stringify({

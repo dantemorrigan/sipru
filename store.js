@@ -32,7 +32,7 @@
      too means text arriving by any other route — a restored backup, a
      vault file written by another build — lands inside the same bounds
      rather than reintroducing the same layout bug. */
-  const LIMITS = { titleMax: 120, synopsisMinWords: 3, synopsisMaxWords: 40 };
+  const LIMITS = { titleMax: 120, synopsisMinWords: 3, synopsisMaxChars: 300 };
 
   function clampTitle(s) {
     const t = String(s == null ? "" : s).replace(/\s+/g, " ").trim();
@@ -40,9 +40,7 @@
   }
   function clampSynopsis(s) {
     const t = String(s == null ? "" : s).trim();
-    const words = t.match(/\S+/g);
-    if (!words || words.length <= LIMITS.synopsisMaxWords) return t;
-    return words.slice(0, LIMITS.synopsisMaxWords).join(" ");
+    return t.length > LIMITS.synopsisMaxChars ? t.slice(0, LIMITS.synopsisMaxChars).trim() : t;
   }
 
   function countWords(html) {
