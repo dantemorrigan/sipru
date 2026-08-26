@@ -80,6 +80,7 @@
       del_chapter_title: "Удалить главу",
       rename_hint: "Нажмите, чтобы переименовать",
       edit_synopsis_hint: "Нажмите для редактирования",
+      synopsis_words_unit: "слов",
 
       /* ---- confirm delete modal ---- */
       confirm_delete_q: "Удалить",
@@ -477,6 +478,7 @@
       del_chapter_title: "Delete chapter",
       rename_hint: "Click to rename",
       edit_synopsis_hint: "Click to edit",
+      synopsis_words_unit: "words",
 
       /* ---- confirm delete modal ---- */
       confirm_delete_q: "Delete",

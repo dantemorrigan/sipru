@@ -1,6 +1,29 @@
 /* ============================================================
    Sipru. — onboarding (first run)
    ============================================================ */
+/* Emoji flags (🇬🇧/🇷🇺) don't render as flags on Windows — most Windows
+   fonts fall back to the bare two-letter region code. Draw them as inline
+   SVGs instead so they render the same on every platform. */
+function FlagGB() {
+  return (
+    <svg className="onb-lang-flag-svg" viewBox="0 0 60 36" width="26" height="16" aria-hidden="true">
+      <rect width="60" height="36" fill="#00247d" />
+      <path d="M0,0 L60,36 M60,0 L0,36" stroke="#fff" strokeWidth="7" />
+      <path d="M0,0 L60,36 M60,0 L0,36" stroke="#cf142b" strokeWidth="3" />
+      <path d="M30,0 V36 M0,18 H60" stroke="#fff" strokeWidth="11" />
+      <path d="M30,0 V36 M0,18 H60" stroke="#cf142b" strokeWidth="6" />
+    </svg>
+  );
+}
+function FlagRU() {
+  return (
+    <svg className="onb-lang-flag-svg" viewBox="0 0 60 36" width="26" height="16" aria-hidden="true">
+      <rect width="60" height="12" y="0" fill="#fff" />
+      <rect width="60" height="12" y="12" fill="#0039a6" />
+      <rect width="60" height="12" y="24" fill="#d52b1e" />
+    </svg>
+  );
+}
 function Onboarding({ onDone }) {
   const [step, setStep] = useState(-1);   /* -1 = language pick */
   const [lang, setLang] = useState(() => navigator.language && navigator.language.startsWith("ru") ? "ru" : "en");
@@ -85,11 +108,11 @@ function Onboarding({ onDone }) {
           </h2>
           <div className="onb-langs">
             <button className={"onb-lang-btn" + (lang === "en" ? " on" : "")} onClick={() => setLang("en")}>
-              <span className="onb-lang-flag">🇬🇧</span>
+              <span className="onb-lang-flag"><FlagGB /></span>
               <span>English</span>
             </button>
             <button className={"onb-lang-btn" + (lang === "ru" ? " on" : "")} onClick={() => setLang("ru")}>
-              <span className="onb-lang-flag">🇷🇺</span>
+              <span className="onb-lang-flag"><FlagRU /></span>
               <span>Русский</span>
             </button>
           </div>
