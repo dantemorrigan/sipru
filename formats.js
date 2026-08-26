@@ -11,6 +11,13 @@
   const ALLOWED = new Set(BLOCKS.concat(INLINE));
   /* Void elements have no closing tag and no children to walk into. */
   const VOID = new Set(["br","hr","img","input"]);
+  /* Generic containers apps paste as one-<div>(or <section>/<li>-less
+     list wrapper etc.)-per-paragraph markup (Google Docs, Notion, most
+     chat UIs' citation widgets). They render block-level in the source,
+     so unwrapping one without marking where its edges were would glue
+     the text before and after it into one run with no space at all —
+     see the walk() unwrap branch below. */
+  const BLOCKISH_UNKNOWN = new Set(["div","section","article","header","footer","nav","main"]);
   /* The only attributes that ever survive a sanitise: the handful of marker
      classes and data-* keys the editor uses to tell its own block types
      apart. Everything else — style, href, on*, id — is still dropped. */
@@ -71,7 +78,13 @@
         /* a <div> only survives as the footnote store; every other one is
            unwrapped exactly as it always was */
         const isFnBox = tag === "div" && (n.getAttribute("class") || "").indexOf("fn-defs") >= 0;
-        if (!ALLOWED.has(tag) && !isFnBox) { walk(n, into); return; }   // unwrap unknown tags
+        if (!ALLOWED.has(tag) && !isFnBox) {   // unwrap unknown tags
+          const blockish = BLOCKISH_UNKNOWN.has(tag);
+          if (blockish && into.lastChild) into.appendChild(document.createElement("br"));
+          walk(n, into);
+          if (blockish && n.nextSibling) into.appendChild(document.createElement("br"));
+          return;
+        }
         /* an <input> only survives as a task-list checkbox; any other kind
            of form control is dropped rather than rebuilt as one */
         if (tag === "input" && (n.getAttribute("type") || "").toLowerCase() !== "checkbox") return;
