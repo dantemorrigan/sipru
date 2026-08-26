@@ -49,6 +49,13 @@ function App() {
   // apply theme
   useEffect(() => { document.documentElement.setAttribute("data-theme", user.theme || "light"); }, [user.theme]);
 
+  /* A save that silently fails is the one error a writer must be told about
+     while the text is still on screen and can be copied out. */
+  useEffect(() => store.onPersistError((info) => {
+    const tl = T(store.get().user.lang || "en");
+    toast(tl(info.kind === "quota" ? "toast_storage_full" : "toast_storage_err"));
+  }), [store, toast]);
+
   const setTheme = (t) => store.setUser({ theme: t });
 
   const nav = useMemo(() => ({
@@ -119,6 +126,7 @@ function App() {
       {/* checks in the background well after first paint; renders nothing
           until writed.ru actually reports a higher build number */}
       {s.tourDone && <UpdateBanner lang={user.lang} />}
+      <StorageWarning store={store} lang={user.lang} onToast={toast} />
       {toastNode}
     </>
   );

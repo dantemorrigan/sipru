@@ -1901,7 +1901,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
             {project && <span className="ed-crumb-proj" onClick={() => nav.project(project.id)}>{project.title}</span>}
             {project && <span className="ed-crumb-sep mono">/</span>}
             {renaming ? (
-              <input className="ed-rename" autoFocus defaultValue={doc.title}
+              <input className="ed-rename" autoFocus defaultValue={doc.title} maxLength={SipruStore.LIMITS.titleMax}
                 onBlur={(e) => { store.updateDoc(docId, { title: e.target.value.trim() || doc.title }); setRenaming(false); }}
                 onKeyDown={(e) => e.key === "Enter" && e.target.blur()} />
             ) : (

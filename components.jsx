@@ -190,6 +190,82 @@ function useToast() {
   return [node, show];
 }
 
+/* ---------- country flags ----------
+   Emoji flags (🇬🇧/🇷🇺) don't render as flags on Windows — most Windows
+   fonts have no flag glyphs and fall back to the bare two-letter region
+   code, so the language picker showed "GB"/"RU" instead. Inline SVGs
+   render identically on every platform. */
+function FlagGB() {
+  return (
+    <svg className="lang-flag-svg" viewBox="0 0 60 36" width="26" height="16" aria-hidden="true">
+      <rect width="60" height="36" fill="#00247d" />
+      <path d="M0,0 L60,36 M60,0 L0,36" stroke="#fff" strokeWidth="7" />
+      <path d="M0,0 L60,36 M60,0 L0,36" stroke="#cf142b" strokeWidth="3" />
+      <path d="M30,0 V36 M0,18 H60" stroke="#fff" strokeWidth="11" />
+      <path d="M30,0 V36 M0,18 H60" stroke="#cf142b" strokeWidth="6" />
+    </svg>
+  );
+}
+function FlagRU() {
+  return (
+    <svg className="lang-flag-svg" viewBox="0 0 60 36" width="26" height="16" aria-hidden="true">
+      <rect width="60" height="12" y="0" fill="#fff" />
+      <rect width="60" height="12" y="12" fill="#0039a6" />
+      <rect width="60" height="12" y="24" fill="#d52b1e" />
+    </svg>
+  );
+}
+
+/* ---------- storage pressure warning ----------
+   Everything lives in localStorage, so the only real safety net is an
+   exported backup. The warning fires while there is still room to write
+   one — once the quota is actually full, the export itself still works but
+   the writing does not, and by then text has already been lost. It also
+   shows outright if a save has already failed. */
+const STORAGE_WARN_AT = 0.8;
+function StorageWarning({ store, lang, onToast }) {
+  const tl = T(lang || "en");
+  const [dismissed, setDismissed] = useState(false);
+  const usage = store.storageUsage();
+  const failed = !store.isWritable();
+  const tight = !!usage && usage.ratio >= STORAGE_WARN_AT;
+
+  /* A failed save is not dismissible-and-forgotten: it comes back on the
+     next render precisely because the condition is still true. */
+  if (dismissed && !failed) return null;
+  if (!tight && !failed) return null;
+
+  const pct = usage ? Math.min(99, Math.round(usage.ratio * 100)) : null;
+  return (
+    <div className="stor-warn" role="status">
+      <div className="upd-main">
+        <div className="upd-title">
+          <span className="upd-spark" aria-hidden="true">⚠</span>
+          {tl(failed ? "storage_full_title" : "storage_warn_title")}
+        </div>
+        <div className="upd-notes mono">
+          {tl(failed ? "storage_full_body" : "storage_warn_body")}
+          {pct != null && !failed ? " · " + pct + "%" : ""}
+        </div>
+      </div>
+      <div className="upd-actions">
+        <button className="upd-go" onClick={() => {
+          try {
+            downloadBlob("sipru-backup-" + new Date().toISOString().slice(0, 10) + ".json",
+              "application/json", store.exportAll());
+            if (onToast) onToast(tl("toast_backup_dl"));
+          } catch (e) { if (onToast) onToast(tl("toast_backup_err")); }
+        }}>{tl("storage_warn_backup")}</button>
+        {!failed && (
+          <button className="upd-x" onClick={() => setDismissed(true)} title={tl("upd_dismiss")}>
+            <Icon name="close" size={15} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- project / global search (⌘K) ---------- */
 function SearchModal({ store, lang, projectId, onPick, onClose }) {
   const tl = T(lang || "en");
@@ -262,7 +338,11 @@ function SearchModal({ store, lang, projectId, onPick, onClose }) {
           ))}
         </div>
         <div className="search-foot mono">
-          {results.length ? results.length + " " + tl("search_results_n") + " · " : ""}{tl("search_hint")}
+          {results.length
+            ? (results.truncated
+                ? tl("search_results_first") + " " + results.length + " " + tl("search_results_of") + " " + results.total
+                : results.length + " " + tl("search_results_n")) + " · "
+            : ""}{tl("search_hint")}
         </div>
       </div>
     </div>
@@ -352,5 +432,5 @@ function useDismiss(onClose) {
 
 Object.assign(window, {
   useStore, Icon, ICONS, Logo, StatsDot, ThemeToggle, timeAgo, plural, wordsLabel, useToast, FONT_LABEL, T, SearchModal,
-  useDismiss, BarMenu,
+  useDismiss, BarMenu, StorageWarning, FlagGB, FlagRU,
 });
