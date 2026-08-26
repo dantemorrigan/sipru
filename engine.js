@@ -138,14 +138,22 @@
     let changed = false;
 
     /* --- 1. unwrap containers the schema doesn't know ---
-       <div> from a stray Enter, <section> from an old import: keep the
-       children, drop the wrapper. */
+       <div> from a stray Enter, <section> from an old import, or one
+       paragraph-per-<div> markup pasted from another app (Google Docs,
+       Notion, various chat UIs' citation widgets): keep the children,
+       drop the wrapper. A div/section/etc. is block-level, so it always
+       implied a line break against whatever inline text sat right next
+       to it — dropping the wrapper without replacing that break glues
+       the two runs into one, letters touching with no space between
+       them once wrapLooseRuns (step 4) folds them into a single <p>. */
     const strays = root.querySelectorAll("div, section, article, main, header, footer, nav");
     for (let i = 0; i < strays.length; i++) {
       const el = strays[i];
       /* the footnote store and the pagination spacers are the layout's own
          nodes, not text the writer typed */
       if (isFnBox(el) || isMachinery(el)) continue;
+      if (el.firstChild && isInline(el.previousSibling)) el.parentNode.insertBefore(document.createElement("br"), el);
+      if (el.lastChild && isInline(el.nextSibling)) el.parentNode.insertBefore(document.createElement("br"), el.nextSibling);
       unwrapInto(el);
       changed = true;
     }
