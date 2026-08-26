@@ -505,7 +505,10 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
               {editTitle ? (
                 <input className="proj-title-input" autoFocus defaultValue={p.title} maxLength={TITLE_MAX}
                   onBlur={(e) => { store.updateProject(p.id, { title: e.target.value.trim() || p.title }); setEditTitle(false); }}
-                  onKeyDown={(e) => e.key === "Enter" && e.target.blur()} />
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.target.blur();
+                    else if (e.key === "Escape") { e.target.value = p.title; setEditTitle(false); }
+                  }} />
               ) : (
                 <h1 className="proj-title" onClick={() => setEditTitle(true)} title={tl("rename_hint")}>{p.title}</h1>
               )}
@@ -513,10 +516,12 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
                 <>
                   <textarea className="proj-syn-input" autoFocus value={synDraft} rows={3} maxLength={SYNOPSIS_MAX_CHARS}
                     onChange={(e) => setSynDraft(e.target.value)}
-                    onBlur={(e) => {
+                    onBlur={() => {
                       const trimmed = synDraft.trim();
                       const wc = countWords(trimmed);
-                      if (wc > 0 && wc < SYNOPSIS_MIN_WORDS) { e.target.focus(); return; }
+                      /* Too short to keep, but don't trap the writer in the field —
+                         just drop back to the unedited synopsis, same as Escape. */
+                      if (wc > 0 && wc < SYNOPSIS_MIN_WORDS) { setEditSynopsis(false); return; }
                       store.updateProject(p.id, { synopsis: trimmed });
                       setEditSynopsis(false);
                     }}
