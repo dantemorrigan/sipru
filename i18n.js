@@ -215,7 +215,17 @@
       toast_backup_dl: "Бэкап скачан",
       toast_restore_ok: "Данные восстановлены",
       toast_restore_err: "Не удалось прочитать файл",
+      toast_backup_err: "Не удалось скачать бэкап",
       toast_reset: "Данные сброшены",
+
+      /* ---- storage pressure ---- */
+      toast_storage_full: "Хранилище переполнено — изменения не сохраняются. Скачайте бэкап.",
+      toast_storage_err: "Не удалось сохранить изменения",
+      storage_warn_title: "Хранилище почти заполнено",
+      storage_warn_body: "Скачайте резервную копию, пока есть место",
+      storage_full_title: "Изменения не сохраняются",
+      storage_full_body: "Хранилище переполнено. Скачайте копию, прежде чем закрывать вкладку",
+      storage_warn_backup: "Скачать копию",
       prof_eyebrow: "Профиль",
       prof_since: "с нами с",
       prof_upload_photo: "Загрузить фото",
@@ -353,6 +363,8 @@
       search_in_title: "в названии",
       search_synopsis: "синопсис",
       search_results_n: "результатов",
+      search_results_first: "первые",
+      search_results_of: "из",
 
       /* ---- undo / redo ---- */
       ed_undo: "Отменить",
@@ -613,7 +625,17 @@
       toast_backup_dl: "Backup downloaded",
       toast_restore_ok: "Data restored",
       toast_restore_err: "Could not read file",
+      toast_backup_err: "Could not download the backup",
       toast_reset: "Data reset",
+
+      /* ---- storage pressure ---- */
+      toast_storage_full: "Storage is full — changes aren't being saved. Download a backup.",
+      toast_storage_err: "Could not save your changes",
+      storage_warn_title: "Storage is nearly full",
+      storage_warn_body: "Download a backup while there is still room",
+      storage_full_title: "Changes aren't being saved",
+      storage_full_body: "Storage is full. Download a backup before closing this tab",
+      storage_warn_backup: "Download backup",
       prof_eyebrow: "Profile",
       prof_since: "with us since",
       prof_upload_photo: "Upload photo",
@@ -751,6 +773,8 @@
       search_in_title: "in title",
       search_synopsis: "synopsis",
       search_results_n: "results",
+      search_results_first: "first",
+      search_results_of: "of",
 
       /* ---- undo / redo ---- */
       ed_undo: "Undo",

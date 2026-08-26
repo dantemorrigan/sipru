@@ -427,8 +427,13 @@ function NoteCard({ n, nav, idx, onDelete, lang }) {
   );
 }
 
-const SYNOPSIS_MIN_WORDS = 3;
-const SYNOPSIS_MAX_WORDS = 40;
+/* The store owns these bounds — it enforces them on every write, including
+   the ones that never pass through this screen (a restored backup, a vault
+   file). Reading them from there keeps the counter the writer sees and the
+   limit that actually applies from drifting apart. */
+const SYNOPSIS_MIN_WORDS = SipruStore.LIMITS.synopsisMinWords;
+const SYNOPSIS_MAX_WORDS = SipruStore.LIMITS.synopsisMaxWords;
+const TITLE_MAX = SipruStore.LIMITS.titleMax;
 
 function countWords(text) {
   const m = text.trim().match(/\S+/g);
@@ -498,7 +503,7 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
             <div className="proj-hero-main">
               <div className="eyebrow">{lang === "ru" ? "Проект" : "Project"} · {p.status === "done" ? tl("status_done") : tl("status_draft")}</div>
               {editTitle ? (
-                <input className="proj-title-input" autoFocus defaultValue={p.title}
+                <input className="proj-title-input" autoFocus defaultValue={p.title} maxLength={TITLE_MAX}
                   onBlur={(e) => { store.updateProject(p.id, { title: e.target.value.trim() || p.title }); setEditTitle(false); }}
                   onKeyDown={(e) => e.key === "Enter" && e.target.blur()} />
               ) : (

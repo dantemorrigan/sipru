@@ -76,7 +76,7 @@ function OutlineRow({ kind, id, depth, title, words, max, status, open, hasKids,
         : <span className="ol-caret ol-caret--none" />}
 
       {editing ? (
-        <input className="ol-rename" autoFocus defaultValue={title}
+        <input className="ol-rename" autoFocus defaultValue={title} maxLength={SipruStore.LIMITS.titleMax}
           onClick={(e) => e.stopPropagation()}
           onBlur={(e) => { const v = e.target.value.trim(); setEditing(false); if (v && v !== title) onRename(v); }}
           onDoubleClick={(e) => e.stopPropagation()}

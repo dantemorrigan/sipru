@@ -127,8 +127,8 @@ function Profile({ store, user, nav, onTheme, onToast }) {
             <span className="prof-set-l">{tl("prof_lbl_lang")}</span>
             <div className="prof-set-c">
               <div className="seg seg--sm">
-                <button className={"seg-btn"+(lang==="en"?" on":"")} onClick={()=>store.setUser({lang:"en"})}>🇬🇧 English</button>
-                <button className={"seg-btn"+(lang==="ru"?" on":"")} onClick={()=>store.setUser({lang:"ru"})}>🇷🇺 Русский</button>
+                <button className={"seg-btn"+(lang==="en"?" on":"")} onClick={()=>store.setUser({lang:"en"})}><FlagGB /> English</button>
+                <button className={"seg-btn"+(lang==="ru"?" on":"")} onClick={()=>store.setUser({lang:"ru"})}><FlagRU /> Русский</button>
               </div>
             </div>
           </div>

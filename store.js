@@ -5,8 +5,45 @@
   const KEY = "sipru:v1";
   const LEGACY_KEY = "writed:v1"; /* pre-rename installs still load once */
   const listeners = new Set();
-  const uid = (p) => p + Math.random().toString(36).slice(2, 9);
+  /* Ids are compared, never parsed, so the only thing that matters is that
+     two of them never collide. The crypto RNG gives that outright; the
+     Math.random() tail stays as the fallback for any context that doesn't
+     expose one (and every id already written by an older build keeps
+     working, since nothing reads structure out of them). */
+  function rand() {
+    try {
+      const c = typeof crypto !== "undefined" ? crypto : null;
+      if (c && c.randomUUID) return c.randomUUID().replace(/-/g, "").slice(0, 12);
+      if (c && c.getRandomValues) {
+        const b = new Uint8Array(6);
+        c.getRandomValues(b);
+        return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+      }
+    } catch (e) {}
+    return Math.random().toString(36).slice(2, 9);
+  }
+  const uid = (p) => p + rand();
   const now = () => Date.now();
+
+  /* ---- content limits ----
+     A title that never ends and a synopsis the length of a chapter both
+     break layout somewhere downstream (dashboard cards, the export title
+     page). The editing UI enforces these as you type; enforcing them here
+     too means text arriving by any other route — a restored backup, a
+     vault file written by another build — lands inside the same bounds
+     rather than reintroducing the same layout bug. */
+  const LIMITS = { titleMax: 120, synopsisMinWords: 3, synopsisMaxWords: 40 };
+
+  function clampTitle(s) {
+    const t = String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+    return t.length > LIMITS.titleMax ? t.slice(0, LIMITS.titleMax).trim() : t;
+  }
+  function clampSynopsis(s) {
+    const t = String(s == null ? "" : s).trim();
+    const words = t.match(/\S+/g);
+    if (!words || words.length <= LIMITS.synopsisMaxWords) return t;
+    return words.slice(0, LIMITS.synopsisMaxWords).join(" ");
+  }
 
   function countWords(html) {
     const t = (html || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ");
@@ -51,6 +88,7 @@
 
   const SCHEMA = 3;
   const MAX_SNAPSHOTS = 30;
+  const SEARCH_LIMIT = 60;
 
   /* ---- page & typography defaults ----
      Millimetres for the sheet, points for type — the units a writer thinks
@@ -85,19 +123,35 @@
     return p;
   }
 
-  /* Non-destructive migration: only adds missing fields, never drops data. */
+  /* Non-destructive migration: only adds missing fields, never drops data.
+     It is also the gate every restored backup passes through, so the shape
+     checks are real rather than nominal — an array, a string or a number
+     parsed out of a JSON file is not a store, and accepting one would
+     replace the writer's work with an empty one. */
   function migrate(s) {
-    if (!s || typeof s !== "object") return null;
-    if (!s.user) s.user = {};
+    if (!s || typeof s !== "object" || Array.isArray(s)) return null;
+    if (!s.user || typeof s.user !== "object" || Array.isArray(s.user)) s.user = {};
     if (!Array.isArray(s.projects)) s.projects = [];
     if (!Array.isArray(s.notes)) s.notes = [];
+    /* A malformed entry is dropped rather than left to crash a render
+       later: every screen assumes a project has an id and a chapters
+       array. */
+    s.projects = s.projects.filter((p) => p && typeof p === "object" && !Array.isArray(p));
+    s.notes = s.notes.filter((n) => n && typeof n === "object" && !Array.isArray(n));
     s.projects.forEach((p) => {
+      if (!p.id) p.id = uid("p_");
+      p.title = clampTitle(p.title);
+      p.synopsis = clampSynopsis(p.synopsis);
       if (!Array.isArray(p.chapters)) p.chapters = [];
+      p.chapters = p.chapters.filter((c) => c && typeof c === "object" && !Array.isArray(c));
+      p.chapters.forEach((c) => { if (!c.id) c.id = uid("c_"); c.title = clampTitle(c.title); });
       if (p.goal === undefined) p.goal = null;
       /* v3: structure (parts) + page setup. Both are additive — a project
          written by an older build has neither and reads as "no parts,
          default page", which is exactly what it was. */
       if (!Array.isArray(p.parts)) p.parts = [];
+      p.parts = p.parts.filter((x) => x && typeof x === "object" && !Array.isArray(x));
+      p.parts.forEach((x) => { if (!x.id) x.id = uid("pt_"); x.title = clampTitle(x.title); });
       if (p.page === undefined) p.page = null;
       p.chapters.forEach((c) => {
         if (!Array.isArray(c.snapshots)) c.snapshots = [];
@@ -110,6 +164,8 @@
       p.chapters.forEach((c) => { if (c.partId && !partIds.has(c.partId)) c.partId = null; });
     });
     s.notes.forEach((n) => {
+      if (!n.id) n.id = uid("n_");
+      n.title = clampTitle(n.title);
       if (!Array.isArray(n.snapshots)) n.snapshots = [];
       if (n.page === undefined) n.page = null;
       if (!n.status) n.status = "draft";
@@ -118,30 +174,86 @@
     return s;
   }
 
-  let state = load();
-  function load() {
-    try {
-      const raw = localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY);
-      if (raw) {
-        const parsed = migrate(JSON.parse(raw));
-        if (parsed) return parsed;
-      }
-    } catch (e) {}
-    const s = migrate(seed());
-    persist(s);
-    return s;
+  /* ---- persistence failures are not a silent condition ----
+     localStorage.setItem genuinely fails: a full quota (a long book, or a
+     few pasted base64 images), or a browser configured to refuse writes.
+     Swallowing that is the worst possible outcome here — the writer keeps
+     typing into a store that never reaches disk and finds out only when
+     they reload. Anything listening gets told the first time a write
+     fails, so the UI can say so while the text is still on screen. */
+  const errorListeners = new Set();
+  let writable = true;
+  /* Size of the last thing written, in characters. Recorded here rather
+     than measured on demand: every commit already serializes the whole
+     state, and doing it a second time to draw a warning would put a full
+     re-serialization of the book on every render. */
+  let lastSize = 0;
+
+  function isQuotaError(e) {
+    if (!e) return false;
+    return e.name === "QuotaExceededError" || e.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+      e.code === 22 || e.code === 1014;
   }
+
   function persist(s) {
-    try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {}
+    try {
+      const json = JSON.stringify(s);
+      lastSize = json.length;
+      localStorage.setItem(KEY, json);
+      writable = true;
+      return true;
+    } catch (e) {
+      /* Report the transition, not every keystroke after it: an unwritable
+         store fails on every commit, and a toast per keystroke would bury
+         the app rather than warn about it. */
+      const first = writable;
+      writable = false;
+      if (first) {
+        const info = { kind: isQuotaError(e) ? "quota" : "write", error: e };
+        errorListeners.forEach((fn) => { try { fn(info); } catch (e2) {} });
+      }
+      return false;
+    }
   }
   function commit() {
     persist(state);
     listeners.forEach((fn) => fn(state));
   }
 
+  /* Declared after persist(): seeding a brand-new install writes through it
+     straight away, so it has to already exist by the time this runs. */
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY);
+      if (raw) {
+        const parsed = migrate(JSON.parse(raw));
+        if (parsed) { lastSize = raw.length; return parsed; }
+      }
+    } catch (e) {}
+    const s = migrate(seed());
+    persist(s);
+    return s;
+  }
+  let state = load();
+
   const Store = {
     get: () => state,
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+    /* fires once when saving starts failing (quota full, writes refused) */
+    onPersistError(fn) { errorListeners.add(fn); return () => errorListeners.delete(fn); },
+    isWritable: () => writable,
+
+    /* ---- how close the store is to filling its budget ----
+       No browser publishes an exact localStorage quota, but ~5M characters
+       is the near-universal floor, so that is what "nearly full" is
+       measured against. Reads the size recorded by the last write, so
+       asking is free — it is used to nudge for a backup *before* the write
+       that fails, not after. */
+    LIMITS,
+    STORAGE_BUDGET: 5 * 1024 * 1024,
+    storageUsage() {
+      return { bytes: lastSize, budget: Store.STORAGE_BUDGET, ratio: lastSize / Store.STORAGE_BUDGET };
+    },
 
     /* ---- user / onboarding ---- */
     completeOnboarding(name, theme, lang) {
@@ -160,13 +272,18 @@
 
     /* ---- projects ---- */
     createProject(title) {
-      const p = { id: uid("p_"), title: title || "Без названия", status: "draft",
+      const p = { id: uid("p_"), title: clampTitle(title) || "Без названия", status: "draft",
         synopsis: "", createdAt: now(), updatedAt: now(), chapters: [], parts: [], page: null };
       state.projects.unshift(p); commit(); return p.id;
     },
     updateProject(id, patch) {
       const p = state.projects.find((x) => x.id === id);
-      if (p) { Object.assign(p, patch, { updatedAt: now() }); commit(); }
+      if (!p) return;
+      const next = Object.assign({}, patch);
+      if (next.title != null) next.title = clampTitle(next.title) || p.title;
+      if (next.synopsis != null) next.synopsis = clampSynopsis(next.synopsis);
+      Object.assign(p, next, { updatedAt: now() });
+      commit();
     },
     deleteProject(id) { state.projects = state.projects.filter((p) => p.id !== id); commit(); },
     reorderChapters(pid, ids) {
@@ -176,7 +293,7 @@
     addChapter(pid, title, opts) {
       const p = state.projects.find((x) => x.id === pid);
       if (!p) return null;
-      const c = { id: uid("c_"), title: title || ("Глава " + (p.chapters.length + 1)),
+      const c = { id: uid("c_"), title: clampTitle(title) || ("Глава " + (p.chapters.length + 1)),
         content: "", updatedAt: now(), status: "draft",
         partId: opts && opts.partId ? opts.partId : null };
       if (opts && Number.isInteger(opts.index)) p.chapters.splice(Math.max(0, Math.min(opts.index, p.chapters.length)), 0, c);
@@ -192,13 +309,16 @@
     addPart(pid, title) {
       const p = state.projects.find((x) => x.id === pid);
       if (!p) return null;
-      const part = { id: uid("pt_"), title: title || "", createdAt: now() };
+      const part = { id: uid("pt_"), title: clampTitle(title), createdAt: now() };
       p.parts.push(part); p.updatedAt = now(); commit(); return part.id;
     },
     updatePart(pid, partId, patch) {
       const p = state.projects.find((x) => x.id === pid);
       const part = p && p.parts.find((x) => x.id === partId);
-      if (part) { Object.assign(part, patch); p.updatedAt = now(); commit(); }
+      if (!part) return;
+      const next = Object.assign({}, patch);
+      if (next.title != null) next.title = clampTitle(next.title);
+      Object.assign(part, next); p.updatedAt = now(); commit();
     },
     /* Deleting a part never deletes text: its chapters move back up to the
        project root. */
@@ -254,7 +374,7 @@
 
     /* ---- notes ---- */
     createNote(title) {
-      const n = { id: uid("n_"), title: title || "Новая заметка", status: "draft",
+      const n = { id: uid("n_"), title: clampTitle(title) || "Новая заметка", status: "draft",
         createdAt: now(), updatedAt: now(), content: "", page: null };
       state.notes.unshift(n); commit(); return n.id;
     },
@@ -273,6 +393,9 @@
     updateDoc(docId, patch) {
       const f = Store.findDoc(docId);
       if (!f) return;
+      if (patch && patch.title != null) {
+        patch = Object.assign({}, patch, { title: clampTitle(patch.title) || f.doc.title });
+      }
       Object.assign(f.doc, patch, { updatedAt: now() });
       if (patch.content != null) f.doc.words = countWords(patch.content);
       if (f.project) f.project.updatedAt = now();
@@ -345,7 +468,13 @@
         p.chapters.forEach((c) => scan(c, p, "chapter"));
       });
       if (!projectId) state.notes.forEach((n) => scan(n, null, "note"));
-      return out.slice(0, 60);
+      /* The list is capped so a very broad query can't render thousands of
+         rows, but the cap is reported rather than hidden — "40 results"
+         when there were 400 is a wrong answer, not a short one. */
+      const shown = out.slice(0, SEARCH_LIMIT);
+      shown.total = out.length;
+      shown.truncated = out.length > shown.length;
+      return shown;
     },
 
     /* ---- stats ---- */
@@ -361,14 +490,32 @@
 
     /* ---- backup ---- */
     exportAll() { return JSON.stringify(state, null, 2); },
+    /* Restoring replaces everything the writer has, so it only commits once
+       the incoming state has both parsed and been written to disk. If the
+       write fails (a backup larger than the remaining quota), the previous
+       state is put back rather than left half-replaced in memory — the
+       reload would otherwise resurrect the old data and silently discard
+       the restore the writer thinks succeeded. */
     importAll(json) {
-      try { const s = migrate(JSON.parse(json)); if (s && s.user) { state = s; textCache.clear(); commit(); return true; } }
-      catch (e) {}
-      return false;
+      const backup = state;
+      const backupSize = lastSize;
+      let s;
+      try { s = migrate(JSON.parse(json)); } catch (e) { return false; }
+      if (!s || !s.user) return false;
+      state = s;
+      textCache.clear();
+      if (!persist(state)) {
+        state = backup;
+        lastSize = backupSize;   /* the failed write is not what's on disk */
+        textCache.clear();
+        return false;
+      }
+      listeners.forEach((fn) => fn(state));
+      return true;
     },
     reset() { localStorage.removeItem(KEY); localStorage.removeItem(LEGACY_KEY); state = migrate(seed()); textCache.clear(); commit(); },
 
-    countWords
+    countWords, clampTitle, clampSynopsis, SEARCH_LIMIT
   };
 
   window.SipruStore = Store;

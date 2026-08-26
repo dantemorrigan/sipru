@@ -19,6 +19,19 @@ try {
 const root = path.join(__dirname, "..");
 spawnSync(process.execPath, [path.join(root, "build.js")], { stdio: "inherit" });
 
+/* store.js has no DOM in it, so its suite needs no browser and runs first —
+   a broken migration or a store that silently drops writes is worth failing
+   on before spending a minute in Chromium. */
+{
+  const store = spawnSync(process.execPath, [path.join(__dirname, "store.js")], { stdio: "inherit" });
+  if (store.status) process.exit(store.status);
+
+  /* i18n.js is likewise pure data: a key missing from one language falls
+     back to the other silently, so nothing but a check catches it. */
+  const i18n = spawnSync(process.execPath, [path.join(__dirname, "i18n.js")], { stdio: "inherit" });
+  if (i18n.status) process.exit(i18n.status);
+}
+
 (async () => {
   const launch = {};
   if (process.env.CHROME_PATH) launch.executablePath = process.env.CHROME_PATH;
@@ -57,4 +70,10 @@ spawnSync(process.execPath, [path.join(root, "build.js")], { stdio: "inherit" })
      single fixed page size. */
   const pagination = spawnSync(process.execPath, [path.join(__dirname, "pagination.js")], { stdio: "inherit" });
   if (pagination.status) process.exit(pagination.status);
+
+  /* export.js checks the export preview's title page across panel widths —
+     the class of bug the others can't see, since it only appears once the
+     sheet is scaled down and the text has to scale with it. */
+  const exp = spawnSync(process.execPath, [path.join(__dirname, "export.js")], { stdio: "inherit" });
+  if (exp.status) process.exit(exp.status);
 })();
