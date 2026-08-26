@@ -1250,6 +1250,23 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 
   const pageCount = pages.length;
   const paperH = pageCount * (geom.pageH + geom.gap) - geom.gap;
+  /* Pagination places content by measuring the live DOM and inserting
+     spacer pushes — real math, on real font metrics, that can be off by a
+     rounding pixel at an unusual zoom/format combo, or briefly stale mid
+     re-layout. Rather than trust that math to always land text and images
+     exactly inside each sheet, clip the flowing area to the sheets' own
+     content bands: whatever the pagination pass gets wrong stays invisible
+     in the gap between pages instead of spilling across a page edge. This
+     is a hard guarantee, independent of how pagination is computed. */
+  const clipPath = useMemo(() => {
+    const cycle = geom.pageH + geom.gap;
+    let d = "";
+    for (let i = 0; i < pageCount; i++) {
+      const y0 = i * cycle, y1 = y0 + geom.contentH;
+      d += `M0 ${y0} L${geom.contentW} ${y0} L${geom.contentW} ${y1} L0 ${y1} Z `;
+    }
+    return `path("${d.trim()}")`;
+  }, [pageCount, geom.pageH, geom.gap, geom.contentH, geom.contentW]);
 
   /* ---- scenes: the outline follows the caret and the scroll ---- */
   function onScroll() {
@@ -2069,7 +2086,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
             <div ref={(el) => { ref.current = el; if (el) nodeRef.current = el; }}
               className="ed-area" contentEditable suppressContentEditableWarning
               spellCheck={true} lang={lang} data-placeholder={tl("editor_placeholder")}
-              style={{ top: geom.mt, left: geom.ml, width: geom.contentW }}
+              style={{ top: geom.mt, left: geom.ml, width: geom.contentW, clipPath }}
               onInput={onInput} onPaste={onPaste} onKeyDown={onKeyDown} onKeyUp={onKeyUp} onClick={onAreaClick}
               onMouseUp={refreshActive} onFocus={refreshActive} />
           </div>
