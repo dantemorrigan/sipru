@@ -427,6 +427,14 @@ function NoteCard({ n, nav, idx, onDelete, lang }) {
   );
 }
 
+const SYNOPSIS_MIN_WORDS = 3;
+const SYNOPSIS_MAX_WORDS = 40;
+
+function countWords(text) {
+  const m = text.trim().match(/\S+/g);
+  return m ? m.length : 0;
+}
+
 /* ----------------------- PROJECT (folder) ----------------------- */
 function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }) {
   const s = store.get();
@@ -435,6 +443,7 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
   const [overId, setOverId] = useState(null);
   const [editTitle, setEditTitle] = useState(false);
   const [editSynopsis, setEditSynopsis] = useState(false);
+  const [synDraft, setSynDraft] = useState("");
   const [deleteChap, setDeleteChap] = useState(null);
   const [deleteProjectConfirm, setDeleteProjectConfirm] = useState(false);
   const lang = user.lang || "en";
@@ -496,13 +505,30 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
                 <h1 className="proj-title" onClick={() => setEditTitle(true)} title={tl("rename_hint")}>{p.title}</h1>
               )}
               {editSynopsis ? (
-                <textarea className="proj-syn-input" autoFocus defaultValue={p.synopsis} rows={3}
-                  onBlur={(e) => { store.updateProject(p.id, { synopsis: e.target.value.trim() }); setEditSynopsis(false); }}
-                  onKeyDown={(e) => { if (e.key === "Escape") setEditSynopsis(false); }} />
+                <>
+                  <textarea className="proj-syn-input" autoFocus value={synDraft} rows={3}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const words = val.match(/\S+/g) || [];
+                      if (words.length > SYNOPSIS_MAX_WORDS) return;
+                      setSynDraft(val);
+                    }}
+                    onBlur={(e) => {
+                      const trimmed = synDraft.trim();
+                      const wc = countWords(trimmed);
+                      if (wc > 0 && wc < SYNOPSIS_MIN_WORDS) { e.target.focus(); return; }
+                      store.updateProject(p.id, { synopsis: trimmed });
+                      setEditSynopsis(false);
+                    }}
+                    onKeyDown={(e) => { if (e.key === "Escape") { setEditSynopsis(false); } }} />
+                  <p className={"proj-syn-hint mono" + (countWords(synDraft) > 0 && countWords(synDraft) < SYNOPSIS_MIN_WORDS ? " warn" : "")}>
+                    {countWords(synDraft)} / {SYNOPSIS_MIN_WORDS}–{SYNOPSIS_MAX_WORDS} {tl("synopsis_words_unit")}
+                  </p>
+                </>
               ) : p.synopsis ? (
-                <p className="proj-syn" onClick={() => setEditSynopsis(true)} title={tl("edit_synopsis_hint")}>{p.synopsis}</p>
+                <p className="proj-syn" onClick={() => { setSynDraft(p.synopsis || ""); setEditSynopsis(true); }} title={tl("edit_synopsis_hint")}>{p.synopsis}</p>
               ) : (
-                <button className="proj-syn-add mono" onClick={() => setEditSynopsis(true)}>{tl("synopsis_placeholder")}</button>
+                <button className="proj-syn-add mono" onClick={() => { setSynDraft(""); setEditSynopsis(true); }}>{tl("synopsis_placeholder")}</button>
               )}
             </div>
             <div className="proj-hero-side">
