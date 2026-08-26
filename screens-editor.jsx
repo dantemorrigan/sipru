@@ -1075,10 +1075,10 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     if (alt && k === "f") { e.preventDefault(); insertFootnote(); return; }
     if (e.shiftKey) {
       switch (k) {
-        case "l": e.preventDefault(); setAlign("al-l"); return;
-        case "e": e.preventDefault(); setAlign("al-c"); return;
-        case "r": e.preventDefault(); setAlign("al-r"); return;
-        case "j": e.preventDefault(); setAlign("al-j"); return;
+        case "l": e.preventDefault(); toggleAlign("al-l"); return;
+        case "e": e.preventDefault(); toggleAlign("al-c"); return;
+        case "r": e.preventDefault(); toggleAlign("al-r"); return;
+        case "j": e.preventDefault(); toggleAlign("al-j"); return;
         case "7": e.preventDefault(); runTool("ol"); return;
         case "8": e.preventDefault(); runTool("ul"); return;
         case "9": e.preventDefault(); runTool("quote"); return;
@@ -1724,6 +1724,11 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
     commitChange();
     schedulePaginate(true);
   }
+  /* Pressing the currently-active alignment button again un-presses it
+     (back to the default left alignment) instead of staying stuck "on". */
+  function toggleAlign(cls) {
+    setAlign(alignCls === cls ? "" : cls);
+  }
 
   /* ---- page settings ---- */
   const [zoomLive, setZoomLive] = useState(false);
@@ -1990,7 +1995,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
             <div className="ed-bar-grp ed-bar-grp--align">
               {aligns.map(([cls, key]) => (
                 <button key={cls} className={"tool" + (alignCls === cls ? " on" : "")} title={hint(tl(key), KEYS[cls])}
-                  onMouseDown={(e) => { e.preventDefault(); setAlign(cls); }}>
+                  onMouseDown={(e) => { e.preventDefault(); toggleAlign(cls); }}>
                   <span className={"align-pv align-pv--" + cls} />
                 </button>
               ))}
