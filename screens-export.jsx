@@ -523,7 +523,7 @@ function StaticSheet({ geom, children }) {
       <div className="ed-pagelayer">
         <div className="ed-pagebox" style={{ top: 0, width: geom.pageW, height: geom.pageH }} />
       </div>
-      <div className="exp-sheet-body" style={{ top: geom.mt, left: geom.ml, width: geom.contentW, height: geom.contentH }}>
+      <div className="exp-sheet-body" style={{ top: geom.mt, left: geom.ml, width: geom.contentW, height: geom.contentH, fontSize: (16 * geom.scale) + "px" }}>
         {children}
       </div>
     </div>
