@@ -12,7 +12,11 @@ isn't listed here doesn't exist as far as the project manager is concerned.
 | Agent | File | Model | Tools | Owns | Use for | Do not use for |
 |---|---|---|---|---|---|---|
 | `project-manager` | `project-manager.md` | sonnet | Agent, TaskCreate/List/Get/Update/Output/Stop, Read, Grep, Glob, Bash | Coordinating all other agents, task backlog, priority, avoiding duplicate/conflicting work | "who should do X", planning multi-agent work, status of in-flight work, reassigning stuck work | Writing code, running QA, reviewing diffs itself — it delegates those |
-| `bugfinder` | `bugfinder.md` | haiku | Bash, Read, Write, Glob, Grep | Exploratory/manual QA of the running app in a real browser (Playwright) | Bug hunts, regression sweeps, UI stress-testing, export/import round-trips | Static code review, writing/running `npm test`, fixing the bugs it finds |
+| `bugfinder` | `bugfinder.md` | sonnet | Bash, Read, Write, Glob, Grep | Exploratory/manual QA of the running app in a real browser (Playwright) | Bug hunts, regression sweeps, UI stress-testing, export/import round-trips | Static code review, writing/running `npm test`, fixing the bugs it finds |
+| `programmer` | `programmer.md` | sonnet | Bash, Read, Write, Edit, Glob, Grep | Implementing features/fixes/refactors as a working, tested commit | Any task whose deliverable is code + build/test verification | Exploratory QA (use bugfinder), reviewing a diff without changing it (use code-review) |
+| `architecture` | `architecture.md` | sonnet | Bash, Read, Glob, Grep | Module boundaries, dependency shape, long-term maintainability/scalability | Reviewing multi-module/new-file/storage-format changes, "will this scale" questions, dependency maps | Runtime bug hunting (use bugfinder), line-level diff nitpicks (use code-review) |
+| `design-guardian` | `design-guardian.md` | sonnet | Bash, Read, Write, Glob, Grep | Visual/UX quality, design-system consistency, accessibility, design debt | Reviewing any UI-touching change, proactive design pass after a screen/component/CSS edit | Functional/logic bugs unrelated to visuals (use bugfinder), freelancing a redesign |
+| `performance` | `performance.md` | haiku | Bash, Read, Write, Glob, Grep | Profiling, re-render/memory audits, bundle size, perf regressions | Investigating jank/slowness, reviewing a diff for a perf regression before it lands | Functional bug hunting (use bugfinder), static correctness/style review (use code-review) |
 
 ## Built-in Claude Code agent types (always available via the `Agent` tool)
 
