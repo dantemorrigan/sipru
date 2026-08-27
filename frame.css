@@ -204,6 +204,7 @@
     box-shadow: var(--shadow-3);
     transform: translateX(-102%);
     transition: transform .34s var(--ease-out);
+    padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
   }
   .side.open { transform: none; }
