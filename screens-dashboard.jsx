@@ -307,7 +307,6 @@ function LibrarySidebar({ store, s, lang, nav, typeFilter, setTypeFilter, sort, 
   const tl = T(lang || "en");
   const notes = s.notes || [];
   const projects = s.projects || [];
-  const starred = projects.filter((p) => p.status === "done").length;
 
   /* the eight most recently touched things across both kinds — the list a
      writer actually reaches for, rather than a second copy of the grid */
@@ -319,7 +318,6 @@ function LibrarySidebar({ store, s, lang, nav, typeFilter, setTypeFilter, sort, 
     { key: "all",      icon: "layers", label: tl("side_all"),      n: projects.length + notes.length },
     { key: "projects", icon: "folder", label: tl("side_projects"), n: projects.length },
     { key: "notes",    icon: "note",   label: tl("side_notes"),    n: notes.length },
-    { key: "done",     icon: "star",   label: tl("side_starred"),  n: starred },
   ];
 
   /* the vault line is the one bit of chrome that tells a writer their words
@@ -374,20 +372,17 @@ function Dashboard({ store, user, nav, route, onTheme, onSearch, onToast }) {
   const tl = T(lang);
 
   /* the rail and the mobile tabs can jump straight to a filtered library,
-     so a route carrying a filter re-points the list without a remount */
+     so a route carrying a filter re-points the list without a remount —
+     including "home", whose filter is null and must still reset away
+     from whatever filter the library/notes rail buttons left behind */
   const routeFilter = route && route.filter;
-  useEffect(() => { if (routeFilter) setTypeFilter(routeFilter); }, [routeFilter, route && route.at]);
+  useEffect(() => { setTypeFilter(routeFilter || "all"); }, [routeFilter, route && route.at]);
 
-  /* the sidebar's "starred" row is a status filter wearing a type-filter
-     hat — fold it back into the two axes the list actually sorts on */
-  const effType   = typeFilter === "done" ? "projects" : typeFilter;
-  const effStatus = typeFilter === "done" ? "done" : statusFilter;
+  const showProjects = typeFilter !== "notes";
+  const showNotes = typeFilter !== "projects";
 
-  const showProjects = effType !== "notes";
-  const showNotes = effType !== "projects";
-
-  let projects = s.projects.filter((p) => effStatus === "all" ? true : p.status === (effStatus === "done" ? "done" : "draft"));
-  let notes = effStatus === "done" ? [] : s.notes;
+  let projects = s.projects.filter((p) => statusFilter === "all" ? true : p.status === statusFilter);
+  let notes = statusFilter === "done" ? [] : s.notes;
   projects = showProjects ? sortItems(projects, sort) : [];
   notes = showNotes ? sortItems(notes, sort) : [];
 
@@ -446,13 +441,8 @@ function Dashboard({ store, user, nav, route, onTheme, onSearch, onToast }) {
 
         <div className="dash-filter">
           <div className="seg">
-            {[["all","filter_all"],["projects","filter_projects"],["notes","filter_notes"]].map(([k,lk]) => (
-              <button key={k} className={"seg-btn" + (effType === k ? " on" : "")} onClick={() => setTypeFilter(k)}>{tl(lk)}</button>
-            ))}
-          </div>
-          <div className="seg">
             {[["all","filter_all_status"],["draft","filter_drafts"],["done","filter_done"]].map(([k,lk]) => (
-              <button key={k} className={"seg-btn" + (effStatus === k ? " on" : "")} onClick={() => { setStatusFilter(k); if (typeFilter === "done") setTypeFilter("projects"); }}>{tl(lk)}</button>
+              <button key={k} className={"seg-btn" + (statusFilter === k ? " on" : "")} onClick={() => setStatusFilter(k)}>{tl(lk)}</button>
             ))}
           </div>
           <SortMenu value={sort} onChange={setSort} lang={lang} />

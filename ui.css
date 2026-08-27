@@ -281,7 +281,12 @@
 .confirm-actions { display: flex; gap: 10px; }
 
 /* ---------- editor ---------- */
-.editor-root { height: 100%; display: flex; flex-direction: column; position: relative; z-index: 1; background: var(--paper); }
+/* min-height: 0 overrides the grid item's default min-height: auto — without
+   it .editor-root (a .frame grid cell, same as .col elsewhere) grows to fit
+   the paginated content instead of staying capped to the viewport, so
+   .ed-scroll's own box never actually overflows and the page can't scroll —
+   worse the more pages a paste adds, but present on any multi-page doc. */
+.editor-root { height: 100%; min-height: 0; display: flex; flex-direction: column; position: relative; z-index: 1; background: var(--paper); }
 .ed-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 22px;
   border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--paper) 90%, transparent); backdrop-filter: blur(12px);
   transition: opacity .4s, transform .4s; z-index: 20; }
@@ -1393,7 +1398,7 @@
 .onb-lang-btn { border-radius: var(--r-lg); }
 .onb-pip { border-radius: var(--r-pill); }
 
-/* ---- dashboard filter bar: type · status · sort ---- */
+/* ---- dashboard filter bar: status · sort (type lives in the sidebar) ---- */
 .dash-filter { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 18px 26px; margin-bottom: 30px; }
 .dash-filter-segs { display: flex; flex-wrap: wrap; gap: 16px 22px; align-items: flex-end; }
 .filtergrp { display: flex; flex-direction: column; gap: 7px; }
