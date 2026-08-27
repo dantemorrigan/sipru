@@ -21,6 +21,24 @@ being asked to confirm the merge each time:
 - Do NOT force-push over unmerged work on someone else's branch, skip
   hooks, or bypass a red test suite to get to green.
 
+## AI agent coordination
+
+Sipru is worked on by multiple AI agents (Claude Code subagents), not just
+whichever session is currently active. `.claude/agents/project-manager.md`
+defines a `project-manager` agent that acts as the central coordinator:
+it knows the full agent roster, decides which agent handles a given task,
+tracks task status/priority/dependencies via the `TaskCreate`/`TaskList`
+tools, and prevents duplicate or colliding work.
+
+- `.claude/agents/REGISTRY.md` is the source of truth for every agent
+  (project-specific and built-in) and coordinating skill. **Adding a new
+  `.claude/agents/*.md` file requires adding a row to `REGISTRY.md` in the
+  same commit** — an unregistered agent is invisible to the project
+  manager's routing.
+- For any task that should be split across agents, that overlaps with
+  work already in flight, or where it's unclear which agent should own
+  it, invoke the `project-manager` agent rather than deciding ad hoc.
+
 ## Build & test
 
 - `npm run build` — transpiles the `.jsx`/`.js` sources into `build/`
