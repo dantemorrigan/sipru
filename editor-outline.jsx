@@ -64,7 +64,7 @@ function OutlineRow({ kind, id, depth, title, words, max, status, open, hasKids,
   return (
     <div ref={rowRef} data-row={kind + ":" + id} data-depth={depth}
       className={"ol-row ol-row--" + kind + (active ? " on" : "") + (dragging ? " ol-row--drag" : "") +
-        (dropPos ? " ol-drop ol-drop--" + dropPos : "")}
+        (dropPos ? " ol-drop ol-drop--" + dropPos : "") + (menu ? " ol-row--menu-open" : "")}
       style={{ "--ol-depth": depth }}
       onClick={() => !editing && onOpen && onOpen()}>
       <button className="ol-grip" title={tl("ol_drag")} onPointerDown={onGrip}>
