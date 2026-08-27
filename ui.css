@@ -484,7 +484,7 @@
   padding-left: var(--pg-padl, 0); padding-right: var(--pg-padr, 0);
   /* Nothing typed, pasted or imported may reach past the sheet: a pasted
      URL, a base64 blob, a 200-character word — they wrap instead. */
-  overflow-wrap: break-word; }
+  overflow-wrap: anywhere; }
 .ed-area > * { max-width: 100%; }
 /* The page pushes are inert scenery inside an editable: without this the
    caret can land inside an empty spacer div, where it belongs to no block
