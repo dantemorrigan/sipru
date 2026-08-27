@@ -93,8 +93,8 @@ should already have, or a task whose approach clearly isn't converging
 signal to intervene: check in via `TaskGet`/`TaskOutput`, and either
 re-scope the task, split it, or reassign it to a better-suited agent
 rather than letting it burn tokens unresolved. Prefer the cheapest capable
-agent for a job (e.g. `bugfinder` runs on `haiku` on purpose — don't
-route routine QA sweeps through a heavier general-purpose agent).
+agent for a job (e.g. `performance` runs on `haiku` on purpose — don't
+route routine perf/QA sweeps through a heavier general-purpose agent).
 
 **Track dependencies, not just individual tasks.** Before marking
 anything blocked-on-nothing, check its `blockedBy`. Before closing a task,
