@@ -77,8 +77,9 @@
   function seed() {
     const { projects, notes } = emptyContent();
     return {
-      user: { name: "", theme: "light", editorFont: "book", lang: "en", createdAt: now() },
+      user: { name: "", theme: "light", editorFont: "book", lang: "en", dailyGoal: 500, createdAt: now() },
       onboarded: false,
+      days: {},
       projects,
       notes
     };
@@ -129,6 +130,10 @@
   function migrate(s) {
     if (!s || typeof s !== "object" || Array.isArray(s)) return null;
     if (!s.user || typeof s.user !== "object" || Array.isArray(s.user)) s.user = {};
+    /* the daily writing goal the dashboard's streak card measures against;
+       0 turns the card's goal line off, so an explicit 0 is preserved */
+    if (typeof s.user.dailyGoal !== "number" || !isFinite(s.user.dailyGoal) || s.user.dailyGoal < 0) s.user.dailyGoal = 500;
+    if (!s.days || typeof s.days !== "object" || Array.isArray(s.days)) s.days = {};
     if (!Array.isArray(s.projects)) s.projects = [];
     if (!Array.isArray(s.notes)) s.notes = [];
     /* A malformed entry is dropped rather than left to crash a render
@@ -213,7 +218,55 @@
       return false;
     }
   }
+  /* ---- writing activity ----
+     One row per calendar day, two numbers each: the total word count the
+     day opened on and the highest it reached. Today's words, the week and
+     the streak all derive from those, so a year of history costs a couple
+     of kilobytes and nothing has to be recomputed from the text itself.
+     `end` tracks the peak rather than the latest total on purpose —
+     deleting a chapter in the evening should not erase the morning's
+     work from the streak. */
+  const ACTIVITY_DAYS = 400;
+  const dayKey = (d) => {
+    const t = d instanceof Date ? d : new Date(d);
+    return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  };
+  function totalWords() {
+    let n = 0;
+    state.projects.forEach((p) => p.chapters.forEach((c) => {
+      n += typeof c.words === "number" ? c.words : countWords(c.content);
+    }));
+    state.notes.forEach((d) => { n += typeof d.words === "number" ? d.words : countWords(d.content); });
+    return n;
+  }
+  /* Called from every commit, so it is deliberately cheap: the sum above
+     reads each document's cached count, and a day already recorded within
+     the last few seconds is left alone. */
+  let lastTouch = 0;
+  function touchActivity() {
+    if (!state.days || typeof state.days !== "object" || Array.isArray(state.days)) state.days = {};
+    const key = dayKey(new Date());
+    const row = state.days[key];
+    const stamp = Date.now();
+    if (row && stamp - lastTouch < 4000) return;
+    lastTouch = stamp;
+    const total = totalWords();
+    if (!row) state.days[key] = { start: total, end: total };
+    else row.end = Math.max(row.end || 0, total);
+    const keys = Object.keys(state.days);
+    if (keys.length > ACTIVITY_DAYS) {
+      keys.sort();
+      keys.slice(0, keys.length - ACTIVITY_DAYS).forEach((k) => { delete state.days[k]; });
+    }
+  }
+  function dayWords(key) {
+    const row = state.days && state.days[key];
+    if (!row) return 0;
+    return Math.max(0, (row.end || 0) - (row.start || 0));
+  }
+
   function commit() {
+    touchActivity();
     persist(state);
     listeners.forEach((fn) => fn(state));
   }
@@ -484,6 +537,43 @@
     },
     projectWords(p) {
       return p.chapters.reduce((s, c) => s + countWords(c.content), 0);
+    },
+
+    /* Today's words, the last seven days and the run of consecutive days
+       with writing in them. The streak counts back from today, but a day
+       that has not been written in *yet* does not break it — otherwise
+       every morning would show a zero. */
+    activity() {
+      const today = dayKey(new Date());
+      const todayWords = dayWords(today);
+      let week = 0;
+      const recent = [];
+      for (let i = 13; i >= 0; i--) {
+        const k = dayKey(Date.now() - i * 86400000);
+        const w = dayWords(k);
+        recent.push({ day: k, words: w });
+        if (i < 7) week += w;
+      }
+      let streak = 0;
+      for (let i = todayWords > 0 ? 0 : 1; i < ACTIVITY_DAYS; i++) {
+        if (dayWords(dayKey(Date.now() - i * 86400000)) <= 0) break;
+        streak++;
+      }
+      const goal = Math.max(0, parseInt(state.user && state.user.dailyGoal, 10) || 0);
+      return { today: todayWords, goal, week, streak, recent };
+    },
+
+    /* The single most recently touched document, with the project it
+       belongs to — what the dashboard offers to carry on with. */
+    lastWritten() {
+      let best = null;
+      state.projects.forEach((p) => p.chapters.forEach((c) => {
+        if (!best || (c.updatedAt || 0) > (best.doc.updatedAt || 0)) best = { doc: c, project: p, kind: "chapter" };
+      }));
+      state.notes.forEach((d) => {
+        if (!best || (d.updatedAt || 0) > (best.doc.updatedAt || 0)) best = { doc: d, project: null, kind: "note" };
+      });
+      return best;
     },
 
     /* ---- backup ---- */

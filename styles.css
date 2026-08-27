@@ -10,8 +10,8 @@
 
 :root {
   --ui: "Helvetica Neue", Helvetica, Arial, "Segoe UI", Roboto, sans-serif;
-  --book: "Newsreader", Georgia, "Times New Roman", serif;
-  --book-alt: "Spectral", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --book: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --book-alt: "Lora", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* type scale */
@@ -37,48 +37,56 @@
 
 /* ---- Light (warm paper) ---- */
 :root, [data-theme="light"] {
-  --paper:    #f4f1ea;
-  --paper-2:  #ece7dc;
-  --paper-3:  #e3ddcf;
-  --sheet:    #fbfaf6;
-  --ink:      #1a1a18;
-  --ink-2:    #44413a;
-  --ink-soft: #807a6d;
-  --ink-faint:#a8a294;
-  --line:     rgba(26,26,24,.12);
-  --line-2:   rgba(26,26,24,.07);
+  --paper:    #F2EFE7;
+  --paper-2:  #E9E4D8;
+  --paper-3:  #E2DCCB;
+  --sheet:    #FFFDF8;
+  --ink:      #16150F;
+  --ink-2:    #4A463C;
+  --ink-soft: #7C7566;
+  --ink-faint:#A9A292;
+  --line:     #DED7C6;
+  --line-2:   #E7E1D2;
+  --line-strong: #C0B8A3;
   --accent:   #c2542f;
   --accent-2: #a8431f;
-  --accent-tint: rgba(194,84,47,.10);
-  --sheet-shadow: 0 2px 6px rgba(40,34,22,.05), 0 14px 40px -14px rgba(40,34,22,.20);
-  --shadow-1: 0 1px 2px rgba(40,34,22,.04), 0 3px 10px -4px rgba(40,34,22,.10);
-  --shadow-2: 0 2px 6px rgba(40,34,22,.05), 0 14px 36px -12px rgba(40,34,22,.16);
-  --shadow-3: 0 6px 18px rgba(40,34,22,.07), 0 34px 80px -24px rgba(40,34,22,.26);
-  --noise-op: .55;
+  --accent-tint: #F2DED5;
+  --success:  #4F7A4B;
+  --warning:  #B07C2A;
+  --danger:   #B03A2E;
+  --sheet-shadow: 0 1px 3px rgba(40,34,22,.04), 0 12px 34px -16px rgba(40,34,22,.16);
+  --shadow-1: 0 1px 2px rgba(40,34,22,.03), 0 2px 8px -4px rgba(40,34,22,.07);
+  --shadow-2: 0 1px 4px rgba(40,34,22,.04), 0 10px 28px -14px rgba(40,34,22,.12);
+  --shadow-3: 0 4px 14px rgba(40,34,22,.06), 0 26px 64px -26px rgba(40,34,22,.20);
+  --noise-op: .42;
   color-scheme: light;
 }
 
 /* ---- Dark (night writing) ---- */
 [data-theme="dark"] {
-  --paper:    #0d0d0b;
-  --paper-2:  #171612;
-  --paper-3:  #201f19;
-  --sheet:    #131210;
-  --ink:      #f0ece2;
-  --ink-2:    #c4bdac;
-  --ink-soft: #979082;   /* lifted: the footer meta and status text sat at
+  --paper:    #0E0E0C;
+  --paper-2:  #201F19;
+  --paper-3:  #2A2822;
+  --sheet:    #14130F;
+  --ink:      #F0ECE2;
+  --ink-2:    #C4BDAC;
+  --ink-soft: #97907F;   /* lifted: the footer meta and status text sat at
                             the edge of legibility on the near-black paper */
-  --ink-faint:#6a6456;
-  --line:     rgba(240,236,226,.12);
-  --line-2:   rgba(240,236,226,.06);
-  --accent:   #df6f44;
-  --accent-2: #e8825a;
-  --accent-tint: rgba(223,111,68,.14);
-  --sheet-shadow: 0 2px 8px rgba(0,0,0,.34), 0 18px 50px -18px rgba(0,0,0,.6);
-  --shadow-1: 0 1px 2px rgba(0,0,0,.3), 0 3px 12px -4px rgba(0,0,0,.5);
-  --shadow-2: 0 2px 8px rgba(0,0,0,.34), 0 16px 42px -14px rgba(0,0,0,.6);
-  --shadow-3: 0 6px 20px rgba(0,0,0,.4), 0 40px 90px -26px rgba(0,0,0,.72);
-  --noise-op: .30;
+  --ink-faint:#6A6456;
+  --line:     #2C2A23;
+  --line-2:   #232219;
+  --line-strong: #443F34;
+  --accent:   #E0713F;
+  --accent-2: #EC8A5D;
+  --accent-tint: #3A241A;
+  --success:  #7FA97A;
+  --warning:  #D3A055;
+  --danger:   #D9705F;
+  --sheet-shadow: 0 1px 4px rgba(0,0,0,.28), 0 14px 40px -20px rgba(0,0,0,.5);
+  --shadow-1: 0 1px 2px rgba(0,0,0,.24), 0 2px 10px -5px rgba(0,0,0,.4);
+  --shadow-2: 0 1px 4px rgba(0,0,0,.28), 0 12px 34px -16px rgba(0,0,0,.48);
+  --shadow-3: 0 4px 16px rgba(0,0,0,.32), 0 32px 76px -28px rgba(0,0,0,.6);
+  --noise-op: .22;
   color-scheme: dark;
 }
 

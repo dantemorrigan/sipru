@@ -18,6 +18,17 @@
      the text before and after it into one run with no space at all —
      see the walk() unwrap branch below. */
   const BLOCKISH_UNKNOWN = new Set(["div","section","article","header","footer","nav","main"]);
+  /* Block-level tags — the set whose own edges already read as a break, so
+     the unwrap above must not add a second one beside them. Anything else
+     (text, an inline tag, a <span> the sanitiser will simply drop) counts
+     as inline for that decision. */
+  const BLOCK_EDGE = new Set(BLOCKS.filter((t) => t !== "br").concat(Array.from(BLOCKISH_UNKNOWN)));
+  function isInlineNode(n) {
+    if (!n) return false;
+    if (n.nodeType === 3) return true;
+    if (n.nodeType !== 1) return false;
+    return !BLOCK_EDGE.has((n.tagName || "").toLowerCase());
+  }
   /* The only attributes that ever survive a sanitise: the handful of marker
      classes and data-* keys the editor uses to tell its own block types
      apart. Everything else — style, href, on*, id — is still dropped. */
@@ -79,10 +90,13 @@
            unwrapped exactly as it always was */
         const isFnBox = tag === "div" && (n.getAttribute("class") || "").indexOf("fn-defs") >= 0;
         if (!ALLOWED.has(tag) && !isFnBox) {   // unwrap unknown tags
+          /* the break only stands in where inline text met inline text —
+             a block on either side already carries its own edge, and a <br>
+             between two blocks just becomes an empty paragraph downstream */
           const blockish = BLOCKISH_UNKNOWN.has(tag);
-          if (blockish && into.lastChild) into.appendChild(document.createElement("br"));
+          if (blockish && isInlineNode(into.lastChild) && isInlineNode(n.firstChild)) into.appendChild(document.createElement("br"));
           walk(n, into);
-          if (blockish && n.nextSibling) into.appendChild(document.createElement("br"));
+          if (blockish && isInlineNode(n.nextSibling) && isInlineNode(n.lastChild)) into.appendChild(document.createElement("br"));
           return;
         }
         /* an <input> only survives as a task-list checkbox; any other kind
@@ -893,7 +907,7 @@
     a6:     { w: 5954,  h: 8391 },
   };
   const PAGE_MARGINS = { narrow: 794, normal: 1247, wide: 1814 };
-  const DOCX_FONTS = { book: "Newsreader", article: "Spectral", mono: "JetBrains Mono" };
+  const DOCX_FONTS = { book: "Source Serif 4", article: "Lora", mono: "JetBrains Mono" };
   const PAGE_BREAK = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
 
   /* ---- running heads ----
