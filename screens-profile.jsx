@@ -144,81 +144,77 @@ function Profile({ store, user, nav, route, onTheme, onSearch, onToast }) {
             ))}
           </div>
 
-          <div className="section-head" id="sec-look"><span className="eyebrow">{tl("prof_section_settings")}</span><span className="rule-thin section-rule" /></div>
+          <div className="prof-cards">
+            <section className="prof-card" id="sec-look">
+              <div className="prof-card-h">{tl("prof_nav_look")}</div>
 
-          <div className="prof-set">
-            <span className="prof-set-l">{tl("prof_lbl_name")}</span>
-            <div className="prof-set-c prof-name-edit">
-              <input value={name} onChange={(e)=>setName(e.target.value)} onBlur={saveName}
-                onKeyDown={(e)=>e.key==="Enter"&&e.target.blur()} maxLength={40} className="prof-input" />
-            </div>
-          </div>
-
-          <div className="prof-set" id="sec-lang">
-            <span className="prof-set-l">{tl("prof_lbl_lang")}</span>
-            <div className="prof-set-c">
-              <div className="seg seg--sm">
-                <button className={"seg-btn"+(lang==="en"?" on":"")} onClick={()=>store.setUser({lang:"en"})}><FlagGB /> English</button>
-                <button className={"seg-btn"+(lang==="ru"?" on":"")} onClick={()=>store.setUser({lang:"ru"})}><FlagRU /> Русский</button>
+              <div className="prof-row">
+                <span className="prof-row-l">{tl("prof_lbl_name")}</span>
+                <input value={name} onChange={(e)=>setName(e.target.value)} onBlur={saveName}
+                  onKeyDown={(e)=>e.key==="Enter"&&e.target.blur()} maxLength={40} className="prof-input" />
               </div>
-            </div>
-          </div>
 
-          <div className="prof-set">
-            <span className="prof-set-l">{tl("prof_lbl_theme")}</span>
-            <div className="prof-set-c">
-              <div className="seg seg--sm">
-                <button className={"seg-btn"+(user.theme==="light"?" on":"")} onClick={()=>onTheme("light")}><Icon name="sun" size={14}/> {tl("prof_theme_light")}</button>
-                <button className={"seg-btn"+(user.theme==="dark"?" on":"")} onClick={()=>onTheme("dark")}><Icon name="moon" size={14}/> {tl("prof_theme_dark")}</button>
-              </div>
-            </div>
-          </div>
-
-          {!/android|iphone|ipad/i.test(navigator.userAgent || "") && (
-          <div className="prof-set" id="sec-writing">
-            <span className="prof-set-l">{tl("prof_lbl_tour")}</span>
-            <div className="prof-set-c">
-              <button className="btn btn--ghost" onClick={() => { store.replayTour(); nav.dashboard(); }}>
-                <Icon name="eye" size={16}/> {tl("prof_tour_btn")}
-              </button>
-            </div>
-          </div>
-          )}
-
-          <div className="section-head" id="sec-vault"><span className="eyebrow">{tl("vault_title")}</span><span className="rule-thin section-rule" /></div>
-          {vaultOn ? (
-            <>
-              <div className="prof-set">
-                <span className="prof-set-l">{tl("vault_folder")}</span>
-                <div className="prof-set-c">
-                  <div className={"vault-path mono" + (vs && vs.path ? " on" : "")}>
-                    {(vs && vs.path) || tl("vault_none")}
-                  </div>
-                  <span className={"vault-dot" + (vs && vs.error ? " err" : vs && vs.ok ? " ok" : "")} />
-                  <span className="vault-state mono">
-                    {tl(vs && vs.error ? "vault_status_err" : vs && vs.ok ? "vault_status_ok" : "vault_status_off")}
-                  </span>
-                  {vs && vs.error && <div className="vault-err mono">{vs.error}</div>}
+              <div className="prof-row" id="sec-lang">
+                <span className="prof-row-l">{tl("prof_lbl_lang")}</span>
+                <div className="seg seg--sm">
+                  <button className={"seg-btn"+(lang==="en"?" on":"")} onClick={()=>store.setUser({lang:"en"})}><FlagGB /> English</button>
+                  <button className={"seg-btn"+(lang==="ru"?" on":"")} onClick={()=>store.setUser({lang:"ru"})}><FlagRU /> Русский</button>
                 </div>
               </div>
-              <div className="prof-data">
-                <button className="btn btn--ghost" onClick={chooseVault}>
-                  <Icon name="folder" size={16}/> {tl(vs && vs.path ? "vault_change" : "vault_open")}
-                </button>
-                {V.canReveal() && (
-                  <button className="btn btn--ghost" onClick={async () => {
-                    const path = V.locate("vault");
-                    if (!path) return onToast(tl("vault_none"));
-                    if (!(await V.reveal(path))) onToast(tl("vault_reveal_fail"));
-                  }}><Icon name="folder" size={16}/> {tl("vault_reveal")}</button>
-                )}
-                <button className="btn btn--ghost" onClick={vaultBackup}><Icon name="download" size={16}/> {tl("vault_backup")}</button>
-                <button className="btn btn--ghost" onClick={vaultRestore}><Icon name="upload" size={16}/> {tl("vault_restore")}</button>
+
+              <div className="prof-row">
+                <span className="prof-row-l">{tl("prof_lbl_theme")}</span>
+                <div className="seg seg--sm">
+                  <button className={"seg-btn"+(user.theme==="light"?" on":"")} onClick={()=>onTheme("light")}><Icon name="sun" size={14}/> {tl("prof_theme_light")}</button>
+                  <button className={"seg-btn"+(user.theme==="dark"?" on":"")} onClick={()=>onTheme("dark")}><Icon name="moon" size={14}/> {tl("prof_theme_dark")}</button>
+                </div>
               </div>
-            </>
-          ) : (
-            <p className="prof-note mono">{tl("vault_web_note")}</p>
-          )}
+
+              {!/android|iphone|ipad/i.test(navigator.userAgent || "") && (
+              <div className="prof-row" id="sec-writing">
+                <span className="prof-row-l">{tl("prof_lbl_tour")}</span>
+                <button className="btn btn--ghost" onClick={() => { store.replayTour(); nav.dashboard(); }}>
+                  <Icon name="eye" size={16}/> {tl("prof_tour_btn")}
+                </button>
+              </div>
+              )}
+            </section>
+
+            <section className="prof-card" id="sec-vault">
+              <div className="prof-card-h">{tl("vault_title")}</div>
+              {vaultOn ? (
+                <>
+                  <div className="prof-row prof-row--stack">
+                    <span className="prof-row-l">{tl("vault_folder")}</span>
+                    <div className={"vault-path mono" + (vs && vs.path ? " on" : "")}>
+                      {(vs && vs.path) || tl("vault_none")}
+                    </div>
+                    <span className={"vault-dot" + (vs && vs.error ? " err" : vs && vs.ok ? " ok" : "")} />
+                    <span className="vault-state mono">
+                      {tl(vs && vs.error ? "vault_status_err" : vs && vs.ok ? "vault_status_ok" : "vault_status_off")}
+                    </span>
+                    {vs && vs.error && <div className="vault-err mono">{vs.error}</div>}
+                  </div>
+                  <div className="prof-data">
+                    <button className="btn btn--ghost" onClick={chooseVault}>
+                      <Icon name="folder" size={16}/> {tl(vs && vs.path ? "vault_change" : "vault_open")}
+                    </button>
+                    {V.canReveal() && (
+                      <button className="btn btn--ghost" onClick={async () => {
+                        const path = V.locate("vault");
+                        if (!path) return onToast(tl("vault_none"));
+                        if (!(await V.reveal(path))) onToast(tl("vault_reveal_fail"));
+                      }}><Icon name="folder" size={16}/> {tl("vault_reveal")}</button>
+                    )}
+                    <button className="btn btn--ghost" onClick={vaultBackup}><Icon name="download" size={16}/> {tl("vault_backup")}</button>
+                    <button className="btn btn--ghost" onClick={vaultRestore}><Icon name="upload" size={16}/> {tl("vault_restore")}</button>
+                  </div>
+                </>
+              ) : (
+                <p className="prof-note mono">{tl("vault_web_note")}</p>
+              )}
+            </section>
+          </div>
 
           <div className="section-head" id="sec-data"><span className="eyebrow">{tl("prof_section_data")}</span><span className="rule-thin section-rule" /></div>
           <p className="prof-note mono">{tl("prof_data_note")}</p>
