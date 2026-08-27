@@ -19,6 +19,11 @@ function sectionOf(route) {
   if (!route) return "library";
   if (route.name === "profile") return "settings";
   if (route.name === "export") return "export";
+  if (route.name === "dashboard") {
+    if (route.filter === "notes") return "notes";
+    if (route.filter === "projects") return "library";
+    return "home";
+  }
   return "library";
 }
 

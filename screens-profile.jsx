@@ -1,29 +1,8 @@
 /* ============================================================
    Sipru. — Profile
    ============================================================ */
-/* the settings sidebar scrolls the page rather than swapping panes — every
-   setting stays one glance away, which is how the artboards show it */
-function SettingsSidebar({ lang, active, onGo, open, onClose }) {
-  const tl = T(lang || "en");
-  const rows = [
-    ["profile",  "user",     tl("prof_nav_profile")],
-    ["look",     "sun",      tl("prof_nav_look")],
-    ["writing",  "type",     tl("prof_nav_writing")],
-    ["vault",    "folder",   tl("prof_nav_vault")],
-    ["data",     "download", tl("prof_nav_data")],
-    ["lang",     "layers",   tl("prof_nav_lang")],
-  ];
-  return (
-    <Sidebar open={open} onClose={onClose} title={tl("side_settings")} foot={<span className="side-vault"><Icon name="star" size={13} /> Sipru · v{(window.SIPRU_VERSION || "2.0")}</span>}>
-      {rows.map(([k, icon, label]) => (
-        <button key={k} className={"side-row" + (active === k ? " on" : "")} onClick={() => onGo(k)}>
-          <Icon name={icon} size={17} />
-          <span className="side-row-l">{label}</span>
-        </button>
-      ))}
-    </Sidebar>
-  );
-}
+/* One flat, scrolling page — there are too few settings to earn a
+   sidebar of their own, so there is no section nav or anchors here. */
 
 function Profile({ store, user, nav, route, onTheme, onSearch, onToast }) {
   const lang = user.lang || "en";
@@ -33,7 +12,6 @@ function Profile({ store, user, nav, route, onTheme, onSearch, onToast }) {
   const [confirmReset, setConfirmReset] = useState(false);
   const fileRef = useRef(null);
   const bodyRef = useRef(null);
-  const [activeSec, setActiveSec] = useState("profile");
   const avatarRef = useRef(null);
 
   /* Vault state is owned by vault.js, not React — subscribe so the path
@@ -107,19 +85,12 @@ function Profile({ store, user, nav, route, onTheme, onSearch, onToast }) {
     [stats.notes,    pluralT(stats.notes,    lang, "note_one", "note_few", "note_many")],
   ];
 
-  function goSection(k) {
-    setActiveSec(k);
-    const el = document.getElementById("sec-" + k);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
   return (
     <AppFrame user={user} nav={nav} route={route} onSearch={onSearch} onTheme={onTheme}
-      crumbs={[<button key="c" className="crumb-link" onClick={() => nav.dashboard()}>{tl("side_settings")}</button>, tl("prof_nav_profile")]}
-      sidebar={<SettingsSidebar lang={lang} active={activeSec} onGo={goSection} />}>
+      crumbs={[tl("side_settings")]}>
       <div className="wrap wrap--narrow screen-enter" ref={bodyRef}>
 
-          <section className="prof-hero" id="sec-profile">
+          <section className="prof-hero">
             <button className="prof-ava-wrap" onClick={() => avatarRef.current.click()} title={tl("prof_upload_photo")}>
               {user.avatar
                 ? <img src={user.avatar} alt={tl("prof_avatar_alt")} className="prof-ava-img" />
@@ -145,7 +116,7 @@ function Profile({ store, user, nav, route, onTheme, onSearch, onToast }) {
           </div>
 
           <div className="prof-cards">
-            <section className="prof-card" id="sec-look">
+            <section className="prof-card">
               <div className="prof-card-h">{tl("prof_nav_look")}</div>
 
               <div className="prof-row">
@@ -154,7 +125,7 @@ function Profile({ store, user, nav, route, onTheme, onSearch, onToast }) {
                   onKeyDown={(e)=>e.key==="Enter"&&e.target.blur()} maxLength={40} className="prof-input" />
               </div>
 
-              <div className="prof-row" id="sec-lang">
+              <div className="prof-row">
                 <span className="prof-row-l">{tl("prof_lbl_lang")}</span>
                 <div className="seg seg--sm">
                   <button className={"seg-btn"+(lang==="en"?" on":"")} onClick={()=>store.setUser({lang:"en"})}><FlagGB /> English</button>
@@ -171,7 +142,7 @@ function Profile({ store, user, nav, route, onTheme, onSearch, onToast }) {
               </div>
 
               {!/android|iphone|ipad/i.test(navigator.userAgent || "") && (
-              <div className="prof-row" id="sec-writing">
+              <div className="prof-row">
                 <span className="prof-row-l">{tl("prof_lbl_tour")}</span>
                 <button className="btn btn--ghost" onClick={() => { store.replayTour(); nav.dashboard(); }}>
                   <Icon name="eye" size={16}/> {tl("prof_tour_btn")}
@@ -180,7 +151,7 @@ function Profile({ store, user, nav, route, onTheme, onSearch, onToast }) {
               )}
             </section>
 
-            <section className="prof-card" id="sec-vault">
+            <section className="prof-card">
               <div className="prof-card-h">{tl("vault_title")}</div>
               {vaultOn ? (
                 <>
@@ -216,7 +187,7 @@ function Profile({ store, user, nav, route, onTheme, onSearch, onToast }) {
             </section>
           </div>
 
-          <div className="section-head" id="sec-data"><span className="eyebrow">{tl("prof_section_data")}</span><span className="rule-thin section-rule" /></div>
+          <div className="section-head"><span className="eyebrow">{tl("prof_section_data")}</span><span className="rule-thin section-rule" /></div>
           <p className="prof-note mono">{tl("prof_data_note")}</p>
           <div className="prof-data">
             <button className="btn btn--ghost" onClick={exportBackup}><Icon name="download" size={16}/> {tl("prof_export_backup")}</button>
