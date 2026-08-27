@@ -8,7 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const esbuild = require("esbuild");
 
-const SRC = ["components.jsx", "screens-onboarding.jsx", "screens-dashboard.jsx",
+const SRC = ["components.jsx", "shell.jsx", "screens-onboarding.jsx", "screens-dashboard.jsx",
   "editor-page.jsx", "editor-outline.jsx", "screens-editor.jsx", "screens-export.jsx",
   "screens-profile.jsx", "tour.jsx", "updater.jsx", "app.jsx"];
 const OUT = path.join(__dirname, "build");

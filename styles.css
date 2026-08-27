@@ -9,30 +9,39 @@
    fallback below. ---- */
 
 :root {
-  --ui: "Helvetica Neue", Helvetica, Arial, "Segoe UI", Roboto, sans-serif;
+  --ui: "Inter", "Helvetica Neue", Helvetica, Arial, "Segoe UI", Roboto, sans-serif;
   --book: "Source Serif 4", Georgia, "Times New Roman", serif;
   --book-alt: "Lora", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* type scale */
-  --t-xs: 11px; --t-sm: 13px; --t-base: 15px; --t-md: 17px;
-  --t-lg: 22px; --t-xl: 30px; --t-2xl: 44px; --t-3xl: 68px; --t-4xl: 108px;
+  --t-2xs: 10px;
+  --t-xs: 11px; --t-sm: 13px; --t-base: 14px; --t-md: 16px;
+  --t-lg: 21px; --t-xl: 28px; --t-2xl: 34px; --t-3xl: 42px; --t-4xl: 72px;
 
   --ease: cubic-bezier(.2,.8,.2,1);
   --ease-out: cubic-bezier(.16,1,.3,1);
   --ease-in-out: cubic-bezier(.7,0,.3,1);
   --dur: .5s;
 
-  --maxw: 1320px;
+  --maxw: 1180px;
   --measure: 80ch;       /* A4-ish writing column */
 
   /* radius scale — fluent / soft (Google · Figma) */
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 16px;
-  --r-xl: 22px;
-  --r-2xl: 28px;
+  --r-sm: 7px;
+  --r-md: 10px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-2xl: 20px;
   --r-pill: 999px;
+
+  /* app frame — a 72pt icon rail, a 280pt contextual sidebar and a
+     60pt top bar, straight off the redesign artboards */
+  --rail-w: 72px;
+  --side-w: 280px;
+  --bar-h: 60px;
+  --gutter: 40px;
+  --tabbar-h: 62px;
 }
 
 /* ---- Light (warm paper) ---- */
@@ -40,7 +49,8 @@
   --paper:    #F2EFE7;
   --paper-2:  #E9E4D8;
   --paper-3:  #E2DCCB;
-  --sheet:    #FFFDF8;
+  --sheet:    #FBFAF6;
+  --sheet-2:  #FFFFFF;
   --ink:      #16150F;
   --ink-2:    #4A463C;
   --ink-soft: #7C7566;
@@ -67,7 +77,8 @@
   --paper:    #0E0E0C;
   --paper-2:  #201F19;
   --paper-3:  #2A2822;
-  --sheet:    #14130F;
+  --sheet:    #171612;
+  --sheet-2:  #1B1A15;
   --ink:      #F0ECE2;
   --ink-2:    #C4BDAC;
   --ink-soft: #97907F;   /* lifted: the footer meta and status text sat at
