@@ -1,13 +1,39 @@
 /* ============================================================
    Sipru. — Profile
    ============================================================ */
-function Profile({ store, user, nav, onTheme, onToast }) {
+/* the settings sidebar scrolls the page rather than swapping panes — every
+   setting stays one glance away, which is how the artboards show it */
+function SettingsSidebar({ lang, active, onGo, open, onClose }) {
+  const tl = T(lang || "en");
+  const rows = [
+    ["profile",  "user",     tl("prof_nav_profile")],
+    ["look",     "sun",      tl("prof_nav_look")],
+    ["writing",  "type",     tl("prof_nav_writing")],
+    ["vault",    "folder",   tl("prof_nav_vault")],
+    ["data",     "download", tl("prof_nav_data")],
+    ["lang",     "layers",   tl("prof_nav_lang")],
+  ];
+  return (
+    <Sidebar open={open} onClose={onClose} title={tl("side_settings")} foot={<span className="side-vault"><Icon name="star" size={13} /> Sipru · v{(window.SIPRU_VERSION || "2.0")}</span>}>
+      {rows.map(([k, icon, label]) => (
+        <button key={k} className={"side-row" + (active === k ? " on" : "")} onClick={() => onGo(k)}>
+          <Icon name={icon} size={17} />
+          <span className="side-row-l">{label}</span>
+        </button>
+      ))}
+    </Sidebar>
+  );
+}
+
+function Profile({ store, user, nav, route, onTheme, onSearch, onToast }) {
   const lang = user.lang || "en";
   const tl = T(lang);
   const stats = store.stats();
   const [name, setName] = useState(user.name);
   const [confirmReset, setConfirmReset] = useState(false);
   const fileRef = useRef(null);
+  const bodyRef = useRef(null);
+  const [activeSec, setActiveSec] = useState("profile");
   const avatarRef = useRef(null);
 
   /* Vault state is owned by vault.js, not React — subscribe so the path
@@ -81,14 +107,19 @@ function Profile({ store, user, nav, onTheme, onToast }) {
     [stats.notes,    pluralT(stats.notes,    lang, "note_one", "note_few", "note_many")],
   ];
 
-  return (
-    <div className="app-shell screen-enter">
-      <TopBar user={user} store={store} nav={nav} onTheme={onTheme} />
-      <div className="scroll-area">
-        <div className="wrap wrap--narrow">
-          <button className="backlink mono" onClick={() => nav.dashboard()}><Icon name="back" size={14} /> {tl("prof_back")}</button>
+  function goSection(k) {
+    setActiveSec(k);
+    const el = document.getElementById("sec-" + k);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
-          <section className="prof-hero">
+  return (
+    <AppFrame user={user} nav={nav} route={route} onSearch={onSearch} onTheme={onTheme}
+      crumbs={[<button key="c" className="crumb-link" onClick={() => nav.dashboard()}>{tl("side_settings")}</button>, tl("prof_nav_profile")]}
+      sidebar={<SettingsSidebar lang={lang} active={activeSec} onGo={goSection} />}>
+      <div className="wrap wrap--narrow screen-enter" ref={bodyRef}>
+
+          <section className="prof-hero" id="sec-profile">
             <button className="prof-ava-wrap" onClick={() => avatarRef.current.click()} title={tl("prof_upload_photo")}>
               {user.avatar
                 ? <img src={user.avatar} alt={tl("prof_avatar_alt")} className="prof-ava-img" />
@@ -100,7 +131,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
             <div>
               <div className="eyebrow">{tl("prof_eyebrow")}</div>
               <h1 className="prof-name">{user.name || tl("default_author")}</h1>
-              <div className="prof-since mono">{tl("prof_since")} {new Date(user.createdAt).toLocaleDateString(locale, {month:"long",year:"numeric"})}</div>
+              <div className="prof-since mono">{tl("prof_since")} {new Date(user.createdAt).toLocaleDateString(locale, {day:"numeric",month:"long",year:"numeric"})}</div>
             </div>
           </section>
 
@@ -113,7 +144,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
             ))}
           </div>
 
-          <div className="section-head"><span className="eyebrow">{tl("prof_section_settings")}</span><span className="rule-thin section-rule" /></div>
+          <div className="section-head" id="sec-look"><span className="eyebrow">{tl("prof_section_settings")}</span><span className="rule-thin section-rule" /></div>
 
           <div className="prof-set">
             <span className="prof-set-l">{tl("prof_lbl_name")}</span>
@@ -123,7 +154,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
             </div>
           </div>
 
-          <div className="prof-set">
+          <div className="prof-set" id="sec-lang">
             <span className="prof-set-l">{tl("prof_lbl_lang")}</span>
             <div className="prof-set-c">
               <div className="seg seg--sm">
@@ -144,7 +175,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
           </div>
 
           {!/android|iphone|ipad/i.test(navigator.userAgent || "") && (
-          <div className="prof-set">
+          <div className="prof-set" id="sec-writing">
             <span className="prof-set-l">{tl("prof_lbl_tour")}</span>
             <div className="prof-set-c">
               <button className="btn btn--ghost" onClick={() => { store.replayTour(); nav.dashboard(); }}>
@@ -154,7 +185,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
           </div>
           )}
 
-          <div className="section-head"><span className="eyebrow">{tl("vault_title")}</span><span className="rule-thin section-rule" /></div>
+          <div className="section-head" id="sec-vault"><span className="eyebrow">{tl("vault_title")}</span><span className="rule-thin section-rule" /></div>
           {vaultOn ? (
             <>
               <div className="prof-set">
@@ -189,7 +220,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
             <p className="prof-note mono">{tl("vault_web_note")}</p>
           )}
 
-          <div className="section-head"><span className="eyebrow">{tl("prof_section_data")}</span><span className="rule-thin section-rule" /></div>
+          <div className="section-head" id="sec-data"><span className="eyebrow">{tl("prof_section_data")}</span><span className="rule-thin section-rule" /></div>
           <p className="prof-note mono">{tl("prof_data_note")}</p>
           <div className="prof-data">
             <button className="btn btn--ghost" onClick={exportBackup}><Icon name="download" size={16}/> {tl("prof_export_backup")}</button>
@@ -197,8 +228,6 @@ function Profile({ store, user, nav, onTheme, onToast }) {
             <input ref={fileRef} type="file" accept="application/json,.json" style={{display:"none"}} onChange={onImport} />
             <button className="btn btn--danger" onClick={() => setConfirmReset(true)}><Icon name="reset" size={16}/> {tl("prof_reset_btn")}</button>
           </div>
-          <div style={{height:60}} />
-        </div>
       </div>
       {confirmReset && (
         <ConfirmDelete
@@ -209,7 +238,7 @@ function Profile({ store, user, nav, onTheme, onToast }) {
           lang={lang}
         />
       )}
-    </div>
+    </AppFrame>
   );
 }
 window.Profile = Profile;

@@ -104,12 +104,12 @@ function buildTourSteps(nav, store) {
 
   steps.push({
     screen: "dashboard", goto: () => nav.dashboard(),
-    selector: ".stats-dot-wrap", prefer: "bottom",
+    selector: ".stats-strip", prefer: "bottom",
     eyebrow: tl("tour_dash_eyebrow"), title: tl("tour_dash_title"),
     body: tl("tour_dash_body"),
   });
   steps.push({
-    screen: "dashboard", selector: ".dash-actions", prefer: "bottom",
+    screen: "dashboard", selector: ".bar-actions", prefer: "bottom",
     eyebrow: tl("tour_create_eyebrow"), title: tl("tour_create_title"),
     body: tl("tour_create_body"),
   });
@@ -135,7 +135,7 @@ function buildTourSteps(nav, store) {
       body: tl("tour_proj_body"),
     });
     steps.push({
-      screen: "project", selector: ".proj-hero-side", prefer: "left",
+      screen: "project", selector: ".proj-side", prefer: "left",
       eyebrow: tl("tour_goal_eyebrow"), title: tl("tour_goal_title"),
       body: tl("tour_goal_body"),
     });

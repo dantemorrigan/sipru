@@ -937,6 +937,9 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
   /* The book already has a chosen writer's font — asking again here would
      just be the same choice with extra steps. */
   const defaultFont = (store.get().user && store.get().user.editorFont) || "book";
+  /* the chosen output format is now a first-class choice made up front,
+     not four buttons in the footer — the preview reads the same either way */
+  const [fmt, setFmt] = useState(initialFormat || "pdf");
   const [opts, setOpts] = useState(() => ({
     titlePage: true, toc: true, font: defaultFont, lang,
     include: {},
@@ -998,6 +1001,18 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
 
           <div className="exp-scroll">
             <div className="exp-grp">
+              <div className="exp-grp-h mono">{tl("exp_format_label")}</div>
+              <div className="exp-formats">
+                {[["pdf", "export"], ["docx", "note"], ["txt", "type"], ["md", "code"]].map(([f, icon]) => (
+                  <button key={f} className={"exp-fmt" + (fmt === f ? " on" : "")} onClick={() => setFmt(f)}>
+                    <Icon name={icon} size={20} />
+                    <span className="mono">{f.toUpperCase()}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="exp-grp">
               <div className="exp-grp-h mono">{tl("exp_chapters_label")} · {included} {tl("exp_of")} {project.chapters.length}</div>
               <ul className="exp-chaps">
                 {project.chapters.map((c, i) => (
@@ -1025,10 +1040,9 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
           </div>
 
           <div className="exp-actions">
-            <button className="btn btn--accent" onClick={() => doExport("pdf")}><Icon name="download" size={15} /> PDF</button>
-            <button className="btn" onClick={() => doExport("docx")}>DOCX</button>
-            <button className="btn" onClick={() => doExport("txt")}>TXT</button>
-            <button className="btn" onClick={() => doExport("md")}>MD</button>
+            <button className="btn btn--accent exp-go" onClick={() => doExport(fmt)}>
+              <Icon name="download" size={16} /> {tl("exp_do")} · {fmt.toUpperCase()}
+            </button>
           </div>
         </div>
 
@@ -1080,6 +1094,7 @@ ${BLOCK_CSS}
 function NoteExportModal({ note, onClose, onToast, lang, defaultFont, page }) {
   const [closing, close] = useDismiss(onClose);
   const tl = T(lang || "en");
+  const [fmt, setFmt] = useState("pdf");
   const [opts, setOpts] = useState({ font: defaultFont || "book", titlePage: true });
   const set = (patch) => setOpts((o) => ({ ...o, ...patch }));
   const eopts = { ...opts, page };
@@ -1133,6 +1148,18 @@ function NoteExportModal({ note, onClose, onToast, lang, defaultFont, page }) {
 
           <div className="exp-scroll">
             <div className="exp-grp">
+              <div className="exp-grp-h mono">{tl("exp_format_label")}</div>
+              <div className="exp-formats">
+                {[["pdf", "export"], ["docx", "note"], ["txt", "type"], ["md", "code"]].map(([f, icon]) => (
+                  <button key={f} className={"exp-fmt" + (fmt === f ? " on" : "")} onClick={() => setFmt(f)}>
+                    <Icon name={icon} size={20} />
+                    <span className="mono">{f.toUpperCase()}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="exp-grp">
               <div className="exp-grp-h mono">{tl("exp_section_decoration")}</div>
               <label className="exp-toggle">
                 <span className={"switch" + (opts.titlePage ? " on" : "")} onClick={() => set({ titlePage: !opts.titlePage })}><span /></span>
@@ -1142,10 +1169,9 @@ function NoteExportModal({ note, onClose, onToast, lang, defaultFont, page }) {
           </div>
 
           <div className="exp-actions">
-            <button className="btn btn--accent" onClick={() => doExport("pdf")}><Icon name="download" size={15} /> PDF</button>
-            <button className="btn" onClick={() => doExport("docx")}>DOCX</button>
-            <button className="btn" onClick={() => doExport("txt")}>TXT</button>
-            <button className="btn" onClick={() => doExport("md")}>MD</button>
+            <button className="btn btn--accent exp-go" onClick={() => doExport(fmt)}>
+              <Icon name="download" size={16} /> {tl("exp_do")} · {fmt.toUpperCase()}
+            </button>
           </div>
         </div>
 

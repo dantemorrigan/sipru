@@ -63,12 +63,16 @@ function Onboarding({ onDone }) {
 
   return (
     <div className={"onb" + (leaving ? " onb--leave" : "")}>
+      <div className="onb-left">
       <div className="onb-grid" aria-hidden="true">
         {Array.from({ length: 5 }).map((_, i) => <span key={i} style={{ left: (12.5 + i * 18.75) + "%" }} />)}
       </div>
 
       <div className="onb-top">
-        <Logo size={20} alive />
+        <div className="onb-brand">
+          <span className="onb-brand-mark">S<i /></span>
+          <span className="onb-brand-w">Sipru</span>
+        </div>
         <div className="onb-steps mono">
           {pips.map((i) => <span key={i} className={"onb-pip" + (i <= step ? " on" : "")} />)}
           <span style={{ marginLeft: 12, color: "var(--ink-faint)" }}>
@@ -80,18 +84,24 @@ function Onboarding({ onDone }) {
       {/* STEP -1 — language */}
       {step === -1 && (
         <div className="onb-stage screen-enter" key="lang">
+          <div className="eyebrow onb-kicker">{lang === "ru" ? "Шаг 1 · Язык" : "Step 1 · Language"}</div>
           <h2 className="onb-q">
             {lang === "ru" ? "Выберите язык" : "Choose your language"}
           </h2>
+          <p className="onb-lede">{lang === "ru"
+            ? "Интерфейс, экспорт и подсказки. Поменять можно в любой момент в профиле."
+            : "Interface, export and hints. You can change it any time in your profile."}</p>
           <div className="onb-langs">
-            <button className={"onb-lang-btn" + (lang === "en" ? " on" : "")} onClick={() => setLang("en")}>
-              <span className="onb-lang-flag"><FlagGB /></span>
-              <span>English</span>
-            </button>
-            <button className={"onb-lang-btn" + (lang === "ru" ? " on" : "")} onClick={() => setLang("ru")}>
-              <span className="onb-lang-flag"><FlagRU /></span>
-              <span>Русский</span>
-            </button>
+            {[["en", "English", "EN", <FlagGB key="gb" />], ["ru", "Русский", "RU", <FlagRU key="ru" />]].map(([k, name, code, flag]) => (
+              <button key={k} className={"onb-lang-btn" + (lang === k ? " on" : "")} onClick={() => setLang(k)}>
+                <span className="onb-lang-flag">{flag}</span>
+                <span className="onb-lang-txt">
+                  <span className="onb-lang-name">{name}</span>
+                  <span className="onb-lang-code mono">{code}</span>
+                </span>
+                {lang === k && <Icon name="check" size={17} className="onb-lang-tick" />}
+              </button>
+            ))}
           </div>
           <p className="onb-hint mono">{lang === "ru" ? "Язык можно сменить в настройках" : "You can change this in settings"}</p>
           <button className="btn btn--solid onb-cta" onClick={() => go(0)}>
@@ -193,6 +203,25 @@ function Onboarding({ onDone }) {
           </div>
         </div>
       )}
+
+      <div className="onb-foot mono">{tl("onb_foot_promise")}</div>
+      </div>
+
+      {/* the preview is decoration with a job: it shows, before a single
+          word is typed, what the writing surface will look like */}
+      <aside className="onb-preview" aria-hidden="true">
+        <div className="onb-paper">
+          <div className="onb-paper-eyebrow mono">{tl("onb_paper_eyebrow")}</div>
+          <div className="onb-paper-title">{tl("onb_paper_title")}</div>
+          <div className="onb-paper-lines">
+            {[96, 92, 78, 94, 70, 90, 86, 93, 62].map((w, i) => <span key={i} style={{ width: w + "%" }} />)}
+          </div>
+          <div className="onb-paper-lines">
+            {[88, 74, 91, 64].map((w, i) => <span key={i} style={{ width: w + "%" }} />)}
+          </div>
+          <div className="onb-paper-num mono">1</div>
+        </div>
+      </aside>
     </div>
   );
 }

@@ -14,6 +14,11 @@ function useStore() {
 const P = { fill: "none", stroke: "currentColor", strokeWidth: 1.6,
   strokeLinecap: "round", strokeLinejoin: "round" };
 const ICONS = {
+  home: <g {...P}><path d="M3 10l9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9.5 21.5V13h5v8.5"/></g>,
+  sliders: <g {...P}><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1.5 14h5M9.5 12h5M17.5 16h5"/></g>,
+  layers: <g {...P}><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></g>,
+  star: <g {...P}><path d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"/></g>,
+  bookOpen: <g {...P}><path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"/></g>,
   bold: <path {...P} strokeWidth="2" d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z" />,
   italic: <g {...P} strokeWidth="2"><line x1="15" y1="5" x2="10" y2="19"/><line x1="9" y1="5" x2="17" y2="5"/><line x1="6" y1="19" x2="14" y2="19"/></g>,
   underline: <g {...P}><path d="M7 4v6a5 5 0 0 0 10 0V4"/><line x1="5" y1="20" x2="19" y2="20"/></g>,
@@ -92,56 +97,6 @@ function Logo({ size = 22, alive = false, onClick, onDotClick, dotTitle, style }
 }
 
 /* ---------- stats popup off the dot ---------- */
-function StatNum({ n, l }) {
-  return (
-    <div className="stats-popup-item">
-      <div className="stats-popup-n mono">{n}</div>
-      <div className="stats-popup-l mono">{l}</div>
-    </div>
-  );
-}
-
-function StatsDot({ store, nav, lang }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-  const stats = store.stats();
-  const tl = T(lang || "en");
-  const locale = lang === "ru" ? "ru-RU" : "en-US";
-
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("touchstart", onDown);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("touchstart", onDown);
-    };
-  }, [open]);
-
-  return (
-    <div className="stats-dot-wrap" ref={wrapRef}>
-      <Logo size={19} alive dotTitle={tl("stats_title")}
-        onClick={() => { setOpen(false); nav.dashboard(); }}
-        onDotClick={() => setOpen((o) => !o)}
-      />
-      {open && (
-        <div className="stats-popup">
-          <div className="stats-popup-label mono">{tl("words_written")}</div>
-          <div className="stats-popup-grid">
-            <StatNum n={stats.words.toLocaleString(locale)} l={pluralT(stats.words, lang || "en", "word_one", "word_few", "word_many")} />
-            <StatNum n={stats.projects} l={pluralT(stats.projects, lang || "en", "proj_one", "proj_few", "proj_many")} />
-            <StatNum n={stats.chapters} l={pluralT(stats.chapters, lang || "en", "chap_one", "chap_few", "chap_many")} />
-            <StatNum n={stats.notes} l={pluralT(stats.notes, lang || "en", "note_one", "note_few", "note_many")} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ---------- theme toggle (sliding) ---------- */
 function ThemeToggle({ theme, onChange, lang }) {
   const dark = theme === "dark";
@@ -314,7 +269,10 @@ function SearchModal({ store, lang, projectId, onPick, onClose }) {
           <Icon name="search" size={18} />
           <input className="search-input" autoFocus value={q} onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown} placeholder={tl(projectId ? "search_placeholder_project" : "search_placeholder")} />
-          <button className="icon-btn" onClick={close} title={tl("confirm_cancel")}><Icon name="close" size={17} /></button>
+          {results.length > 0 && (
+            <span className="search-count mono">{results.total || results.length} {tl("search_results_n")}</span>
+          )}
+          <button className="search-esc mono" onClick={close} title={tl("confirm_cancel")}>esc</button>
         </div>
 
         <div className="search-list" ref={listRef}>
@@ -433,6 +391,6 @@ function useDismiss(onClose) {
 }
 
 Object.assign(window, {
-  useStore, Icon, ICONS, Logo, StatsDot, ThemeToggle, timeAgo, plural, wordsLabel, useToast, FONT_LABEL, T, SearchModal,
+  useStore, Icon, ICONS, Logo, ThemeToggle, timeAgo, plural, wordsLabel, useToast, FONT_LABEL, T, SearchModal,
   useDismiss, BarMenu, StorageWarning, FlagGB, FlagRU,
 });

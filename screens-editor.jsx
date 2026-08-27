@@ -92,7 +92,7 @@ let OUTLINE_STICKY = false;
 const EMPTY_DOC_HTML = "<p><br></p>";
 function withFallbackHTML(html) { return html && html !== "" ? html : EMPTY_DOC_HTML; }
 
-function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
+function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onToast }) {
   const lang = user.lang || "en";
   const tl = T(lang);
   const found = store.findDoc(docId);
@@ -104,6 +104,9 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   const [footH, setFootH] = useState(0);
   const saved = useRef("");
   const [focusMode, setFocusMode] = useState(false);
+  /* the word count the session started at, so focus mode can report what
+     this sitting produced rather than what the chapter already held */
+  const focusBase = useRef(0);
   const [mode, setMode] = useState("edit");
   const [active, setActive] = useState({});
   const [words, setWords] = useState(0);
@@ -290,9 +293,14 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 
   useEffect(() => {
     if (!focusMode) return;
+    /* entering focus starts a fresh sitting: the count as it stands now is
+       the baseline everything typed from here is measured against */
+    focusBase.current = words;
     const onKey = (e) => { if (e.key === "Escape") setFocusMode(false); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    /* `words` is read once on entry by design — listing it here would reset
+       the baseline on every keystroke and the counter would never move */
   }, [focusMode]);
 
   /* Focus mode and the preview switch are about the *screen*, not about the
@@ -1876,7 +1884,12 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 
   const readMins = Math.max(1, Math.round(words / 200));
 
-  if (!doc) return <div className="app-shell"><div className="empty mono">{tl("doc_not_found")}</div></div>;
+  if (!doc) return (
+    <div className="frame frame--editor">
+      <NavRail user={user} nav={nav} section="library" lang={lang} onSearch={onSearch} onTheme={onTheme} />
+      <div className="empty mono">{tl("doc_not_found")}</div>
+    </div>
+  );
 
   /* The compact contextual toolbar — inline marks only. Anything a writer
      reaches for once an hour lives behind "···" instead. */
@@ -1913,6 +1926,11 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
   }
 
   return (
+    /* the editor keeps its own three-pane layout — outline, page, inspector —
+       so it takes the rail on its own rather than the full AppFrame, whose
+       contextual sidebar would only duplicate the outline */
+    <div className={"frame frame--editor" + (focusMode ? " frame--focus" : "")}>
+      <NavRail user={user} nav={nav} section="library" lang={lang} onSearch={onSearch} onTheme={onTheme} />
     <div className={"editor-root" + (focusMode ? " focus" : "") + (outlineOpen ? " with-outline" : "") + (setupOpen ? " with-setup" : "")}>
       <header className={"ed-head" + (renaming ? " ed-head--renaming" : "")}>
         <div className="ed-head-l">
@@ -2124,10 +2142,24 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
 
       {focusMode && (
         <>
-          <div className="focus-hint mono">{tl("focus_exit_hint")}</div>
-          <button className="focus-exit-btn" onClick={() => setFocusMode(false)} title={tl("focus_exit_btn")}>
-            <Icon name="close" size={18} />
-          </button>
+          {/* the whole HUD: where you are, two controls, and what this
+              sitting has produced — nothing else survives focus mode */}
+          <div className="focus-where mono">
+            {project ? project.title + " · " : ""}{doc.title}
+          </div>
+          <div className="focus-tools">
+            <button className="focus-tool" title={tl("theme_toggle")}
+              onClick={() => onTheme(user.theme === "dark" ? "light" : "dark")}>
+              <Icon name={user.theme === "dark" ? "moon" : "sun"} size={18} />
+            </button>
+            <button className="focus-tool" title={tl("focus_exit_btn")} onClick={() => setFocusMode(false)}>
+              <Icon name="close" size={18} />
+            </button>
+          </div>
+          <div className="focus-hint mono">
+            {Math.max(0, words - focusBase.current).toLocaleString(lang === "ru" ? "ru-RU" : "en-US")} {tl("focus_session_words")}
+            <span className="focus-hint-sep">·</span>{tl("focus_exit_hint")}
+          </div>
         </>
       )}
 
@@ -2175,6 +2207,7 @@ function Editor({ store, user, nav, onTheme, docId, apiRef, onToast }) {
         <LinkPopup href={linkPopup.href} anchor={linkPopup.anchor} lang={lang}
           onApply={applyLink} onClose={() => setLinkPopup(null)} />
       )}
+    </div>
     </div>
   );
 }

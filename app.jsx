@@ -59,7 +59,9 @@ function App() {
   const setTheme = (t) => store.setUser({ theme: t });
 
   const nav = useMemo(() => ({
-    dashboard: () => setRoute({ name: "dashboard" }),
+    /* `at` is a nonce: tapping the same rail filter twice should still
+       re-point the library, and a plain filter compare would swallow it */
+    dashboard: (filter) => setRoute({ name: "dashboard", filter: filter || null, at: Date.now() }),
     project: (id) => setRoute({ name: "project", id }),
     doc: (id) => setRoute({ name: "doc", id }),
     profile: () => setRoute({ name: "profile" }),
@@ -101,10 +103,10 @@ function App() {
   }
 
   let screen;
-  if (route.name === "dashboard") screen = <Dashboard store={store} user={user} nav={nav} onTheme={setTheme} onSearch={() => setSearchOpen(true)} onToast={toast} />;
-  else if (route.name === "project") screen = <ProjectView store={store} user={user} nav={nav} onTheme={setTheme} projectId={route.id} onSearch={() => setSearchOpen(true)} onToast={toast} />;
-  else if (route.name === "doc") screen = <Editor key={route.id} store={store} user={user} nav={nav} onTheme={setTheme} docId={route.id} apiRef={editorApi} onToast={toast} />;
-  else if (route.name === "profile") screen = <Profile store={store} user={user} nav={nav} onTheme={setTheme} onToast={toast} />;
+  if (route.name === "dashboard") screen = <Dashboard store={store} user={user} nav={nav} route={route} onTheme={setTheme} onSearch={() => setSearchOpen(true)} onToast={toast} />;
+  else if (route.name === "project") screen = <ProjectView store={store} user={user} nav={nav} route={route} onTheme={setTheme} projectId={route.id} onSearch={() => setSearchOpen(true)} onToast={toast} />;
+  else if (route.name === "doc") screen = <Editor key={route.id} store={store} user={user} nav={nav} route={route} onTheme={setTheme} onSearch={() => setSearchOpen(true)} docId={route.id} apiRef={editorApi} onToast={toast} />;
+  else if (route.name === "profile") screen = <Profile store={store} user={user} nav={nav} route={route} onTheme={setTheme} onSearch={() => setSearchOpen(true)} onToast={toast} />;
 
   return (
     <>

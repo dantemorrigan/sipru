@@ -2,33 +2,6 @@
    Sipru. — Dashboard + Project (folder) view
    ============================================================ */
 
-function TopBar({ user, store, nav, onTheme, right, hideProfile }) {
-  const tl = T(user.lang || "en");
-  return (
-    <header className="topbar">
-      <div className="topbar-l">
-        <StatsDot store={store} nav={nav} lang={user.lang} />
-      </div>
-      <div className="topbar-c"></div>
-      <div className="topbar-r">
-        {right}
-        {!hideProfile && <>
-          <button className="user-chip" onClick={() => nav.profile()} title={tl("topbar_profile")}>
-            <span className="user-ava mono">
-              {user.avatar
-                ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} />
-                : (user.name || tl("default_author").charAt(0)).trim().charAt(0).toUpperCase()
-              }
-            </span>
-            <span className="user-name">{user.name || tl("default_author")}</span>
-          </button>
-          <ThemeToggle theme={user.theme} onChange={onTheme} lang={user.lang} />
-        </>}
-      </div>
-    </header>
-  );
-}
-
 /* ---- Confirm delete dialog ---- */
 function ConfirmDelete({ title, what, onConfirm, onCancel, lang }) {
   const tl = T(lang || "en");
@@ -66,7 +39,7 @@ function sortItems(arr, sort) {
 }
 
 /* ---- Sort dropdown menu ---- */
-function SortMenu({ value, onChange, lang }) {
+function SortMenu({ value, onChange, lang, compact }) {
   const [open, setOpen] = useState(false);
   const tl = T(lang || "en");
   const SORT_LABELS = {
@@ -77,12 +50,14 @@ function SortMenu({ value, onChange, lang }) {
   };
   const cur = SORT_LABELS[value] || SORT_LABELS.created_desc;
   return (
-    <div className="sortmenu">
+    <div className={"sortmenu" + (compact ? " sortmenu--compact" : "")}>
       <button className={"sortmenu-btn" + (open ? " on" : "")} onClick={() => setOpen((o) => !o)}
-        aria-haspopup="listbox" aria-expanded={open} title={tl("sort_btn_title")}>
+        aria-haspopup="listbox" aria-expanded={open} title={compact ? tl("sort_btn_title") : null}>
         <Icon name="sort" size={15} />
-        <span className="sortmenu-cur">{cur}</span>
-        <Icon name="chevron" size={13} className={"sortmenu-chev" + (open ? " open" : "")} />
+        {!compact && <>
+          <span className="sortmenu-cur">{cur}</span>
+          <Icon name="chevron" size={13} className={"sortmenu-chev" + (open ? " open" : "")} />
+        </>}
       </button>
       {open && (
         <React.Fragment>
@@ -327,9 +302,70 @@ function StatsStrip({ store, stats, lang, locale }) {
   );
 }
 
-function Dashboard({ store, user, nav, onTheme, onSearch, onToast }) {
+/* ---- library sidebar: the filter list, the recents and the vault line ---- */
+function LibrarySidebar({ store, s, lang, nav, typeFilter, setTypeFilter, sort, setSort, onSearch, open, onClose }) {
+  const tl = T(lang || "en");
+  const notes = s.notes || [];
+  const projects = s.projects || [];
+  const starred = projects.filter((p) => p.status === "done").length;
+
+  /* the eight most recently touched things across both kinds — the list a
+     writer actually reaches for, rather than a second copy of the grid */
+  const recent = projects.map((p) => ({ id: p.id, title: p.title, kind: "project", t: p.updatedAt || p.createdAt || 0 }))
+    .concat(notes.map((n) => ({ id: n.id, title: n.title, kind: "note", t: n.updatedAt || n.createdAt || 0 })))
+    .sort((a, b) => b.t - a.t).slice(0, 6);
+
+  const rows = [
+    { key: "all",      icon: "layers", label: tl("side_all"),      n: projects.length + notes.length },
+    { key: "projects", icon: "folder", label: tl("side_projects"), n: projects.length },
+    { key: "notes",    icon: "note",   label: tl("side_notes"),    n: notes.length },
+    { key: "done",     icon: "star",   label: tl("side_starred"),  n: starred },
+  ];
+
+  /* the vault line is the one bit of chrome that tells a writer their words
+     are on disk and not just in a tab — short-path it, never the full tree */
+  const vpath = (window.SipruVault && window.SipruVault.status && window.SipruVault.status().path) || "";
+  const vault = vpath ? vpath.split(/[\\/]/).filter(Boolean).slice(-2).join("/") : "";
+
+  return (
+    <Sidebar
+      open={open} onClose={onClose}
+      title={tl("side_library")}
+      action={<SortMenu value={sort} onChange={setSort} lang={lang} compact />}
+      foot={vault ? <span className="side-vault"><Icon name="save" size={13} /> {vault}</span> : null}>
+
+      <button className="side-search side-search--btn" onClick={onSearch}>
+        <Icon name="search" size={16} />
+        <input readOnly placeholder={tl("search_btn")} tabIndex={-1} />
+        <kbd>⌘K</kbd>
+      </button>
+
+      {rows.map((r) => (
+        <button key={r.key} className={"side-row" + (typeFilter === r.key ? " on" : "")}
+          onClick={() => setTypeFilter(r.key)}>
+          <Icon name={r.icon} size={17} />
+          <span className="side-row-l">{r.label}</span>
+          <span className="side-row-n">{r.n}</span>
+        </button>
+      ))}
+
+      {recent.length > 0 && <>
+        <span className="side-group">{tl("side_recent")}</span>
+        {recent.map((r) => (
+          <button key={r.kind + r.id} className="side-row"
+            onClick={() => r.kind === "project" ? nav.project(r.id) : nav.doc(r.id)}>
+            <Icon name={r.kind === "project" ? "bookOpen" : "note"} size={17} />
+            <span className="side-row-l">{r.title}</span>
+          </button>
+        ))}
+      </>}
+    </Sidebar>
+  );
+}
+
+function Dashboard({ store, user, nav, route, onTheme, onSearch, onToast }) {
   const [statusFilter, setStatusFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState(() => (route && route.filter) || "all");
   const [sort, setSort] = useState("created_desc");
   const [deleteTarget, setDeleteTarget] = useState(null);
   const s = store.get();
@@ -337,11 +373,21 @@ function Dashboard({ store, user, nav, onTheme, onSearch, onToast }) {
   const lang = user.lang || "en";
   const tl = T(lang);
 
-  const showProjects = typeFilter !== "notes";
-  const showNotes = typeFilter !== "projects";
+  /* the rail and the mobile tabs can jump straight to a filtered library,
+     so a route carrying a filter re-points the list without a remount */
+  const routeFilter = route && route.filter;
+  useEffect(() => { if (routeFilter) setTypeFilter(routeFilter); }, [routeFilter, route && route.at]);
 
-  let projects = s.projects.filter((p) => statusFilter === "all" ? true : p.status === (statusFilter === "done" ? "done" : "draft"));
-  let notes = statusFilter === "done" ? [] : s.notes;
+  /* the sidebar's "starred" row is a status filter wearing a type-filter
+     hat — fold it back into the two axes the list actually sorts on */
+  const effType   = typeFilter === "done" ? "projects" : typeFilter;
+  const effStatus = typeFilter === "done" ? "done" : statusFilter;
+
+  const showProjects = effType !== "notes";
+  const showNotes = effType !== "projects";
+
+  let projects = s.projects.filter((p) => effStatus === "all" ? true : p.status === (effStatus === "done" ? "done" : "draft"));
+  let notes = effStatus === "done" ? [] : s.notes;
   projects = showProjects ? sortItems(projects, sort) : [];
   notes = showNotes ? sortItems(notes, sort) : [];
 
@@ -357,110 +403,84 @@ function Dashboard({ store, user, nav, onTheme, onSearch, onToast }) {
 
   const locale = lang === "ru" ? "ru-RU" : "en-US";
 
+  const counts = s.projects.length + " " + pluralT(s.projects.length, lang, "proj_one", "proj_few", "proj_many")
+    + ", " + s.notes.length + " " + pluralT(s.notes.length, lang, "note_one", "note_few", "note_many");
+
   return (
-    <div className="app-shell screen-enter">
-      <TopBar user={user} store={store} nav={nav} onTheme={onTheme}
-        right={<button className="btn btn--ghost btn--search" onClick={onSearch} title={tl("search_title")}>
-          <Icon name="search" size={16} /> <span className="btn-search-l">{tl("search_btn")}</span>
-        </button>} />
-      <div className="scroll-area">
-        <div className="wrap">
+    <AppFrame user={user} nav={nav} route={route} onSearch={onSearch} onTheme={onTheme}
+      crumbs={[<>{tl("crumb_library")} <span className="crumb-count">· {counts}</span></>]}
+      sidebar={<LibrarySidebar store={store} s={s} lang={lang} nav={nav}
+        typeFilter={typeFilter} setTypeFilter={setTypeFilter}
+        sort={sort} setSort={setSort} onSearch={onSearch} />}
+      actions={<>
+        <ImportButton lang={lang} onToast={onToast} className="btn btn--ghost"
+          onFile={({ title, html }) => {
+            const id = store.createNote(title);
+            store.updateDoc(id, { content: html });
+            nav.doc(id);
+          }}>
+          <Icon name="upload" size={16} /> <span className="btn-l">{tl("bar_import")}</span>
+        </ImportButton>
+        <button className="btn btn--ghost" onClick={() => nav.createNote()} title={tl("btn_new_note")}>
+          <Icon name="note" size={16} /> <span className="btn-l">{tl("btn_new_note")}</span>
+        </button>
+        <button className="btn btn--accent btn--fabbed" onClick={() => nav.createProject()}>
+          <Icon name="plus" size={16} /> <span className="btn-l">{tl("bar_new_project")}</span>
+        </button>
+      </>}>
 
-          <div className="dash-top">
-            <section className="dash-hero-card">
-              <div className="dash-hero-top">
-                <div>
-                  <div className="eyebrow">{tl(greetKey)}, {user.name || tl("default_author")}</div>
-                  <h1 className="dash-title">{lang === "ru" ? <>Что напишем<br />сегодня<span style={{ color: "var(--accent)" }}>?</span></> : <>What will you<br />write<span style={{ color: "var(--accent)" }}>?</span></>}</h1>
-                </div>
-                <Icon name="feather" size={56} className="dash-hero-feather" />
-              </div>
-            </section>
+      <div className="wrap screen-enter">
 
-            <StreakCard store={store} user={user} lang={lang} locale={locale} />
+        <div className="dash-top">
+          <div className="dash-greet">
+            <div className="eyebrow">{tl(greetKey)}, {user.name || tl("default_author")}</div>
+            <h1 className="dash-title">{lang === "ru"
+              ? <>Что напишем сегодня<span className="q">?</span></>
+              : <>What will you write today<span className="q">?</span></>}</h1>
           </div>
-
-          <ContinueCard store={store} nav={nav} lang={lang} locale={locale} />
-          <StatsStrip store={store} stats={stats} lang={lang} locale={locale} />
-
-          <div className="dash-actions">
-            <button className="bigaction" onClick={() => nav.createProject()}>
-              <span className="bigaction-icon"><Icon name="folder" size={20} /></span>
-              <div><span className="bigaction-t">{tl("btn_new_project")}</span><span className="bigaction-s mono">{tl("desc_project")}</span></div>
-              <span className="bigaction-chev"><Icon name="chevron" size={16} /></span>
-            </button>
-            <button className="bigaction" onClick={() => nav.createNote()}>
-              <span className="bigaction-icon"><Icon name="note" size={20} /></span>
-              <div><span className="bigaction-t">{tl("btn_new_note")}</span><span className="bigaction-s mono">{tl("desc_note")}</span></div>
-              <span className="bigaction-chev"><Icon name="chevron" size={16} /></span>
-            </button>
-            <ImportButton lang={lang} onToast={onToast} className="bigaction"
-              onFile={({ title, html }) => {
-                const id = store.createNote(title);
-                store.updateDoc(id, { content: html });
-                nav.doc(id);
-              }}>
-              <span className="bigaction-icon"><Icon name="upload" size={20} /></span>
-              <div><span className="bigaction-t">{tl("import_btn")}</span><span className="bigaction-s mono">{tl("import_hint")}</span></div>
-              <span className="bigaction-chev"><Icon name="chevron" size={16} /></span>
-            </ImportButton>
-          </div>
-
-          <div className="dash-filter">
-            <div className="dash-filter-segs">
-              <div className="filtergrp">
-                <span className="filtergrp-l mono">{tl("filter_type_label")}</span>
-                <div className="seg seg--sm">
-                  {[["all","filter_all"],["projects","filter_projects"],["notes","filter_notes"]].map(([k,lk]) => (
-                    <button key={k} className={"seg-btn" + (typeFilter === k ? " on" : "")} onClick={() => setTypeFilter(k)}>{tl(lk)}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="filtergrp">
-                <span className="filtergrp-l mono">{tl("filter_status_label")}</span>
-                <div className="seg seg--sm">
-                  {[["all","filter_all_status"],["draft","filter_drafts"],["done","filter_done"]].map(([k,lk]) => (
-                    <button key={k} className={"seg-btn" + (statusFilter === k ? " on" : "")} onClick={() => setStatusFilter(k)}>{tl(lk)}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <SortMenu value={sort} onChange={setSort} lang={lang} />
-          </div>
-
-          {projects.length > 0 && (
-            <section className="dash-section">
-              <div className="section-head"><span className="eyebrow">{tl("section_projects")}</span><span className="rule-thin section-rule" /></div>
-              <div className="card-grid">
-                {projects.map((p, i) => (
-                  <ProjectCard key={p.id} p={p} store={store} nav={nav} idx={i} lang={lang}
-                    onDelete={() => setDeleteTarget({ kind: "project", id: p.id, title: p.title })} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {notes.length > 0 && (
-            <section className="dash-section">
-              <div className="section-head"><span className="eyebrow">{tl("section_notes")}</span><span className="rule-thin section-rule" /></div>
-              <div className="card-grid">
-                {notes.map((n, i) => (
-                  <NoteCard key={n.id} n={n} nav={nav} idx={i} lang={lang}
-                    onDelete={() => setDeleteTarget({ kind: "note", id: n.id, title: n.title })} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {!projects.length && !notes.length && (
-            <div className="empty mono">{tl("empty_state")}</div>
-          )}
-
-          <footer className="dash-foot mono">
-            {tl("footer_local")} · <Icon name="check" size={13} style={{display:"inline",verticalAlign:"-2px"}} /> persistent storage
-          </footer>
+          <StreakCard store={store} user={user} lang={lang} locale={locale} />
         </div>
+
+        <ContinueCard store={store} nav={nav} lang={lang} locale={locale} />
+        <StatsStrip store={store} stats={stats} lang={lang} locale={locale} />
+
+        <div className="dash-filter">
+          <div className="seg">
+            {[["all","filter_all"],["projects","filter_projects"],["notes","filter_notes"]].map(([k,lk]) => (
+              <button key={k} className={"seg-btn" + (effType === k ? " on" : "")} onClick={() => setTypeFilter(k)}>{tl(lk)}</button>
+            ))}
+          </div>
+          <div className="seg">
+            {[["all","filter_all_status"],["draft","filter_drafts"],["done","filter_done"]].map(([k,lk]) => (
+              <button key={k} className={"seg-btn" + (effStatus === k ? " on" : "")} onClick={() => { setStatusFilter(k); if (typeFilter === "done") setTypeFilter("projects"); }}>{tl(lk)}</button>
+            ))}
+          </div>
+          <SortMenu value={sort} onChange={setSort} lang={lang} />
+        </div>
+
+        {(projects.length > 0 || notes.length > 0) && (
+          <div className="card-grid">
+            {projects.map((p, i) => (
+              <ProjectCard key={p.id} p={p} store={store} nav={nav} idx={i} lang={lang}
+                onDelete={() => setDeleteTarget({ kind: "project", id: p.id, title: p.title })} />
+            ))}
+            {notes.map((n, i) => (
+              <NoteCard key={n.id} n={n} nav={nav} idx={projects.length + i} lang={lang}
+                onDelete={() => setDeleteTarget({ kind: "note", id: n.id, title: n.title })} />
+            ))}
+          </div>
+        )}
+
+        {!projects.length && !notes.length && (
+          <div className="empty mono">{tl("empty_state")}</div>
+        )}
       </div>
+
+      {/* phones get the primary action back as a floating button — the top
+          bar there is too narrow to hold it next to the breadcrumb */}
+      <button className="fab" onClick={() => nav.createProject()} aria-label={tl("bar_new_project")}>
+        <Icon name="plus" size={24} />
+      </button>
 
       {deleteTarget && (
         <ConfirmDelete
@@ -471,7 +491,7 @@ function Dashboard({ store, user, nav, onTheme, onSearch, onToast }) {
           lang={lang}
         />
       )}
-    </div>
+    </AppFrame>
   );
 }
 
@@ -492,7 +512,8 @@ function ProjectCard({ p, store, nav, idx, onDelete, lang }) {
         onClick={() => nav.project(p.id)}
         onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && nav.project(p.id)}>
         <div className="card-top">
-          <Icon name="folder" size={18} />
+          <Icon name="folder" size={17} />
+          <span className="card-kind">{tl(p.status === "done" ? "kind_collection" : "kind_project")}</span>
           <span className={"chip mono " + (p.status === "done" ? "chip--done" : words > 0 ? "chip--active" : "chip--draft")}>
             {p.status === "done" ? tl("status_done") : words > 0 ? tl("status_active") : tl("status_draft")}
           </span>
@@ -508,7 +529,7 @@ function ProjectCard({ p, store, nav, idx, onDelete, lang }) {
             <span className="dotsep">·</span>
             <span>{words.toLocaleString(locale)} {tl("word_many")}</span>
           </div>
-          <ProgressBar value={words} max={goal} accent={p.status==="done"} />
+          <ProgressBar value={words} max={goal} accent />
           <div className="card-time mono"><Icon name="clock" size={12} /> {timeAgo(p.updatedAt, lang)}</div>
         </div>
       </div>
@@ -525,7 +546,8 @@ function NoteCard({ n, nav, idx, onDelete, lang }) {
         onClick={() => nav.doc(n.id)}
         onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && nav.doc(n.id)}>
         <div className="card-top">
-          <Icon name="note" size={18} />
+          <Icon name="note" size={17} />
+          <span className="card-kind">{tl("kind_note")}</span>
           <button className="card-delete" title={tl("del_note_title")} onClick={(e) => { e.stopPropagation(); onDelete(); }}>
             <Icon name="trash" size={15} />
           </button>
@@ -552,7 +574,42 @@ function countWords(text) {
 }
 
 /* ----------------------- PROJECT (folder) ----------------------- */
-function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }) {
+/* ---- project sidebar: the book's own chapter list, always in reach ---- */
+function ProjectChapterSidebar({ p, store, nav, lang, currentId, open, onClose }) {
+  const tl = T(lang || "en");
+  const idx = new Map(p.chapters.map((c, i) => [c.id, i]));
+  const parts = p.parts || [];
+  const loose = p.chapters.filter((c) => !c.partId);
+  const row = (c) => (
+    <button key={c.id} className={"side-row side-row--sheet" + (currentId === c.id ? " on" : "")}
+      onClick={() => nav.doc(c.id)}>
+      <span className="side-num">{idx.get(c.id) + 1}</span>
+      <span className="side-row-l">{c.title}</span>
+    </button>
+  );
+  return (
+    <Sidebar open={open} onClose={onClose} title={p.title}
+      back={{ label: tl("side_all_works"), onClick: () => nav.dashboard() }}
+      foot={<button className="side-add" onClick={() => { const id = store.addChapter(p.id); nav.doc(id); }}>
+        <Icon name="plus" size={16} /> {tl("side_add_chapter")}
+      </button>}>
+      <div className="side-meta mono">
+        {tl(p.kind === "note" ? "what_note" : "what_project")} · {p.chapters.length} {pluralT(p.chapters.length, lang, "chap_one", "chap_few", "chap_many")}
+      </div>
+      {parts.map((pt) => (
+        <React.Fragment key={pt.id}>
+          <span className="side-group">{pt.title || tl("ol_untitled")}</span>
+          {p.chapters.filter((c) => c.partId === pt.id).map(row)}
+        </React.Fragment>
+      ))}
+      {loose.length > 0 && parts.length > 0 && <span className="side-group">{tl("side_project_chapters")}</span>}
+      {loose.map(row)}
+      {!p.chapters.length && <div className="side-empty mono">{tl("no_chapters").replace(" \u2192", "")}</div>}
+    </Sidebar>
+  );
+}
+
+function ProjectView({ store, user, nav, route, onTheme, projectId, onSearch, onToast }) {
   const s = store.get();
   const p = s.projects.find((x) => x.id === projectId);
   const [dragId, setDragId] = useState(null);
@@ -568,10 +625,10 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
 
   if (!p) {
     return (
-      <div className="app-shell">
-        <TopBar user={user} store={store} nav={nav} onTheme={onTheme} hideProfile />
-        <div className="empty mono">{tl("project_not_found")}</div>
-      </div>
+      <AppFrame user={user} nav={nav} route={route} onSearch={onSearch} onTheme={onTheme}
+        crumbs={[tl("crumb_library")]}>
+        <div className="wrap"><div className="empty mono">{tl("project_not_found")}</div></div>
+      </AppFrame>
     );
   }
 
@@ -598,21 +655,33 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
   }
 
   return (
-    <div className="app-shell screen-enter">
-      <TopBar user={user} store={store} nav={nav} onTheme={onTheme} hideProfile
-        right={<>
-          <button className="btn btn--ghost btn--search" onClick={onSearch} title={tl("search_title")}>
-            <Icon name="search" size={16} /> <span className="btn-search-l">{tl("search_btn")}</span>
-          </button>
-          <button className="btn btn--ghost btn--assemble" data-tour="assemble-book" onClick={() => nav.export(p.id)}><Icon name="book" size={16} /> <span className="btn-assemble-l">{tl("assemble_book")}</span></button>
-        </>} />
-      <div className="scroll-area">
-        <div className="wrap">
-          <button className="backlink mono" onClick={() => nav.dashboard()}><Icon name="back" size={14} /> {tl("all_works")}</button>
+    <AppFrame user={user} nav={nav} route={route} onSearch={onSearch} onTheme={onTheme}
+      crumbs={[<button key="c" className="crumb-link" onClick={() => nav.dashboard()}>{tl("crumb_library")}</button>, p.title]}
+      sidebar={<ProjectChapterSidebar p={p} store={store} nav={nav} lang={lang} />}
+      actions={<>
+        <ImportButton lang={lang} onToast={onToast} className="btn btn--ghost"
+          onFile={({ title, html }) => {
+            const id = store.addChapter(p.id, title);
+            store.updateDoc(id, { content: html });
+            nav.doc(id);
+          }}>
+          <Icon name="upload" size={16} /> <span className="btn-l">{tl("import_chapter_btn")}</span>
+        </ImportButton>
+        <button className="btn btn--accent btn--assemble" data-tour="assemble-book" onClick={() => nav.export(p.id)}>
+          <Icon name="book" size={16} /> <span className="btn-l">{tl("assemble_book")}</span>
+        </button>
+      </>}>
+      <div className="wrap screen-enter">
+        <div className="proj-grid">
+          <div className="proj-main">
 
-          <section className="proj-hero">
-            <div className="proj-hero-main">
-              <div className="eyebrow">{lang === "ru" ? "Проект" : "Project"} · {p.status === "done" ? tl("status_done") : tl("status_draft")}</div>
+            <div className="proj-chips">
+              <span className="chip chip--kind mono">{lang === "ru" ? "Проект" : "Project"}</span>
+              <span className={"chip mono " + (p.status === "done" ? "chip--done" : "chip--active")}>
+                {p.status === "done" ? tl("status_done") : tl("status_draft")}
+              </span>
+              <span className="proj-created mono">{tl("created_label")} {new Date(p.createdAt || Date.now()).toLocaleDateString(locale)}</span>
+            </div>
               {editTitle ? (
                 <input className="proj-title-input" autoFocus defaultValue={p.title} maxLength={TITLE_MAX}
                   onBlur={(e) => { store.updateProject(p.id, { title: e.target.value.trim() || p.title }); setEditTitle(false); }}
@@ -646,39 +715,14 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
               ) : (
                 <button className="proj-syn-add mono" onClick={() => { setSynDraft(""); setEditSynopsis(true); }}>{tl("synopsis_placeholder")}</button>
               )}
-            </div>
-            <div className="proj-hero-side">
-              <div className="proj-bignum mono">{words.toLocaleString(locale)}</div>
-              <div className="proj-bignum-lbl mono">{tl("dash_words_total")}</div>
-              <GoalBlock p={p} store={store} words={words} lang={lang} />
-              <button className={"status-toggle mono" + (p.status==="done"?" on":"")}
-                onClick={() => store.updateProject(p.id, { status: p.status === "done" ? "draft" : "done" })}>
-                <Icon name="check" size={14} /> {p.status === "done" ? tl("mark_done") : tl("mark_in_progress")}
-              </button>
-              {window.SipruVault && window.SipruVault.canReveal() && (
-                <button className="status-toggle mono" onClick={async () => {
-                  const path = window.SipruVault.locate("project", p.id);
-                  if (!path) return onToast(tl("vault_not_saved_yet"));
-                  if (!(await window.SipruVault.reveal(path))) onToast(tl("vault_reveal_fail"));
-                }}>
-                  <Icon name="folder" size={14} /> {tl("vault_reveal")}
-                </button>
-              )}
-              <button className="status-toggle mono proj-delete-btn" onClick={() => setDeleteProjectConfirm(true)}>
-                <Icon name="trash" size={14} /> {tl("delete_project_btn")}
-              </button>
-            </div>
-          </section>
 
-          <div className="section-head"><span className="eyebrow">{tl("section_chapters")}</span><span className="rule-thin section-rule" />
-            <ImportButton lang={lang} onToast={onToast} className="addchap mono" label={tl("import_chapter_btn")}
-              onFile={({ title, html }) => {
-                const id = store.addChapter(p.id, title);
-                store.updateDoc(id, { content: html });
-                nav.doc(id);
-              }} />
-            <button className="addchap mono" data-tour="add-chapter" onClick={() => { const id = store.addChapter(p.id); nav.doc(id); }}><Icon name="plus" size={14} /> {tl("add_chapter_btn")}</button>
-          </div>
+            <div className="section-head">
+              <span className="eyebrow">{tl("section_chapters")}</span>
+              <span className="rule-thin section-rule" />
+              <button className="addchap" data-tour="add-chapter" onClick={() => { const id = store.addChapter(p.id); nav.doc(id); }}>
+                <Icon name="plus" size={14} /> {tl("add_chapter_btn")}
+              </button>
+            </div>
 
           <ol className="chap-list">
             {(() => {
@@ -726,7 +770,43 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
               <li className="chap-empty mono">{tl("no_chapters").replace(" →", "")} <button onClick={() => { const id = store.addChapter(p.id); nav.doc(id); }}>→</button></li>
             )}
           </ol>
-          <div style={{ height: 60 }} />
+          </div>
+
+          <aside className="proj-side">
+            <section className="pcard pcard--goal">
+              <div className="pcard-head"><Icon name="target" size={15} /> <span>{tl("goal_label")}</span></div>
+              <GoalBlock p={p} store={store} words={words} lang={lang} />
+            </section>
+
+            <section className="pcard">
+              <div className="pcard-head"><span>{tl("section_stats")}</span></div>
+              <dl className="pcard-rows">
+                <div><dt>{tl("stat_chapters")}</dt><dd className="mono">{p.chapters.length}</dd></div>
+                <div><dt>{tl("stat_done")}</dt><dd className="mono">{p.chapters.filter((c) => c.done).length}</dd></div>
+                <div><dt>{tl("stat_chars")}</dt><dd className="mono">{p.chapters.reduce((n, c) => n + (c.content || "").replace(/<[^>]+>/g, "").length, 0).toLocaleString(locale)}</dd></div>
+                <div><dt>{tl("stat_reading")}</dt><dd className="mono">≈ {Math.max(1, Math.round(words / 180))} {tl("unit_min")}</dd></div>
+              </dl>
+            </section>
+
+            <div className="proj-side-actions">
+              <button className={"pact" + (p.status === "done" ? " on" : "")}
+                onClick={() => store.updateProject(p.id, { status: p.status === "done" ? "draft" : "done" })}>
+                <Icon name="check" size={15} /> {p.status === "done" ? tl("mark_done") : tl("mark_in_progress")}
+              </button>
+              {window.SipruVault && window.SipruVault.canReveal() && (
+                <button className="pact" onClick={async () => {
+                  const path = window.SipruVault.locate("project", p.id);
+                  if (!path) return onToast(tl("vault_not_saved_yet"));
+                  if (!(await window.SipruVault.reveal(path))) onToast(tl("vault_reveal_fail"));
+                }}>
+                  <Icon name="folder" size={15} /> {tl("vault_reveal")}
+                </button>
+              )}
+              <button className="pact pact--danger" onClick={() => setDeleteProjectConfirm(true)}>
+                <Icon name="trash" size={15} /> {tl("delete_project_btn")}
+              </button>
+            </div>
+          </aside>
         </div>
       </div>
 
@@ -748,8 +828,8 @@ function ProjectView({ store, user, nav, onTheme, projectId, onSearch, onToast }
           lang={lang}
         />
       )}
-    </div>
+    </AppFrame>
   );
 }
 
-Object.assign(window, { TopBar, Dashboard, ProjectView, ProgressBar, ConfirmDelete, ImportButton, GoalBlock });
+Object.assign(window, { Dashboard, ProjectView, ProgressBar, ConfirmDelete, ImportButton, GoalBlock });
