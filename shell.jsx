@@ -16,9 +16,14 @@
    `doc` and `project` both live under the library, so they share a
    section — the rail is about where you are, not how you got there. */
 function sectionOf(route) {
-  if (!route) return "library";
+  if (!route) return "home";
   if (route.name === "profile") return "settings";
   if (route.name === "export") return "export";
+  if (route.name === "dashboard") {
+    if (route.filter === "notes") return "notes";
+    if (route.filter === "projects") return "library";
+    return "home";
+  }
   return "library";
 }
 
