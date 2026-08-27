@@ -1302,7 +1302,7 @@
   /* Editor: phone-optimised */
   .ed-head { padding: 8px 10px; padding-top: calc(env(safe-area-inset-top, 0px) + 8px); }
   .ed-scroll { padding-top: 10px; }
-  .ed-pagebox { box-shadow: 0 1px 3px rgba(40,34,22,.10), 0 8px 22px -12px rgba(40,34,22,.24); }
+  .ed-pagebox { box-shadow: var(--shadow-2); }
 
   .ed-bar { padding: 5px 8px; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 5px); gap: 1px; }
   .ed-bar-grp { padding-right: 6px; margin-right: 4px; }
