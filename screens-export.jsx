@@ -834,7 +834,7 @@ function buildBookHTML(project, opts) {
   const screenPad = Math.round(Math.min(ml, mr) * 2.6) + "px";
   const fontStack = opts.font === "mono"
     ? "'JetBrains Mono', monospace"
-    : opts.font === "article" ? "'Spectral', Georgia, serif" : "'Newsreader', Georgia, serif";
+    : opts.font === "article" ? "'Lora', Georgia, serif" : "'Source Serif 4', Georgia, serif";
   let body = "";
   if (opts.titlePage) {
     body += `<section class="b-title"><div class="b-kicker">SIPRU.</div><h1>${project.title}</h1>${project.synopsis ? `<p class="b-syn">${project.synopsis}</p>` : ""}</section>`;
@@ -846,7 +846,7 @@ function buildBookHTML(project, opts) {
     body += `<section class="b-chap"><h1>${escText(c.title)}</h1>${chapterBody(c.content || "")}</section>`;
   });
   return `<!doctype html><html><head><meta charset="utf-8"><title>${project.title}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,600;1,400&family=Spectral:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Lora:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
   <style>
     @page { size: ${d.w}mm ${d.h}mm; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm; }
     * { box-sizing: border-box; }
@@ -1045,14 +1045,14 @@ function ExportModal({ store, projectId, onClose, initialFormat, onToast }) {
 function buildNoteHTML(note, opts) {
   const fontStack = opts.font === "mono"
     ? "'JetBrains Mono', monospace"
-    : opts.font === "article" ? "'Spectral', Georgia, serif" : "'Newsreader', Georgia, serif";
+    : opts.font === "article" ? "'Lora', Georgia, serif" : "'Source Serif 4', Georgia, serif";
   const pg = opts.page || {};
   const d = pageDimsMM(pg);
   const mt = pg.mt != null ? pg.mt : 20, mr = pg.mr != null ? pg.mr : 18, mb = pg.mb != null ? pg.mb : 20, ml = pg.ml != null ? pg.ml : 18;
   const screenEm = Math.round(d.w / 5.4) + "em";
   const screenPad = Math.round(Math.min(ml, mr) * 2.6) + "px";
   return `<!doctype html><html><head><meta charset="utf-8"><title>${note.title}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,600;1,400&family=Spectral:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Lora:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
   <style>
     @page { size: ${d.w}mm ${d.h}mm; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm; }
     * { box-sizing: border-box; }

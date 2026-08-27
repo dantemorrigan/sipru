@@ -216,6 +216,117 @@ function GoalEditor({ p, store, words, lang, onDone, compact, onEdit }) {
   );
 }
 
+/* ---- Continue where you left off ----
+   The single most recently edited document, with its project's progress
+   under it. It is the first thing on the dashboard because it is the
+   answer to the question the greeting asks. */
+function ContinueCard({ store, nav, lang, locale }) {
+  const tl = T(lang || "en");
+  const last = store.lastWritten();
+  if (!last) return null;
+  const p = last.project;
+  const words = p ? store.projectWords(p) : (last.doc.words || countWords(last.doc.content));
+  /* the meter reads against the project's word goal when it has one, and
+     against its finished chapters when it does not — a full bar with
+     nothing behind it would be a lie either way */
+  const target = p && p.goal && p.goal.target ? p.goal.target : 0;
+  const done = p ? p.chapters.filter((c) => c.status === "done").length : 0;
+  const pct = target ? Math.min(100, Math.round((words / target) * 100))
+    : p && p.chapters.length ? Math.round((done / p.chapters.length) * 100) : 0;
+  return (
+    <button className="cont-card" onClick={() => nav.doc(last.doc.id)}>
+      <span className="cont-icon"><Icon name="pencil" size={19} /></span>
+      <span className="cont-body">
+        <span className="cont-head">
+          <span className="eyebrow cont-eyebrow">{tl("dash_continue")}</span>
+          <span className="cont-title">{p ? p.title : last.doc.title}</span>
+          {p && <><span className="cont-slash">/</span><span className="cont-sub">{last.doc.title}</span></>}
+        </span>
+        <span className="cont-meter">
+          <span className="cont-bar"><i style={{ width: pct + "%" }} /></span>
+          <span className="cont-meta mono">
+            {p ? pct + " % · " : ""}{words.toLocaleString(locale)} {tl("word_many")} · {timeAgo(last.doc.updatedAt, lang)}
+          </span>
+        </span>
+      </span>
+      <span className="btn btn--accent cont-go">{tl("dash_write")} <Icon name="forward" size={15} /></span>
+    </button>
+  );
+}
+
+/* ---- Streak + daily goal ----
+   Fourteen bars, one per day, filled for the days that were written in.
+   The goal is edited in place: there is no other screen it would belong
+   on, and it is a single number. */
+function StreakCard({ store, user, lang, locale }) {
+  const tl = T(lang || "en");
+  const act = store.activity();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(act.goal || ""));
+  const peak = Math.max(1, ...act.recent.map((d) => d.words));
+
+  function save() {
+    const n = Math.max(0, parseInt(String(draft).replace(/\D/g, ""), 10) || 0);
+    store.setUser({ dailyGoal: n });
+    setEditing(false);
+  }
+
+  return (
+    <section className="streak-card">
+      <div className="streak-top">
+        <span className="eyebrow streak-eyebrow"><Icon name="flame" size={14} /> {tl("dash_streak")}</span>
+        <span className="streak-n">{act.streak} <em className="mono">{tl("dash_streak_days")}</em></span>
+      </div>
+      <div className="streak-bars" aria-hidden="true">
+        {act.recent.map((d) => (
+          <i key={d.day} className={"streak-bar" + (d.words > 0 ? " on" : "")}
+            style={{ "--h": Math.round(28 + 72 * Math.min(1, d.words / peak)) + "%" }} />
+        ))}
+      </div>
+      {editing ? (
+        <div className="streak-edit">
+          <input className="streak-input mono" inputMode="numeric" autoFocus value={draft}
+            aria-label={tl("dash_goal_edit")}
+            onChange={(e) => setDraft(e.target.value)} onBlur={save}
+            onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); }} />
+          <span className="streak-edit-l mono">{tl("dash_goal_edit")}</span>
+        </div>
+      ) : (
+        <button className="streak-goal mono" onClick={() => { setDraft(String(act.goal || "")); setEditing(true); }}
+          title={tl("dash_goal_edit")}>
+          {act.goal
+            ? <>{tl("dash_today")} {act.today.toLocaleString(locale)} / {act.goal.toLocaleString(locale)} {tl("word_many")}</>
+            : <>{tl("dash_today")} {act.today.toLocaleString(locale)} {tl("word_many")} · {tl("dash_goal_off")}</>}
+        </button>
+      )}
+    </section>
+  );
+}
+
+/* ---- The numbers strip under the hero ---- */
+function StatsStrip({ store, stats, lang, locale }) {
+  const tl = T(lang || "en");
+  const act = store.activity();
+  const cells = [
+    [stats.words, tl("dash_words_total")],
+    [stats.projects, pluralT(stats.projects, lang, "proj_one", "proj_few", "proj_many")],
+    [stats.chapters, tl("dash_row_chapters")],
+    [stats.notes, pluralT(stats.notes, lang, "note_one", "note_few", "note_many")],
+    [act.week, tl("dash_week")],
+    [act.streak, tl("dash_row_streak")],
+  ];
+  return (
+    <div className="stats-strip">
+      {cells.map(([n, label], i) => (
+        <div className="stats-cell" key={i}>
+          <span className="stats-n">{n.toLocaleString(locale)}</span>
+          <span className="stats-l mono">{label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Dashboard({ store, user, nav, onTheme, onSearch, onToast }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -255,23 +366,22 @@ function Dashboard({ store, user, nav, onTheme, onSearch, onToast }) {
       <div className="scroll-area">
         <div className="wrap">
 
-          <section className="dash-hero-card">
-            <div className="dash-hero-top">
-              <div>
-                <div className="eyebrow">{tl(greetKey)}, {user.name || tl("default_author")}</div>
-                <h1 className="dash-title">{lang === "ru" ? <>Что напишем<br />сегодня<span style={{ color: "var(--accent)" }}>?</span></> : <>What will you<br />write<span style={{ color: "var(--accent)" }}>?</span></>}</h1>
+          <div className="dash-top">
+            <section className="dash-hero-card">
+              <div className="dash-hero-top">
+                <div>
+                  <div className="eyebrow">{tl(greetKey)}, {user.name || tl("default_author")}</div>
+                  <h1 className="dash-title">{lang === "ru" ? <>Что напишем<br />сегодня<span style={{ color: "var(--accent)" }}>?</span></> : <>What will you<br />write<span style={{ color: "var(--accent)" }}>?</span></>}</h1>
+                </div>
+                <Icon name="feather" size={56} className="dash-hero-feather" />
               </div>
-              <Icon name="feather" size={56} className="dash-hero-feather" />
-            </div>
-            <div className="dash-hero-rule" />
-            <div className="dash-hero-stats mono">
-              <div className="dash-hero-stat"><span className="dash-hero-stat-n">{stats.words.toLocaleString(locale)}</span><span className="dash-hero-stat-l">{tl("dash_words_total")}</span></div>
-              <span className="dash-hero-dot">·</span>
-              <div className="dash-hero-stat"><span className="dash-hero-stat-n">{stats.projects}</span><span className="dash-hero-stat-l">{pluralT(stats.projects, lang, "proj_one", "proj_few", "proj_many")}</span></div>
-              <span className="dash-hero-dot">·</span>
-              <div className="dash-hero-stat"><span className="dash-hero-stat-n">{stats.notes}</span><span className="dash-hero-stat-l">{pluralT(stats.notes, lang, "note_one", "note_few", "note_many")}</span></div>
-            </div>
-          </section>
+            </section>
+
+            <StreakCard store={store} user={user} lang={lang} locale={locale} />
+          </div>
+
+          <ContinueCard store={store} nav={nav} lang={lang} locale={locale} />
+          <StatsStrip store={store} stats={stats} lang={lang} locale={locale} />
 
           <div className="dash-actions">
             <button className="bigaction" onClick={() => nav.createProject()}>
@@ -376,14 +486,15 @@ function ProjectCard({ p, store, nav, idx, onDelete, lang }) {
   const words = store.projectWords(p);
   const goal = (p.goal && p.goal.target) || Math.max(2000, Math.ceil(words / 1000) * 1000 + 1000);
   return (
-    <div className="card card--project fade-up" style={{ animationDelay: idx * 60 + "ms" }}>
+    <div className={"card card--project fade-up card--" + (p.status === "done" ? "done" : words > 0 ? "active" : "idle")}
+      style={{ animationDelay: idx * 60 + "ms" }}>
       <div className="card-inner" role="button" tabIndex={0}
         onClick={() => nav.project(p.id)}
         onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && nav.project(p.id)}>
         <div className="card-top">
           <Icon name="folder" size={18} />
-          <span className={"chip mono " + (p.status === "done" ? "chip--done" : "chip--draft")}>
-            {p.status === "done" ? tl("status_done") : tl("status_draft")}
+          <span className={"chip mono " + (p.status === "done" ? "chip--done" : words > 0 ? "chip--active" : "chip--draft")}>
+            {p.status === "done" ? tl("status_done") : words > 0 ? tl("status_active") : tl("status_draft")}
           </span>
           <button className="card-delete" title={tl("del_project_title")} onClick={(e) => { e.stopPropagation(); onDelete(); }}>
             <Icon name="trash" size={15} />

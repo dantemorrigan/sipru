@@ -2,7 +2,7 @@
    Sipru. — guided tour styling
    Sharp-cornered coach-marks on warm paper. Matches the
    Swiss/ink design system: --sheet card, --accent ring,
-   Newsreader titles, mono eyebrows, the living dot.
+   Source Serif titles, mono eyebrows, the living dot.
    ============================================================ */
 
 :root, [data-theme="light"] { --tour-scrim: rgba(22, 18, 12, .52); }

@@ -65,6 +65,8 @@ const ICONS = {
   target: <g {...P}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.4"/></g>,
   feather: <g {...P}><path d="M20 4c-8 0-14 6-14 14v2h2c8 0 14-6 14-14V4h-2z"/><path d="M19 5 8 16"/><path d="M13 15H9v-4"/></g>,
   clock: <g {...P}><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></g>,
+  flame: <g {...P}><path d="M12 3s4.2 4.3 4.2 8a4.2 4.2 0 0 1-8.4 0c0-1.5.6-2.6.6-2.6s.9 1.6 1.7 1.6c1 0 1.9-2.4 1.9-7z"/></g>,
+  pencil: <g {...P}><path d="M12 20h8"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/></g>,
   link: <g {...P}><path d="M9.5 14.5l5-5"/><path d="M8 16a4 4 0 0 1 0-5.6l2-2a4 4 0 0 1 5.6 5.6l-1 1"/><path d="M16 8a4 4 0 0 1 0 5.6l-2 2a4 4 0 0 1-5.6-5.6l1-1"/></g>,
 };
 function Icon({ name, size = 20, style, className }) {
@@ -349,7 +351,7 @@ function SearchModal({ store, lang, projectId, onPick, onClose }) {
   );
 }
 
-const FONT_LABEL = { book: "Newsreader", article: "Spectral", mono: "JetBrains Mono" };
+const FONT_LABEL = { book: "Source Serif 4", article: "Lora", mono: "JetBrains Mono" };
 
 /* Any dropdown anchored inside the mobile toolbar has to escape it: the
    bar scrolls sideways (overflow-x: auto), and giving one axis a scroll

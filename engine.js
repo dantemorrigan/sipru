@@ -152,8 +152,11 @@
       /* the footnote store and the pagination spacers are the layout's own
          nodes, not text the writer typed */
       if (isFnBox(el) || isMachinery(el)) continue;
-      if (el.firstChild && isInline(el.previousSibling)) el.parentNode.insertBefore(document.createElement("br"), el);
-      if (el.lastChild && isInline(el.nextSibling)) el.parentNode.insertBefore(document.createElement("br"), el.nextSibling);
+      /* only where inline text actually meets inline text: if the wrapper
+         opens or closes with a block of its own, that block's own edge is
+         already the break, and adding one here leaves a stray empty line. */
+      if (isInline(el.firstChild) && isInline(el.previousSibling)) el.parentNode.insertBefore(document.createElement("br"), el);
+      if (isInline(el.lastChild) && isInline(el.nextSibling)) el.parentNode.insertBefore(document.createElement("br"), el.nextSibling);
       unwrapInto(el);
       changed = true;
     }
