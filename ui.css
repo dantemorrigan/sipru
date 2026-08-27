@@ -1080,7 +1080,8 @@
 .onb-theme { background: transparent; border: 1px solid var(--line); padding: 0; overflow: hidden; transition: color .3s var(--ease), background-color .3s var(--ease), border-color .3s var(--ease), opacity .3s var(--ease), transform .3s var(--ease), box-shadow .3s var(--ease); cursor: pointer; }
 .onb-theme:hover { border-color: var(--ink-faint); transform: translateY(-2px); }
 .onb-theme.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.onb-theme-pic { height: 130px; padding: 22px; display: flex; flex-direction: column; gap: 9px; justify-content: center; }
+.onb-theme-pic { height: 130px; padding: 22px; display: flex; flex-direction: column; gap: 9px; justify-content: center;
+  border-radius: var(--r-lg) var(--r-lg) 0 0; }
 .onb-theme-pic--light { background: #f4f1ea; }
 .onb-theme-pic--dark { background: #15140f; }
 .onb-theme-pic .l { height: 7px; border-radius: 1px; }
@@ -1258,7 +1259,7 @@
   .export-modal { display: flex; flex-direction: column; height: auto;
     max-height: calc(100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
   .export-side { display: contents; }
-  .modal-head { order: 1; flex-shrink: 0; }
+  .export-modal .modal-head { order: 1; flex-shrink: 0; }
   .exp-scroll { order: 2; flex: 0 1 auto; max-height: 42vh; }
   .export-preview { order: 3; display: flex; flex: 1 1 auto; min-height: 140px; padding: 12px; }
   .export-preview-inner { min-height: 0; }
