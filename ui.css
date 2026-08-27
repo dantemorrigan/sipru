@@ -680,6 +680,10 @@
 .ol-row--scene .ol-title { font-size: var(--t-xs); color: var(--ink-soft); }
 .ol-row--scene.on .ol-title { color: var(--ink); }
 .ol-row--drag { opacity: .35; }
+/* .ol-row's own entrance animation makes every row a stacking context, which
+   would otherwise trap an open .ol-menu (z-index: 70) behind the next row's
+   own context — lift the row while its menu is open so it paints on top. */
+.ol-row--menu-open { z-index: 5; }
 .ol-drop::after { content: ""; position: absolute; left: 6px; right: 6px; height: 2px;
   border-radius: 2px; background: var(--accent); }
 .ol-drop--before::after { top: -1px; }
