@@ -315,6 +315,36 @@ function freshStore(opts) {
   eq("a snapshot records its own word count", snaps[0].words, 2);
 }
 
+/* Regression: unrelated JSON must never replace a writer's library. */
+{
+  const { store } = freshStore();
+  store.createNote("Keep me");
+  const before = store.exportAll();
+  for (const json of ['{}', '{"settings":true}', '{"user":{},"projects":[],"notes":null}']) {
+    check("reject unrelated/incomplete backup " + json, store.importAll(json) === false);
+    eq("invalid backup keeps existing work " + json, store.exportAll(), before);
+  }
+}
+{
+  const { store } = freshStore();
+  const id = store.createNote("Activity");
+  store.updateDoc(id, { content: "<p>one two three</p>" });
+  eq("an immediate save counts today's words", store.activity().today, 3);
+  store.updateDoc(id, { content: "<p>one two three four five</p>" });
+  eq("successive saves retain the latest peak", store.activity().today, 5);
+  store.updateDoc(id, { content: "<p>one</p>" });
+  eq("deleting text preserves today's peak", store.activity().today, 5);
+}
+{
+  const { store } = freshStore();
+  const pid = store.createProject("Unique book title");
+  const result = store.search("Unique book");
+  eq("empty projects can be found by title", result.length, 1);
+  check("project search navigates to its project", result[0] && result[0].projectId === pid);
+  store.updateProject(pid, { synopsis: "Unique book synopsis" });
+  eq("matching title and synopsis produces one result", store.search("Unique book").length, 1);
+}
+
 const passed = results.filter((r) => r.ok).length;
 console.log(passed + "/" + results.length + " passed");
 const failed = results.filter((r) => !r.ok);

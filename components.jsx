@@ -257,7 +257,7 @@ function SearchModal({ store, lang, projectId, onPick, onClose }) {
 
   function onKeyDown(e) {
     if (e.key === "Escape") { e.preventDefault(); onClose(); }
-    else if (e.key === "ArrowDown") { e.preventDefault(); setSel((i) => Math.min(results.length - 1, i + 1)); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); setSel((i) => Math.max(0, Math.min(results.length - 1, i + 1))); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setSel((i) => Math.max(0, i - 1)); }
     else if (e.key === "Enter") { e.preventDefault(); if (results[sel]) onPick(results[sel]); }
   }

@@ -239,17 +239,12 @@
     state.notes.forEach((d) => { n += typeof d.words === "number" ? d.words : countWords(d.content); });
     return n;
   }
-  /* Called from every commit, so it is deliberately cheap: the sum above
-     reads each document's cached count, and a day already recorded within
-     the last few seconds is left alone. */
-  let lastTouch = 0;
+  /* Read cached counts on every save: throttling drops the final words
+     when the writer closes the editor before another commit. */
   function touchActivity() {
     if (!state.days || typeof state.days !== "object" || Array.isArray(state.days)) state.days = {};
     const key = dayKey(new Date());
     const row = state.days[key];
-    const stamp = Date.now();
-    if (row && stamp - lastTouch < 4000) return;
-    lastTouch = stamp;
     const total = totalWords();
     if (!row) state.days[key] = { start: total, end: total };
     else row.end = Math.max(row.end || 0, total);
@@ -286,6 +281,7 @@
     return s;
   }
   let state = load();
+  touchActivity(); // establish the baseline before the first edit
 
   const Store = {
     get: () => state,
@@ -442,6 +438,7 @@
       return null;
     },
     updateDoc(docId, patch) {
+      touchActivity(); // establish a new day before changing its word count
       const f = Store.findDoc(docId);
       if (!f) return;
       if (patch && patch.title != null) {
@@ -514,8 +511,9 @@
         if (projectId && p.id !== projectId) return;
         const syn = (p.synopsis || "");
         const sAt = syn.toLowerCase().indexOf(q);
-        if (sAt >= 0) out.push({ id: p.id, kind: "synopsis", title: p.title, projectId: p.id,
-          projectTitle: p.title, inTitle: false, snippet: snippetAt(syn, sAt, q.length) });
+        const titleAt = (p.title || "").toLowerCase().indexOf(q);
+        if (sAt >= 0 || titleAt >= 0) out.push({ id: p.id, kind: "synopsis", title: p.title, projectId: p.id,
+          projectTitle: p.title, inTitle: titleAt >= 0, snippet: sAt >= 0 ? snippetAt(syn, sAt, q.length) : null });
         p.chapters.forEach((c) => scan(c, p, "chapter"));
       });
       if (!projectId) state.notes.forEach((n) => scan(n, null, "note"));
@@ -588,7 +586,15 @@
       const backup = state;
       const backupSize = lastSize;
       let s;
-      try { s = migrate(JSON.parse(json)); } catch (e) { return false; }
+      try {
+        const raw = JSON.parse(json);
+        // Validate before migration fills missing arrays: an unrelated JSON
+        // object is not an empty backup and must not erase existing work.
+        if (!raw || typeof raw !== "object" || Array.isArray(raw) ||
+            !raw.user || typeof raw.user !== "object" || Array.isArray(raw.user) ||
+            !Array.isArray(raw.projects) || !Array.isArray(raw.notes)) return false;
+        s = migrate(raw);
+      } catch (e) { return false; }
       if (!s || !s.user) return false;
       state = s;
       textCache.clear();

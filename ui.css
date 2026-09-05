@@ -987,13 +987,13 @@
 .stats-popup-l { font-size: var(--t-xs); color: var(--ink-soft); letter-spacing: .04em; margin-top: 4px; }
 
 /* ---------- toast ---------- */
-.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 50;
+.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 100;
   background: var(--ink); color: var(--paper); padding: 13px 22px; font-size: var(--t-sm); font-weight: 500;
   letter-spacing: -.005em; box-shadow: 0 20px 50px -18px rgba(0,0,0,.5); animation: toastIn .4s var(--ease-out); }
 @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 /* ---------- update banner ----------
-   z-index sits under the toast (50) and the modal scrim (55) so neither a
+   z-index sits under the toast (100) and the modal scrim (55) so neither a
    transient message nor an open dialog ever ends up behind it. All colors
    come from the theme tokens, so dark mode needs no separate rule. */
 .upd { position: fixed; right: 22px; bottom: 22px; z-index: 45;
