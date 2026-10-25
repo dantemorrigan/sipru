@@ -38,8 +38,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # The action's default package list still names the legacy "tools"
+      # package, which current sdkmanager repositories no longer carry
+      # ("Failed to find package 'tools'") — ask for platform-tools only.
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       # local-cache restores a zipped NDK from the GH Actions cache, which
       # has been observed to extract incompletely (missing the clang
