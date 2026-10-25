@@ -1,0 +1,101 @@
+name: Release
+
+# Publishes a GitHub Release whenever package.json carries a version that
+# has no release yet: builds macOS, Windows and Android through the same
+# workflows that build every push, then attaches their output under the
+# file names the site's download buttons (and the in-app update check,
+# which reads those buttons) expect.
+#
+# To ship a release: bump the version (package.json, package-lock.json,
+# src-tauri/tauri.conf.json, src-tauri/Cargo.toml + Cargo.lock), add its
+# section to CHANGELOG.md, merge to main. Then point the site's download
+# links at the new tag.
+
+on:
+  push:
+    branches: [main]
+    paths: ["package.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      exists: ${{ steps.v.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node -p "require('./package.json').version")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "v$V is already released — nothing to do"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  macos:
+    needs: version
+    if: needs.version.outputs.exists == 'false'
+    uses: ./.github/workflows/macos-build.yml
+
+  windows:
+    needs: version
+    if: needs.version.outputs.exists == 'false'
+    uses: ./.github/workflows/windows-build.yml
+
+  android:
+    needs: version
+    if: needs.version.outputs.exists == 'false'
+    uses: ./.github/workflows/android-build.yml
+
+  publish:
+    needs: [version, macos, windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect release assets
+        run: |
+          V="${{ needs.version.outputs.version }}"
+          mkdir -p release
+          cp artifacts/Sipru-macOS-dmg/*.dmg              "release/Sipru_${V}_universal.dmg"
+          cp artifacts/Sipru-Windows-installer/*-setup.exe "release/Sipru_${V}_x64-setup.exe"
+          cp artifacts/Sipru-Android-apk/*.apk            "release/Sipru-${V}-Android.apk"
+          ls -la release
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          V="${{ needs.version.outputs.version }}"
+          awk -v v="$V" '
+            /^## / { if (on) exit; if (index($0, "[" v "]")) { on = 1; next } }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "Sipru. $V" > notes.md; fi
+          cat notes.md
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${{ needs.version.outputs.version }}"
+          gh release create "v$V" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Sipru. $V — macOS & Windows 10/11 & Android" \
+            --notes-file notes.md

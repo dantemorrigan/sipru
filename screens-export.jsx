@@ -518,12 +518,39 @@ function exportPageGeom(pg) {
 /* A static, single-page sheet — the title page and the table of contents
    don't paginate, they just need to look like the same kind of page. */
 function StaticSheet({ geom, children }) {
+  /* A small format (A6) with a long title and a full synopsis has less
+     room than the text needs at the base size, and the body clips — so
+     the type steps down until the block fits, rather than losing lines. */
+  const bodyRef = useRef(null);
+  const base = 16 * geom.scale;
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const fit = () => {
+      let size = base;
+      body.style.fontSize = size + "px";
+      for (let i = 0; i < 6; i++) {
+        const block = body.firstElementChild;
+        if (!block) return;
+        const h = block.getBoundingClientRect().height;
+        if (h <= body.clientHeight && block.scrollWidth <= body.clientWidth) return;
+        size = Math.max(base * 0.5, size * Math.min(0.97, body.clientHeight / Math.max(1, h)));
+        body.style.fontSize = size + "px";
+      }
+    };
+    fit();
+    const fonts = document.fonts;
+    if (fonts && fonts.addEventListener) {
+      fonts.addEventListener("loadingdone", fit);
+      return () => fonts.removeEventListener("loadingdone", fit);
+    }
+  });
   return (
     <div className="ed-paper exp-sheet" style={{ width: geom.pageW, height: geom.pageH }}>
       <div className="ed-pagelayer">
         <div className="ed-pagebox" style={{ top: 0, width: geom.pageW, height: geom.pageH }} />
       </div>
-      <div className="exp-sheet-body" style={{ top: geom.mt, left: geom.ml, width: geom.contentW, height: geom.contentH, fontSize: (16 * geom.scale) + "px" }}>
+      <div ref={bodyRef} className="exp-sheet-body" style={{ top: geom.mt, left: geom.ml, width: geom.contentW, height: geom.contentH, fontSize: base + "px" }}>
         {children}
       </div>
     </div>

@@ -133,6 +133,11 @@ ${Array.from({ length: 60 }, (_, i) => "Строка номер " + i + " из �
   await page.waitForSelector(".chap");
   await page.click(".chap");
   await page.waitForSelector(".ed-area[contenteditable]");
+  /* The webfonts load without blocking paint, and the editor repaginates
+     once they land (see the document.fonts effect in screens-editor.jsx).
+     Measuring before that would be measuring the fallback face. */
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  await page.waitForTimeout(300);
 
   for (const size of SIZES) {
     for (const orient of ORIENTS) {
