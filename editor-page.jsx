@@ -232,9 +232,8 @@ function paginateArea(area, geom, reserved) {
     const blockRect = block.getBoundingClientRect();
     let acc = 0, p = startPage, lineTop = 0;
     const pushes = [];
-    for (let i = 0; i < brs.length; i++) {
-      const rect = brs[i].getBoundingClientRect();
-      const h = Math.max(1, rect.bottom - (blockRect.top + lineTop));
+    const place = (bottom, anchor) => {
+      const h = Math.max(1, bottom - (blockRect.top + lineTop));
       const t = blockTop + lineTop + acc;
       const room = avail(p);
       const pageTop = p * cycle;
@@ -243,10 +242,23 @@ function paginateArea(area, geom, reserved) {
       if (t + h > pageEnd && !atPageTop) {
         const nextPage = Math.max(p + 1, Math.ceil(t / cycle));
         const shift = nextPage * cycle - t;
-        pushes.push({ anchor: i > 0 ? brs[i - 1] : null, shift });
+        pushes.push({ anchor, shift });
         acc += shift; p = nextPage;
       }
-      lineTop = rect.bottom - blockRect.top;
+      lineTop = bottom - blockRect.top;
+    };
+    for (let i = 0; i < brs.length; i++) {
+      place(brs[i].getBoundingClientRect().bottom, i > 0 ? brs[i - 1] : null);
+    }
+    /* The text after the last <br> is a line too — with no <br> of its own
+       to measure, its extent comes from a range over what follows. */
+    const last = brs[brs.length - 1];
+    if (last.nextSibling) {
+      const range = document.createRange();
+      range.setStartAfter(last);
+      range.setEndAfter(block.lastChild);
+      const rects = Array.prototype.filter.call(range.getClientRects(), (r) => r.width >= 1 && r.height >= 1);
+      if (rects.length) place(Math.max.apply(null, rects.map((r) => r.bottom)), last);
     }
     return { pushes, extra: acc };
   }
@@ -499,41 +511,65 @@ function paginateArea(area, geom, reserved) {
      block spacers above are already in the DOM) rather than the estimate
      the main loop used — see the comment on tableRowShifts for why that
      estimate can be a few pixels off exactly where it matters. */
+  /* Every nested pass below — table rows, <br> lines, wrapped lines,
+     <pre> lines — is applied block by block in document order, each one
+     measured against its block's live, post-push position. Running them as
+     separate sweeps (all tables, then all lines, then all <pre>s) let a
+     later sweep's spacers shift blocks an earlier sweep had already
+     placed: a code block above a long paragraph pushed that paragraph's
+     freshly-aligned lines straight into the page gap.
+
+     Tables — see the comment on tableRowShifts. A row spacer is a blank
+     <tr> ahead of the row that would otherwise straddle the break; cell
+     borders live on the row's own <td>s, so it has to be a real row for
+     the border it displaces not to be inherited by the blank space. */
   const finalAreaTop = area.getBoundingClientRect().top;
   for (let i = 0; i < blocks.length; i++) {
-    if (blocks[i].tagName !== "TABLE") continue;
-    const realTop = blocks[i].getBoundingClientRect().top - finalAreaTop;
-    const rp = tableRowShifts(blocks[i], realTop, pageOf[i]).pushes;
-    if (!rp.length) continue;
-    const firstRow = blocks[i].querySelector("tr");
-    const cols = firstRow ? firstRow.children.length : 1;
-    for (let j = 0; j < rp.length; j++) {
-      const { row, shift } = rp[j];
-      const spacer = document.createElement("tr");
-      spacer.className = "pg-spacer";
-      spacer.contentEditable = "false";
-      spacer.setAttribute("aria-hidden", "true");
-      const cell = document.createElement("td");
-      cell.colSpan = Math.max(1, cols);
-      cell.style.height = Math.max(0, shift) + "px";
-      spacer.appendChild(cell);
-      row.parentNode.insertBefore(spacer, row);
-    }
-  }
-
-  /* Same idea again, one line at a time — see the comment on lineShifts.
-     Recomputed against each block's real post-push position, same reason
-     as the table pass just above. wrapLineShifts (see its own comment) is
-     tried only when this finds nothing: a block with real manual breaks
-     stays on this path, the other is purely the fallback for plain
-     word-wrapped text. Both are decided and applied right here, in the
-     same pass — querying lineShifts again afterward, once its own spacers
-     already sit in the DOM, would find nothing left to do on a block it
-     already fixed and wrongly hand that block to wrapLineShifts too,
-     doubling up on a straddle that was already resolved. */
-  for (let i = 0; i < blocks.length; i++) {
     const tag = blocks[i].tagName;
-    if (tag === "TABLE" || tag === "PRE") continue;
+    if (tag === "TABLE") {
+      const realTop = blocks[i].getBoundingClientRect().top - finalAreaTop;
+      const rp = tableRowShifts(blocks[i], realTop, pageOf[i]).pushes;
+      if (rp.length) {
+        const firstRow = blocks[i].querySelector("tr");
+        const cols = firstRow ? firstRow.children.length : 1;
+        for (let j = 0; j < rp.length; j++) {
+          const { row, shift } = rp[j];
+          const spacer = document.createElement("tr");
+          spacer.className = "pg-spacer";
+          spacer.contentEditable = "false";
+          spacer.setAttribute("aria-hidden", "true");
+          const cell = document.createElement("td");
+          cell.colSpan = Math.max(1, cols);
+          cell.style.height = Math.max(0, shift) + "px";
+          spacer.appendChild(cell);
+          row.parentNode.insertBefore(spacer, row);
+        }
+      }
+      continue;
+    }
+    if (tag === "PRE") {
+      /* see the comment on preLineShifts; back to front so each insert
+         splits text nothing later has already touched */
+      const realTop = blocks[i].getBoundingClientRect().top - finalAreaTop;
+      const pp = preLineShifts(blocks[i], realTop, pageOf[i]).pushes;
+      for (let j = pp.length - 1; j >= 0; j--) {
+        const { point, shift } = pp[j];
+        const spacer = document.createElement("span");
+        spacer.className = "pg-spacer";
+        spacer.contentEditable = "false";
+        spacer.setAttribute("aria-hidden", "true");
+        spacer.style.display = "block";
+        spacer.style.height = Math.max(0, shift) + "px";
+        const range = document.createRange();
+        range.setStart(point.node, point.offset);
+        range.collapse(true);
+        range.insertNode(spacer);
+      }
+      continue;
+    }
+    /* Lines — see the comment on lineShifts. wrapLineShifts is the
+       fallback only when that finds nothing, so a block already fixed by
+       its manual breaks is never doubled up on. */
     const realTop = blocks[i].getBoundingClientRect().top - finalAreaTop;
     const lp = lineShifts(blocks[i], realTop, pageOf[i]).pushes;
     for (let j = 0; j < lp.length; j++) {
@@ -555,49 +591,32 @@ function paginateArea(area, geom, reserved) {
       if (anchor) anchor.parentNode.insertBefore(spacer, anchor.nextSibling);
       else blocks[i].insertBefore(spacer, blocks[i].firstChild);
     }
-    if (lp.length) continue;
-    const wp = wrapLineShifts(blocks[i], realTop, pageOf[i]).pushes;
-    for (let j = wp.length - 1; j >= 0; j--) {
-      const { point, shift } = wp[j];
-      const spacer = document.createElement("span");
-      spacer.className = "pg-spacer";
-      spacer.contentEditable = "false";
-      spacer.setAttribute("aria-hidden", "true");
-      spacer.style.display = "block";
-      spacer.style.height = Math.max(0, shift) + "px";
-      const range = document.createRange();
-      range.setStart(point.node, point.offset);
-      range.collapse(true);
-      range.insertNode(spacer);
+    if (!lp.length) {
+      const wp = wrapLineShifts(blocks[i], realTop, pageOf[i]).pushes;
+      for (let j = wp.length - 1; j >= 0; j--) {
+        const { point, shift } = wp[j];
+        const spacer = document.createElement("span");
+        spacer.className = "pg-spacer";
+        spacer.contentEditable = "false";
+        spacer.setAttribute("aria-hidden", "true");
+        spacer.style.display = "block";
+        spacer.style.height = Math.max(0, shift) + "px";
+        const range = document.createRange();
+        range.setStart(point.node, point.offset);
+        range.collapse(true);
+        range.insertNode(spacer);
+      }
     }
   }
 
-  /* Same idea once more, for <pre> — see the comment on preLineShifts.
-     Pushes come back in document order, but applying them in that order
-     would invalidate every later one: inserting at an earlier text
-     position splits that text node, and the *other* half — the one every
-     later point's offset was measured against — becomes a new node the
-     recorded offset no longer means anything in. Walking back to front
-     inserts each spacer into text nothing later has already touched. */
-  for (let i = 0; i < blocks.length; i++) {
-    if (blocks[i].tagName !== "PRE") continue;
-    const realTop = blocks[i].getBoundingClientRect().top - finalAreaTop;
-    const pp = preLineShifts(blocks[i], realTop, pageOf[i]).pushes;
-    for (let j = pp.length - 1; j >= 0; j--) {
-      const { point, shift } = pp[j];
-      const spacer = document.createElement("span");
-      spacer.className = "pg-spacer";
-      spacer.contentEditable = "false";
-      spacer.setAttribute("aria-hidden", "true");
-      spacer.style.display = "block";
-      spacer.style.height = Math.max(0, shift) + "px";
-      const range = document.createRange();
-      range.setStart(point.node, point.offset);
-      range.collapse(true);
-      range.insertNode(spacer);
-    }
+  /* The main loop's page count rests on each nested pass's *estimated*
+     extra height; the passes just applied can add more than that, so the
+     last sheet is counted from where the text actually ends — otherwise
+     the closing lines run on below the final page frame. */
+  if (blocks.length) {
+    const lastBottom = blocks[blocks.length - 1].getBoundingClientRect().bottom - finalAreaTop;
+    page = Math.max(page, Math.floor((lastBottom - 1) / cycle));
   }
-
   const total = Math.max(1, page + 1);
   /* The editable box reaches the bottom of the last sheet's text area, so
      clicking in the empty space under the last paragraph still lands the

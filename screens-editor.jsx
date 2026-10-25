@@ -1240,6 +1240,20 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
      scheduled it. */
   const schedulePaginateRef = useRef(schedulePaginate);
   schedulePaginateRef.current = schedulePaginate;
+  /* index.html loads the webfonts without blocking first paint, so the
+     pass that runs as a chapter opens can measure the fallback face — and
+     when the real one swaps in, every line re-wraps while the spacers stay
+     sized for the old lines, leaving text running through the page gap
+     (where the clip-path below hides it). Re-run once fonts finish. */
+  useEffect(() => {
+    const fonts = document.fonts;
+    if (!fonts || !fonts.addEventListener) return;
+    let alive = true;
+    const onFonts = () => { if (alive) schedulePaginateRef.current(true); };
+    fonts.addEventListener("loadingdone", onFonts);
+    if (fonts.status !== "loaded" && fonts.ready) fonts.ready.then(onFonts);
+    return () => { alive = false; fonts.removeEventListener("loadingdone", onFonts); };
+  }, []);
 
   /* Footnotes take room away from the text on the page they belong to, and
      how much is only knowable once they are rendered — so the measurement
