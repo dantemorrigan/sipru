@@ -35,13 +35,19 @@ jobs:
       - name: Build (compile JSX)
         run: npm run build
 
+      # Only the files the app actually loads — the same set the desktop and
+      # Android bundles embed — rather than the whole checkout (node_modules,
+      # Rust sources, design mockups).
+      - name: Stage the web runtime
+        run: node src-tauri/stage-dist.js
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: src-tauri/dist
 
       - name: Deploy to GitHub Pages
         id: deployment

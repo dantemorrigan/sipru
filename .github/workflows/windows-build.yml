@@ -14,11 +14,14 @@ on:
       - "package-lock.json"
       - ".github/workflows/windows-build.yml"
   workflow_dispatch:
+  # release.yml calls this to build the assets of a new release
+  workflow_call:
 
 permissions:
   contents: read
 
-# The repo is named "sipru." (trailing dot). The runner always spawns every
+# The repo was once named "sipru." (trailing dot); the manual clone below
+# is kept so a rename back can never break this build again. The runner always spawns every
 # step — including uses: steps like actions/checkout — with its working
 # directory forced to GITHUB_WORKSPACE, which on Windows defaults to
 # D:\a\sipru.\sipru. (both segments taken from the repo name). Windows
