@@ -126,7 +126,7 @@ function App() {
         <Tour store={store} nav={nav} onFinish={() => store.completeTour()} />
       )}
       {/* checks in the background well after first paint; renders nothing
-          until writed.ru actually reports a higher build number */}
+          until sipru.pro actually links a newer release */}
       {s.tourDone && <UpdateBanner lang={user.lang} />}
       <StorageWarning store={store} lang={user.lang} onToast={toast} />
       {toastNode}

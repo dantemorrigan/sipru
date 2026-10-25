@@ -1,5 +1,5 @@
 /* ============================================================
-   Sipru — background update check against writed.ru
+   Sipru — background update check against sipru.pro
 
    Deliberately not tauri-plugin-updater: it demands a minisign
    signature per artifact, installs only .app.tar.gz bundles — not
@@ -16,7 +16,7 @@
    already keeps that link pointed at the latest GitHub release, so
    there is nothing extra to publish.
    ============================================================ */
-const UPDATE_ENDPOINT = "https://writed.ru/";
+const UPDATE_ENDPOINT = "https://sipru.pro/";
 const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;  /* at most once every 6 hours */
 const UPDATE_SETTLE_MS = 4000;                  /* let the app paint first */
 const UPDATE_TIMEOUT_MS = 10000;
@@ -35,7 +35,9 @@ function saveUpdateState(patch) {
 }
 
 const isAndroid = () => /android/i.test(navigator.userAgent || "");
-const updatePlatform = () => (isAndroid() ? "android" : "macos");
+const isWindows = () => /windows/i.test(navigator.userAgent || "");
+const updatePlatform = () => (isAndroid() ? "android" : isWindows() ? "windows" : "macos");
+const PLATFORM_ICON = { android: "android-icon", windows: "windows-icon", macos: "macos-icon" };
 const nativeFS = () => {
   const t = window.__TAURI__;
   return t && t.dialog && t.fs ? t : null;
@@ -61,7 +63,7 @@ function isNewerVersion(a, b) {
 /* Finds the "Скачать" link for one platform in the downloads section
    of the fetched site markup — the exact same button a person uses. */
 function findPlatformUrl(doc, platform) {
-  const iconClass = platform === "android" ? "android-icon" : "macos-icon";
+  const iconClass = PLATFORM_ICON[platform] || PLATFORM_ICON.macos;
   const rows = doc.querySelectorAll(".download-row");
   for (const row of rows) {
     if (row.querySelector("." + iconClass)) {
@@ -155,6 +157,18 @@ function UpdateBanner({ lang }) {
       await tauri.fs.writeFile(path, bytes);
       if (alive.current) { setPct(100); setPhase("done"); }
     } catch (e) {
+      /* The in-app fetch is cross-origin from the webview, and a release
+         download answers with a redirect the webview may refuse — so the
+         system browser, which downloads it without any such check, is the
+         fallback before giving up. */
+      const opener = window.__TAURI__ && window.__TAURI__.opener;
+      if (opener && opener.openUrl) {
+        try {
+          await opener.openUrl(info.url);
+          if (alive.current) setPhase("opened");
+          return;
+        } catch (e2) {}
+      }
       if (alive.current) setPhase("error");
     }
   }
@@ -167,10 +181,13 @@ function UpdateBanner({ lang }) {
         <div className="upd-title">
           <span className="upd-spark" aria-hidden="true">✨</span>
           {phase === "done" ? tl("upd_done")
+            : phase === "opened" ? tl("upd_opened")
             : phase === "error" ? tl("upd_err")
             : tl("upd_available")}
         </div>
-        {phase === "done" && <div className="upd-notes mono">{tl(isAndroid() ? "upd_open_apk" : "upd_open_dmg")}</div>}
+        {(phase === "done" || phase === "opened") && (
+          <div className="upd-notes mono">{tl(isAndroid() ? "upd_open_apk" : isWindows() ? "upd_open_exe" : "upd_open_dmg")}</div>
+        )}
         {phase === "loading" && (
           <div className="upd-bar" aria-label={tl("upd_downloading")}>
             <span style={{ width: pct + "%" }} />
