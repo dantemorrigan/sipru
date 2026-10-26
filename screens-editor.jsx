@@ -1222,7 +1222,10 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
     const notes = footnoteList(area);
     const byId = {};
     notes.forEach((f) => { byId[f.id] = f; });
+    const t0 = performance.now();
     const res = paginateArea(area, geom, reserveRef.current);
+    pgCycle.current += performance.now() - t0;
+    pgCost.current = Math.max(pgCost.current * 0.5, pgCycle.current);
     setPages(res.notes.map((ids) => ids.map((id) => byId[id]).filter(Boolean)));
   }
   /* Debounced so ordinary typing doesn't reflow on every keystroke — but a
@@ -1236,12 +1239,26 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
      fall more than one beat behind — the same guarantee Word/Docs give by
      reflowing on essentially every keystroke. */
   const PAGINATE_MAX_WAIT = 250;
+  /* A pass over a 200+ page chapter costs ~300 ms; at a 250 ms beat that
+     was more than the whole budget, and every keystroke waited on it. The
+     beat stretches with what the last pass actually cost, so a short
+     chapter reflows exactly as before and a book-length one stays typable,
+     catching up the moment the writer pauses. */
+  /* cost = one whole cycle: the pass plus the footnote passes it triggers */
+  const pgCost = useRef(0);
+  const pgCycle = useRef(0);
   function schedulePaginate(now) {
     clearTimeout(pgTimer.current);
-    passRef.current = 0;
-    if (now) { pgLast.current = Date.now(); repaginate(); return; }
-    if (Date.now() - pgLast.current >= PAGINATE_MAX_WAIT) { pgLast.current = Date.now(); repaginate(); return; }
-    pgTimer.current = setTimeout(() => { pgLast.current = Date.now(); repaginate(); }, 90);
+    const cost = pgCost.current;
+    const maxWait = Math.max(PAGINATE_MAX_WAIT, cost * 4);
+    const idle = Math.max(90, cost * 2);
+    /* a scheduled pass (not a keystroke that merely re-arms the timer)
+       is what grants footnote convergence its three passes */
+    const run = () => { pgLast.current = Date.now(); passRef.current = 0; pgCycle.current = 0; repaginate(); };
+    if (now) { run(); return; }
+    /* overdue: still after this keystroke has painted, never inside it */
+    if (Date.now() - pgLast.current >= maxWait) { pgLast.current = Date.now(); pgTimer.current = setTimeout(run, 0); return; }
+    pgTimer.current = setTimeout(run, idle);
   }
   useEffect(() => () => { clearTimeout(pgTimer.current); cancelAnimationFrame(scrollRaf.current); }, []);
   useEffect(() => { schedulePaginate(true); }, [geom, mode, docId]);
@@ -1314,8 +1331,13 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
       if (Math.abs((prev[i] || 0) - v) > 2) { prev[i] = v; changed = true; }
     }
     if (prev.length > hs.length) { prev.length = hs.length; changed = true; }
-    if (changed && passRef.current < 3) { passRef.current++; repaginate(); }
-    else passRef.current = 0;
+    /* Up to three passes per scheduled pagination. Resetting the count
+       whenever a measure came in past the cap let a footnote that keeps
+       hopping between two pages start three more full passes on every
+       re-render — every keystroke, on a long chapter ~100 ms each. Only a
+       new scheduled pass (or settling) re-arms it now. */
+    if (!changed) passRef.current = 0;
+    else if (passRef.current < 3) { passRef.current++; repaginate(); }
   }
 
   const pageCount = pages.length;

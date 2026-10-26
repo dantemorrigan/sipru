@@ -100,8 +100,9 @@ function BookPreview({ html, title, page, ctx, lang, font, onMeta }) {
       if (Math.abs((prev[i] || 0) - v) > 2) { prev[i] = v; changed = true; }
     }
     if (prev.length > hs.length) { prev.length = hs.length; changed = true; }
-    if (changed && passRef.current < 3) { passRef.current++; repaginate(); }
-    else passRef.current = 0;
+    /* see onFootnoteHeights in screens-editor.jsx: only settling re-arms */
+    if (!changed) passRef.current = 0;
+    else if (passRef.current < 3) { passRef.current++; repaginate(); }
   }
 
   function scrollToTop() {
@@ -600,8 +601,9 @@ function PaginatedChapter({ html, geom, title }) {
       if (Math.abs((prev[i] || 0) - v) > 2) { prev[i] = v; changed = true; }
     }
     if (prev.length > hs.length) { prev.length = hs.length; changed = true; }
-    if (changed && passRef.current < 3) { passRef.current++; repaginate(); }
-    else passRef.current = 0;
+    /* see onFootnoteHeights in screens-editor.jsx: only settling re-arms */
+    if (!changed) passRef.current = 0;
+    else if (passRef.current < 3) { passRef.current++; repaginate(); }
   }
 
   const pageCount = pages.length;
