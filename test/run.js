@@ -30,6 +30,11 @@ spawnSync(process.execPath, [path.join(root, "build.js")], { stdio: "inherit" })
      back to the other silently, so nothing but a check catches it. */
   const i18n = spawnSync(process.execPath, [path.join(__dirname, "i18n.js")], { stdio: "inherit" });
   if (i18n.status) process.exit(i18n.status);
+
+  /* sound, haptics and the Android shell bridge: pure logic over fakes of
+     Web Audio and of the Kotlin shell, so no browser either. */
+  const feedback = spawnSync(process.execPath, [path.join(__dirname, "feedback.js")], { stdio: "inherit" });
+  if (feedback.status) process.exit(feedback.status);
 }
 
 (async () => {
@@ -76,4 +81,9 @@ spawnSync(process.execPath, [path.join(root, "build.js")], { stdio: "inherit" })
      sheet is scaled down and the text has to scale with it. */
   const exp = spawnSync(process.execPath, [path.join(__dirname, "export.js")], { stdio: "inherit" });
   if (exp.status) process.exit(exp.status);
+
+  /* mobile.js drives the Android layout (edge-to-edge under the status and
+     gesture bars, the two-row toolbar, the keyboard) with a fake shell. */
+  const mobile = spawnSync(process.execPath, [path.join(__dirname, "mobile.js")], { stdio: "inherit" });
+  if (mobile.status) process.exit(mobile.status);
 })();

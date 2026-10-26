@@ -170,6 +170,8 @@
       link_apply: "Применить",
       link_remove: "Убрать ссылку",
       mode_edit: "Редактор",
+      tool_lbl_page: "Страница",
+      tool_lbl_focus: "Фокус",
       mode_preview: "Превью",
       ed_save: "Сохранить",
       ed_more: "Ещё",
@@ -297,6 +299,10 @@
       prof_lbl_theme: "Тема",
       prof_theme_light: "Светлая",
       prof_theme_dark: "Тёмная",
+      prof_lbl_sound: "Звуки",
+      prof_lbl_haptics: "Вибрация",
+      prof_on: "Вкл",
+      prof_off: "Выкл",
       prof_lbl_lang: "Язык",
       prof_lbl_tour: "Знакомство",
       prof_tour_btn: "Повторить тур",
@@ -642,6 +648,8 @@
       link_apply: "Apply",
       link_remove: "Remove link",
       mode_edit: "Editor",
+      tool_lbl_page: "Page",
+      tool_lbl_focus: "Focus",
       mode_preview: "Preview",
       ed_save: "Save",
       ed_more: "More",
@@ -769,6 +777,10 @@
       prof_lbl_theme: "Theme",
       prof_theme_light: "Light",
       prof_theme_dark: "Dark",
+      prof_lbl_sound: "Sounds",
+      prof_lbl_haptics: "Haptics",
+      prof_on: "On",
+      prof_off: "Off",
       prof_lbl_lang: "Language",
       prof_lbl_tour: "Tour",
       prof_tour_btn: "Replay tour",
@@ -984,5 +996,5 @@
     return new Date(ts).toLocaleDateString(locale, { day: "numeric", month: "short" });
   }
 
-  Object.assign(window, { t, T, pluralT, wordsLabelT, timeAgoT });
+  Object.assign(window, { t, T, pluralT, wordsLabelT, timeAgoT, I18N_KEYS: Object.keys(STRINGS.ru) });
 })();

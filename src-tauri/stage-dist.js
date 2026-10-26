@@ -14,7 +14,7 @@ const OUT = path.join(__dirname, "dist");
 const FILES = ["index.html", "styles.css", "ui.css", "frame.css", "tour.css", "favicon.png", "paper.svg"];
 const FILE_DIRS = ["vendor", "build"];
 /* store.js / i18n.js / formats.js / engine.js load as classic <script> tags, same as vendor/build */
-const ROOT_SCRIPTS = ["store.js", "i18n.js", "formats.js", "engine.js", "haptics.js", "vault.js"];
+const ROOT_SCRIPTS = ["store.js", "i18n.js", "formats.js", "engine.js", "native.js", "sound.js", "haptics.js", "vault.js"];
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
