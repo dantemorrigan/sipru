@@ -686,9 +686,10 @@
     return "<w:r>" + (rpr ? "<w:rPr>" + rpr + "</w:rPr>" : "") +
       '<w:t xml:space="preserve">' + esc(r.text) + "</w:t></w:r>";
   }
-  function paraXML(runs, style, numId) {
+  function paraXML(runs, style, numId, jc) {
     const ppr = (style ? '<w:pStyle w:val="' + style + '"/>' : "") +
-      (numId ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="' + numId + '"/></w:numPr>' : "");
+      (numId ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="' + numId + '"/></w:numPr>' : "") +
+      (jc ? '<w:jc w:val="' + jc + '"/>' : "");
     return "<w:p>" + (ppr ? "<w:pPr>" + ppr + "</w:pPr>" : "") + runs.map(runXML).join("") + "</w:p>";
   }
 
@@ -752,14 +753,24 @@
      in the chunk to the page it will actually sit on; omit it only when
      no page geometry exists yet, and tableXML falls back to a standard
      page's width rather than to Word's own content-fit sizing. */
+  const BLOCK_JC = { l: "left", c: "center", r: "right", j: "both" };
   function htmlToDocxParas(html, pageWidth) {
     const holder = document.createElement("div");
     holder.innerHTML = html || "";
     const out = [];
+    /* A block's own alignment (the editor's al-* classes) — on the block
+       itself, or for a list item on its list. */
+    const jcOf = (node) => {
+      for (let el = node, i = 0; el && el.getAttribute && i < 2; el = el.parentNode, i++) {
+        const m = (el.getAttribute("class") || "").match(/\bal-(l|c|r|j)\b/);
+        if (m) return BLOCK_JC[m[1]];
+      }
+      return "";
+    };
     const emit = (node, style, numId) => {
       const runs = runsFrom(node, {}, []);
       if (!runs.length && !numId) return;
-      out.push(paraXML(runs, style, numId));
+      out.push(paraXML(runs, style, numId, jcOf(node)));
     };
     const walk = (parent) => {
       parent.childNodes.forEach((n) => {
@@ -841,18 +852,21 @@
     '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>' +
     '</Relationships>';
 
-  function stylesXML(fontName) {
+  function stylesXML(fontName, align) {
+    /* body text follows the page's alignment, as it does on screen and in PDF */
+    const bodyJc = { justify: "both", center: "center", right: "right" }[align] || "";
     const heading = (id, name, size, before) =>
       '<w:style w:type="paragraph" w:styleId="' + id + '"><w:name w:val="' + name + '"/>' +
       '<w:basedOn w:val="Normal"/><w:qFormat/>' +
-      '<w:pPr><w:keepNext/><w:spacing w:before="' + before + '" w:after="120"/><w:ind w:firstLine="0"/></w:pPr>' +
+      '<w:pPr><w:keepNext/><w:spacing w:before="' + before + '" w:after="120"/><w:ind w:firstLine="0"/><w:jc w:val="left"/></w:pPr>' +
       '<w:rPr><w:b/><w:sz w:val="' + size + '"/></w:rPr></w:style>';
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
       '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="' + esc(fontName) + '" w:hAnsi="' + esc(fontName) +
       '" w:cs="' + esc(fontName) + '"/><w:sz w:val="24"/><w:szCs w:val="24"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault>' +
       '<w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="300" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>' +
-      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>' +
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/>' +
+      (bodyJc ? '<w:pPr><w:jc w:val="' + bodyJc + '"/></w:pPr>' : "") + '</w:style>' +
       heading("Heading1", "heading 1", "40", "360") +
       heading("Heading2", "heading 2", "32", "280") +
       heading("Heading3", "heading 3", "28", "240") +
@@ -880,10 +894,10 @@
       '<w:style w:type="paragraph" w:styleId="RunHead"><w:name w:val="Running Head"/><w:basedOn w:val="Normal"/>' +
       '<w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:sz w:val="18"/></w:rPr></w:style>' +
       '<w:style w:type="paragraph" w:styleId="Code"><w:name w:val="Code"/><w:basedOn w:val="Normal"/>' +
-      '<w:pPr><w:ind w:left="0" w:firstLine="0"/><w:spacing w:before="120" w:after="120" w:line="264" w:lineRule="auto"/></w:pPr>' +
+      '<w:pPr><w:ind w:left="0" w:firstLine="0"/><w:spacing w:before="120" w:after="120" w:line="264" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr>' +
       '<w:rPr><w:rFonts w:ascii="JetBrains Mono" w:hAnsi="JetBrains Mono" w:cs="JetBrains Mono"/><w:sz w:val="19"/></w:rPr></w:style>' +
       '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/>' +
-      '<w:pPr><w:ind w:left="720"/><w:spacing w:after="60"/></w:pPr></w:style>' +
+      '<w:pPr><w:ind w:left="720"/><w:spacing w:after="60"/><w:jc w:val="left"/></w:pPr></w:style>' +
       '</w:styles>';
   }
 
@@ -1021,7 +1035,10 @@
 
     const settings_xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
-      (pg && pg.mirror ? "<w:evenAndOddHeaders/>" : "") + "</w:settings>";
+      (pg && pg.mirror ? "<w:evenAndOddHeaders/>" : "") +
+      /* justified text must not stretch a line ended by a manual break
+         (verse, an address) — the same rule the screen and PDF follow */
+      "<w:compat><w:doNotExpandShiftReturn/></w:compat></w:settings>";
 
     return zip([
       { name: "[Content_Types].xml", data: CONTENT_TYPES.replace("</Types>",
@@ -1034,7 +1051,7 @@
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
         rels.join("") + "</Relationships>" },
       { name: "word/settings.xml", data: settings_xml },
-      { name: "word/styles.xml", data: stylesXML(DOCX_FONTS[o.font] || DOCX_FONTS.book) },
+      { name: "word/styles.xml", data: stylesXML(DOCX_FONTS[o.font] || DOCX_FONTS.book, pg ? (pg.align || "justify") : "") },
       { name: "word/numbering.xml", data: NUMBERING },
     ].concat(files));
   }

@@ -802,8 +802,8 @@ const BLOCK_CSS = `
     hr.page-break::after { content: none; }
     hr.scene-sep { border: none; text-align: center; margin: 1.7em 0; }
     hr.scene-sep::after { content: "· · ·"; color: #b9b2a1; letter-spacing: .2em; }
-    p.al-l { text-align: left; } p.al-j { text-align: justify; }
-    p.al-c { text-align: center; text-indent: 0; } p.al-r { text-align: right; text-indent: 0; }
+    .al-l, .al-l > li { text-align: left; } .al-j, .al-j > li { text-align: justify; }
+    .al-c, .al-c > li { text-align: center; text-indent: 0; } .al-r, .al-r > li { text-align: right; text-indent: 0; }
     /* justify stretches every forced line of a paragraph, not just its
        wrapped ones — a paragraph built from manual line breaks (an
        address, a diagram, a few short verse lines) has too few words per
