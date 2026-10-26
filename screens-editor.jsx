@@ -231,14 +231,20 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
 
   useEffect(() => {
     const vv = window.visualViewport;
-    if (!vv) return;
+    /* In the Android app the WebView often neither resizes nor reports the
+       keyboard through visualViewport — the shell measures it instead. */
     const update = () => {
-      const off = window.innerHeight - vv.offsetTop - vv.height;
-      setKbOffset(Math.max(0, Math.round(off)));
+      const off = vv ? window.innerHeight - vv.offsetTop - vv.height : 0;
+      const nat = window.SipruNative ? window.SipruNative.keyboardOffset() : 0;
+      setKbOffset(Math.max(0, Math.round(off), nat));
     };
-    vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
-    return () => { vv.removeEventListener("resize", update); vv.removeEventListener("scroll", update); };
+    if (vv) { vv.addEventListener("resize", update); vv.addEventListener("scroll", update); }
+    window.addEventListener("sipru-insets", update);
+    update();
+    return () => {
+      if (vv) { vv.removeEventListener("resize", update); vv.removeEventListener("scroll", update); }
+      window.removeEventListener("sipru-insets", update);
+    };
   }, []);
 
   const doc = found && found.doc;
@@ -301,9 +307,13 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
     const now = nodeRef.current ? countVisibleWords(nodeRef.current) : words;
     focusBase.current = now;
     setWords(now);
+    if (window.SipruFx) window.SipruFx.play("focusIn");
     const onKey = (e) => { if (e.key === "Escape") setFocusMode(false); };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (window.SipruFx) window.SipruFx.play("focusOut");
+    };
     /* `words` is read once on entry by design — listing it here would reset
        the baseline on every keystroke and the counter would never move */
   }, [focusMode]);
@@ -877,6 +887,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
        stack — it is on ours, and it is the most recent thing that happened
        only while the document still stands exactly as it left it. */
     if (undoStructural(cmd)) {
+      if (window.SipruFx) window.SipruFx.play(cmd);
       const d0 = depth.current;
       if (cmd === "undo") { d0.u = Math.max(0, d0.u - 1); d0.r++; }
       else { d0.r = Math.max(0, d0.r - 1); d0.u++; }
@@ -896,6 +907,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
     } else {
       if (cmd === "undo") { d.u = Math.max(0, d.u - 1); d.r++; }
       else { d.r = Math.max(0, d.r - 1); d.u++; }
+      if (window.SipruFx) window.SipruFx.play(cmd);
       const html = serializeArea(el);
       saved.current = html;
       setWords(countVisibleWords(el));
@@ -1154,6 +1166,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
   function saveNow() {
     if (persistNow() == null) return;
     setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1400);
+    if (window.SipruFx) window.SipruFx.play("save");
   }
 
   /* ---- snapshots ---- */
@@ -2092,10 +2105,10 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
         </div>
       </header>
 
-      <div className={"ed-bar" + (mode !== "edit" ? " ed-bar--preview" : "")} ref={barRef}
+      <div className={"ed-bar" + (mode !== "edit" ? " ed-bar--preview" : "") + (kbOffset > 0 ? " ed-bar--typing" : "")} ref={barRef}
         style={kbOffset > 0 ? { bottom: kbOffset } : undefined}>
         {mode === "edit" && (
-          <>
+          <div className="ed-bar-scroll">
             <div className="ed-bar-grp">
               <button className="tool" title={hint(tl("ed_undo"), KEYS.undo)} disabled={!hist.undo}
                 onMouseDown={(e) => { e.preventDefault(); runHistory("undo"); }}><Icon name="undo" size={18} /></button>
@@ -2172,23 +2185,24 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
                   <Icon name="image" size={15} /> <span>{tl("ins_image")}</span></button>
               </BarMenu>
             </div>
-          </>
+          </div>
         )}
 
         <div className="ed-bar-end">
           {mode === "edit" && (
             <button className={"tool" + (setupOpen ? " on" : "")} title={tl("pset_title")}
-              onClick={() => setSetupOpen((o) => !o)}><Icon name="settings" size={18} /></button>
+              onClick={() => setSetupOpen((o) => !o)}><Icon name="settings" size={18} /><span className="tool-lbl">{tl("tool_lbl_page")}</span></button>
           )}
           <button className={"tool tool--focusdot" + (focusMode ? " on" : "")} title={hint(tl("focus_mode_btn"), KEYS.focus)}
             onClick={() => setFocusMode((f) => !f)}>
             <span className={"brand-dot-btn" + (focusMode ? " active" : "")} />
+            <span className="tool-lbl">{tl("tool_lbl_focus")}</span>
           </button>
           <div className="ed-bar-modes">
             <button className={"tool" + (mode === "edit" ? " on" : "")} title={tl("mode_edit")}
-              onMouseDown={(e) => { e.preventDefault(); switchMode("edit"); }}><Icon name="edit" size={17} /></button>
+              onMouseDown={(e) => { e.preventDefault(); switchMode("edit"); }}><Icon name="edit" size={17} /><span className="tool-lbl">{tl("mode_edit")}</span></button>
             <button className={"tool" + (mode === "preview" ? " on" : "")} title={hint(tl("mode_preview"), KEYS.preview)}
-              onMouseDown={(e) => { e.preventDefault(); switchMode("preview"); }}><Icon name="eye" size={17} /></button>
+              onMouseDown={(e) => { e.preventDefault(); switchMode("preview"); }}><Icon name="eye" size={17} /><span className="tool-lbl">{tl("mode_preview")}</span></button>
           </div>
         </div>
       </div>

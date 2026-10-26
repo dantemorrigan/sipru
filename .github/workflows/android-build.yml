@@ -109,6 +109,14 @@ jobs:
       - name: Install the Android vault bridge
         run: python3 .github/scripts/android_vault.py
 
+      # The shell: the app is drawn edge-to-edge, but the WebView does not
+      # report the status bar, gesture bar or keyboard — every header sat on
+      # top of the clock. This measures them and hands them to the page, and
+      # gives it the system's own haptics. Must follow the vault bridge: it
+      # extends the onWebViewCreate that script adds.
+      - name: Install the Android shell (insets, keyboard, haptics)
+        run: python3 .github/scripts/android_shell.py
+
       - name: Verify the vault bridge landed
         run: |
           F=$(find src-tauri/gen/android/app/src/main/java -name MainActivity.kt | head -1)
@@ -116,6 +124,10 @@ jobs:
           grep -q 'ACTION_OPEN_DOCUMENT_TREE' "$F"
           grep -q 'takePersistableUriPermission' "$F"
           echo "vault bridge present in $F"
+          grep -q 'SipruAndroidShell' "$F"
+          grep -q 'sipruShellAttach(webView)' "$F"
+          grep -q 'performHapticFeedback' "$F"
+          echo "shell present in $F"
           # SAF asks for no storage permission at all; a lingering one would
           # be a regression back to the approach this replaced.
           ! grep -q 'MANAGE_EXTERNAL_STORAGE' src-tauri/gen/android/app/src/main/AndroidManifest.xml

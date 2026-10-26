@@ -204,8 +204,8 @@
     box-shadow: var(--shadow-3);
     transform: translateX(-102%);
     transition: transform .34s var(--ease-out);
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-top: var(--sat, env(safe-area-inset-top, 0px));
+    padding-bottom: var(--sab, env(safe-area-inset-bottom, 0px));
   }
   .side.open { transform: none; }
   .side-close { display: grid; }
@@ -230,7 +230,7 @@
     border-top: 1px solid var(--line);
     background: color-mix(in srgb, var(--paper) 94%, transparent);
     backdrop-filter: blur(16px);
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: var(--sab, env(safe-area-inset-bottom, 0px));
   }
   .tab {
     height: var(--tabbar-h);
@@ -454,7 +454,7 @@
   .bar-actions .btn { padding: 9px 11px; }
   .fab {
     display: grid; place-items: center; position: fixed; z-index: 40;
-    right: 18px; bottom: calc(var(--tabbar-h) + 18px + env(safe-area-inset-bottom));
+    right: 18px; bottom: calc(var(--tabbar-h) + 18px + var(--sab, env(safe-area-inset-bottom, 0px)));
     width: 58px; height: 58px;
     background: var(--accent); color: #fff; border: 0; border-radius: var(--r-2xl);
     box-shadow: var(--shadow-3);
@@ -494,6 +494,59 @@
   .frame--editor { grid-template-columns: 1fr; }
   .frame--editor > .rail { display: none; }
   .ed-head { padding: 0 12px; }
+}
+
+/* ---- the editor toolbar on a phone ----
+   Two rows. The formatting tools scroll sideways across the whole width in
+   the first; the mode buttons (page setup, focus, edit/preview) sit in a
+   second row of four large targets, instead of being pinned over half of
+   the first row. While the keyboard is up only the tools remain. The
+   gesture-bar padding is restated here: the desktop rule above resets it. */
+@media (max-width: 860px) {
+  .ed-bar {
+    display: grid; grid-template-columns: minmax(0, 1fr);
+    gap: 0; padding: 0 0 var(--sab, env(safe-area-inset-bottom, 0px));
+    overflow: visible;
+  }
+  .ed-bar-scroll {
+    display: flex; align-items: center; gap: 1px; min-width: 0;
+    padding: 6px 8px;
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity; scroll-padding: 0 8px;
+  }
+  .ed-bar-scroll::-webkit-scrollbar { display: none; }
+  .ed-bar-scroll > .ed-bar-grp { scroll-snap-align: start; flex-shrink: 0; }
+  .ed-bar-end {
+    position: static; margin: 0; padding: 4px 10px 6px; background: none;
+    display: flex; justify-content: space-around; gap: 4px;
+    border-top: 1px solid var(--line-2);
+  }
+  .ed-bar-end .tool { width: auto; min-width: 64px; height: 46px; padding: 0 8px;
+    flex-direction: column; gap: 2px; justify-content: center; }
+  .ed-bar-end .brand-dot-btn { margin: 4px 0; }
+  .ed-bar-end .tool-lbl { display: block; font-size: 10.5px; line-height: 1; letter-spacing: .01em; color: var(--ink-soft); }
+  .ed-bar-end .tool.on .tool-lbl { color: var(--accent); }
+  .ed-bar-end .ed-bar-modes { display: flex; gap: 4px; }
+  .ed-bar--typing .ed-bar-end { display: none; }
+  .ed-bar--preview { padding-top: 4px; }
+}
+
+/* confirmations ride above the tab bar / editor toolbar, not over them */
+@media (max-width: 860px) {
+  .toast { bottom: calc(var(--sab, env(safe-area-inset-bottom, 0px)) + 150px); max-width: calc(100vw - 32px); }
+}
+
+/* On a phone the page is drawn under the status bar (the Android app is
+   edge-to-edge). The top bars keep their normal height *below* it: the
+   fixed --bar-h used to swallow the safe-area padding, which is what put
+   the buttons on top of the clock and the battery. */
+@media (max-width: 860px) {
+  .bar, .ed-head {
+    box-sizing: border-box;
+    height: calc(var(--bar-h) + var(--sat, env(safe-area-inset-top, 0px)));
+    padding-top: var(--sat, env(safe-area-inset-top, 0px));
+  }
 }
 
 /* the "add chapter" control reads as a button, not a link */
