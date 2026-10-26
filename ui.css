@@ -1264,8 +1264,14 @@
     max-height: calc(100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
   .export-side { display: contents; }
   .export-modal .modal-head { order: 1; flex-shrink: 0; }
-  .exp-scroll { order: 2; flex: 0 1 auto; max-height: 42vh; }
-  .export-preview { order: 3; display: flex; flex: 1 1 auto; min-height: 140px; padding: 12px; }
+  /* The settings get the room; the preview is a fixed glance below them.
+     The other way round, a long book title in the header plus the preview
+     left the settings a ~90px strip — formats visible, nothing else. */
+  .exp-scroll { order: 2; flex: 1 1 auto; min-height: 120px; max-height: none; }
+  .export-preview { order: 3; display: flex; flex: 0 0 auto; height: 30vh; min-height: 150px; padding: 12px; }
+  .export-modal .modal-head { padding: 18px 20px 14px; }
+  .export-modal .modal-title { font-size: var(--t-lg); line-height: 1.2;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   .export-preview-inner { min-height: 0; }
   .exp-actions { order: 4; flex-shrink: 0; }
   .confirm-modal { padding: 36px 28px 32px; }
