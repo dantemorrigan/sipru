@@ -882,7 +882,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
       else { d0.r = Math.max(0, d0.r - 1); d0.u++; }
       const html = serializeArea(el);
       saved.current = html;
-      setWords(store.countWords(html));
+      setWords(countVisibleWords(el));
       doSave(html);
       setHist({ undo: d0.u > 0, redo: d0.r > 0 });
       refreshActive();
@@ -898,7 +898,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
       else { d.r = Math.max(0, d.r - 1); d.u++; }
       const html = serializeArea(el);
       saved.current = html;
-      setWords(store.countWords(html));
+      setWords(countVisibleWords(el));
       doSave(html);
     }
     setHist({ undo: d.u > 0, redo: d.r > 0 });
@@ -1245,6 +1245,37 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
   }
   useEffect(() => () => { clearTimeout(pgTimer.current); cancelAnimationFrame(scrollRaf.current); }, []);
   useEffect(() => { schedulePaginate(true); }, [geom, mode, docId]);
+
+  /* Zoom keeps the reading position: the point in the middle of the view
+     is remembered as a fraction of the paper's height and restored after
+     the sheet changes size — scrollTop alone left the writer a screen or
+     more away from where they were reading after every zoom step. */
+  const readAnchor = useRef(null);
+  const anchorFrozen = useRef(false);
+  function paperFraction() {
+    const sc = scrollRef.current, paper = paperRef.current;
+    if (!sc || !paper || !paper.offsetHeight) return null;
+    const top = paper.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
+    return (sc.scrollTop + sc.clientHeight / 2 - top) / paper.offsetHeight;
+  }
+  const lastScale = useRef(geom.scale);
+  useEffect(() => {
+    if (lastScale.current === geom.scale) return;
+    lastScale.current = geom.scale;
+    const f = readAnchor.current;
+    if (f == null) return;
+    anchorFrozen.current = true;
+    const restore = () => {
+      const sc = scrollRef.current, paper = paperRef.current;
+      if (!sc || !paper) return;
+      const top = paper.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
+      sc.scrollTop = Math.max(0, top + f * paper.offsetHeight - sc.clientHeight / 2);
+    };
+    restore();
+    /* again once the zoom transition and the repagination have landed */
+    const t1 = setTimeout(restore, 120), t2 = setTimeout(() => { restore(); anchorFrozen.current = false; }, 360);
+    return () => { clearTimeout(t1); clearTimeout(t2); anchorFrozen.current = false; };
+  }, [geom.scale]);
   /* schedulePaginate measures live offsetTop/offsetHeight, which — while
      the zoom slider's own CSS transition (.zoom-live, 220ms) is still
      running — read the sheet mid-animation rather than at its landing
@@ -1309,6 +1340,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
 
   /* ---- scenes: the outline follows the caret and the scroll ---- */
   function onScroll() {
+    if (!anchorFrozen.current) readAnchor.current = paperFraction();
     if (scrollRaf.current) return;
     scrollRaf.current = requestAnimationFrame(() => {
       scrollRaf.current = 0;
@@ -1785,8 +1817,10 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
     if (!area) return;
     const partial = hasTextSelection(area);
     restoreCaret(area);
-    const blocks = partial ? selectedBlocks(area) : allBlocks(area);
+    const blocks = (partial ? selectedBlocks(area) : allBlocks(area)).filter((el) => ALIGNABLE.test(el.tagName));
     if (!blocks.length) return;
+    /* a class change never reaches the browser's own undo stack */
+    const before = serializeArea(area);
     /* pressing an alignment every target block already has un-presses it */
     if (toggle && cls && blocks.every((el) => el.classList.contains(cls))) cls = "";
     blocks.forEach((el) => {
@@ -1797,6 +1831,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
     area.focus();
     restoreCaret(area);
     setAlignState(cls);
+    pushStructural(before, serializeArea(area));
     commitChange();
     schedulePaginate(true);
   }
