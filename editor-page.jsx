@@ -74,16 +74,20 @@ function pageGeometry(pg, avail) {
   }
 
   const kv = PX_PER_MM * vScale;
-  const mt = Math.round(clampNum(pg.mt, 0, 100, 20) * kv);
-  const mb = Math.round(clampNum(pg.mb, 0, 100, 20) * kv);
-  const mr = Math.round(clampNum(pg.mr, 0, 100, 18) * k);
-  const ml = Math.round(clampNum(pg.ml, 0, 100, 18) * k);
+  const fm = SipruFormats.fitMargins(d.w, d.h, {
+    mt: clampNum(pg.mt, 0, 100, 20), mb: clampNum(pg.mb, 0, 100, 20),
+    mr: clampNum(pg.mr, 0, 100, 18), ml: clampNum(pg.ml, 0, 100, 18),
+  });
+  const mt = Math.round(fm.mt * kv);
+  const mb = Math.round(fm.mb * kv);
+  const mr = Math.round(fm.mr * k);
+  const ml = Math.round(fm.ml * k);
   const pageW = Math.round(d.w * k);
   const pageH = Math.round(d.h * vScale * PX_PER_MM);
   return {
     scale, vScale, fluid, pageW, pageH, mt, mr, mb, ml,
-    contentW: Math.max(80, pageW - ml - mr),
-    contentH: Math.max(120, pageH - mt - mb),
+    contentW: Math.max(1, pageW - ml - mr),
+    contentH: Math.max(1, pageH - mt - mb),
     gap: Math.max(10, Math.round(PAGE_GAP_MM * k)),
     fontPx,
   };
@@ -159,7 +163,7 @@ function paginateArea(area, geom, reserved) {
     if (blocks[i].previousElementSibling === blocks[i - 1]) collapses[i] = Math.min(mTop[i], mBot[i - 1]);
   }
 
-  const avail = (p) => Math.max(60, geom.contentH - (reserved && reserved[p] ? reserved[p] : 0));
+  const avail = (p) => Math.max(Math.min(60, geom.contentH), geom.contentH - (reserved && reserved[p] ? reserved[p] : 0));
   const pushes = new Array(blocks.length).fill(0);
   const pageOf = new Array(blocks.length).fill(0);
 

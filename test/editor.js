@@ -292,6 +292,52 @@ async function openInsertMenu(page) {
     await context.close();
   }
 
+  /* ---- alignment: no selection aligns the whole text, a selection only
+     the blocks it touches. It used to need a selection to do anything. */
+  const alignClasses = (page) => page.$eval(".ed-area", (area) => Array.prototype.filter
+    .call(area.children, (el) => !el.classList.contains("pg-spacer") && !el.classList.contains("fn-defs"))
+    .map((el) => (el.className.match(/al-[lcrj]/) || ["-"])[0]));
+  {
+    const { context, page } = await openEditor(browser);
+    await pasteText(page, "One.\n\nTwo.\n\nThree.");
+    /* nothing focused, nothing selected — the toolbar press alone */
+    await page.evaluate(() => { getSelection().removeAllRanges(); document.activeElement.blur(); });
+    await page.dispatchEvent(".ed-bar-grp--align .tool:nth-child(2)", "mousedown");
+    await page.waitForTimeout(150);
+    const all = await alignClasses(page);
+    check("align :: no selection centres the whole text", all.join(",") === "al-c,al-c,al-c", all.join(","));
+
+    await page.evaluate(() => {
+      const ps = document.querySelectorAll(".ed-area > p");
+      const r = document.createRange();
+      r.setStart(ps[1].firstChild, 0); r.setEnd(ps[1].firstChild, 3);
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    });
+    await page.dispatchEvent(".ed-bar-grp--align .tool:nth-child(3)", "mousedown");
+    await page.waitForTimeout(150);
+    const part = await alignClasses(page);
+    check("align :: a selection aligns only the block it touches", part.join(",") === "al-c,al-r,al-c", part.join(","));
+    await undo(page);
+    await page.waitForTimeout(150);
+    const undone = await alignClasses(page);
+    check("align :: undo reverts the last alignment", undone.join(",") === "al-c,al-c,al-c", undone.join(","));
+    await context.close();
+  }
+
+  /* ---- focus mode counts words written in the sitting, paragraph by
+     paragraph — one-word paragraphs used to glue together and count 0 ---- */
+  {
+    const { context, page } = await openEditor(browser);
+    await page.keyboard.type("before entering focus");
+    await page.keyboard.press(MOD + "+Shift+f");
+    await page.waitForSelector(".focus-hint");
+    for (const w of ["alpha", "beta", "gamma", "delta"]) { await page.keyboard.press("Enter"); await page.keyboard.type(w); }
+    await page.waitForTimeout(400);
+    const hint = await page.$eval(".focus-hint", (el) => el.textContent);
+    check("focus :: session counter counts one-word paragraphs", /^4\b/.test(hint), hint);
+    await context.close();
+  }
+
   await browser.close();
 
   const passed = results.filter((r) => r.ok).length;

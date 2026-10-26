@@ -41,6 +41,11 @@ MEMBERS = r'''
   override fun onWebViewCreate(webView: android.webkit.WebView) {
     super.onWebViewCreate(webView)
     sipruWebView = webView
+    /* The WebView multiplies every font by the system "Font size" setting
+       while leaving boxes as laid out, so a large setting overflowed
+       buttons, cards and the page sheet. The app has its own page zoom;
+       keep the interface at the size it was designed for. */
+    webView.settings.textZoom = 100
     webView.addJavascriptInterface(SipruVault(this) { sipruPicked(it) }, "SipruAndroidVault")
   }
 

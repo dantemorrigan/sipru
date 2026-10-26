@@ -51,6 +51,8 @@ function useDocSave(docId, store, getHTML) {
   return { schedule, flush };
 }
 
+/* elements whose start is always a word boundary, even with no space typed */
+const WORD_BREAK_TAGS = /^(P|DIV|H[1-6]|LI|UL|OL|BLOCKQUOTE|PRE|TABLE|TR|TD|TH|FIGURE|FIGCAPTION|HR|SECTION|ASIDE)$/;
 const FONT_MAP = { book: "var(--book)", article: "var(--book-alt)", mono: "var(--mono)" };
 
 /* Shortcut hints have to name the key the reader actually has: ⌘ on a Mac,
@@ -252,7 +254,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
       if (unwrapNestedBlocks(ref.current)) saved.current = serializeArea(ref.current);
       else saved.current = html;
       try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch (e) {}
-      setWords(store.countWords(html));
+      setWords(countVisibleWords(ref.current));
       depth.current = { u: 0, r: 0 };
       structural.current = { undo: [], redo: [] };
       setHist({ undo: false, redo: false });
@@ -295,7 +297,10 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
     if (!focusMode) return;
     /* entering focus starts a fresh sitting: the count as it stands now is
        the baseline everything typed from here is measured against */
-    focusBase.current = words;
+    clearTimeout(wordTimer.current);
+    const now = nodeRef.current ? countVisibleWords(nodeRef.current) : words;
+    focusBase.current = now;
+    setWords(now);
     const onKey = (e) => { if (e.key === "Escape") setFocusMode(false); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -400,14 +405,26 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
   /* Words from textContent, counted without building an array of every match:
      countWords() strips tags off a full innerHTML copy, which is far too much
      work to repeat per keystroke on a long chapter. */
+  /* One walk over the text, with every block boundary and <br> counted as
+     a break. textContent alone glues the last word of one paragraph to the
+     first of the next ("конец" + "начало" → one word), so a sitting spent
+     writing short paragraphs counted as almost nothing — and focus mode,
+     whose baseline came from the store's tag-aware count, showed 0. */
   function countVisibleWords(el) {
-    const t = el.textContent;
-    let n = 0, inWord = false;
-    for (let i = 0; i < t.length; i++) {
-      const c = t.charCodeAt(i);
-      const ws = c === 32 || c === 9 || c === 10 || c === 13 || c === 160;
-      if (ws) inWord = false;
-      else if (!inWord) { inWord = true; n++; }
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    let n = 0, inWord = false, node;
+    while ((node = walker.nextNode())) {
+      if (node.nodeType === 1) {
+        if (node.tagName === "BR" || WORD_BREAK_TAGS.test(node.tagName)) inWord = false;
+        continue;
+      }
+      const t = node.nodeValue;
+      for (let i = 0; i < t.length; i++) {
+        const c = t.charCodeAt(i);
+        const ws = c === 32 || c === 9 || c === 10 || c === 13 || c === 160;
+        if (ws) inWord = false;
+        else if (!inWord) { inWord = true; n++; }
+      }
     }
     return n;
   }
@@ -865,7 +882,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
       else { d0.r = Math.max(0, d0.r - 1); d0.u++; }
       const html = serializeArea(el);
       saved.current = html;
-      setWords(store.countWords(html));
+      setWords(countVisibleWords(el));
       doSave(html);
       setHist({ undo: d0.u > 0, redo: d0.r > 0 });
       refreshActive();
@@ -881,7 +898,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
       else { d.r = Math.max(0, d.r - 1); d.u++; }
       const html = serializeArea(el);
       saved.current = html;
-      setWords(store.countWords(html));
+      setWords(countVisibleWords(el));
       doSave(html);
     }
     setHist({ undo: d.u > 0, redo: d.r > 0 });
@@ -1205,7 +1222,10 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
     const notes = footnoteList(area);
     const byId = {};
     notes.forEach((f) => { byId[f.id] = f; });
+    const t0 = performance.now();
     const res = paginateArea(area, geom, reserveRef.current);
+    pgCycle.current += performance.now() - t0;
+    pgCost.current = Math.max(pgCost.current * 0.5, pgCycle.current);
     setPages(res.notes.map((ids) => ids.map((id) => byId[id]).filter(Boolean)));
   }
   /* Debounced so ordinary typing doesn't reflow on every keystroke — but a
@@ -1219,15 +1239,60 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
      fall more than one beat behind — the same guarantee Word/Docs give by
      reflowing on essentially every keystroke. */
   const PAGINATE_MAX_WAIT = 250;
+  /* A pass over a 200+ page chapter costs ~300 ms; at a 250 ms beat that
+     was more than the whole budget, and every keystroke waited on it. The
+     beat stretches with what the last pass actually cost, so a short
+     chapter reflows exactly as before and a book-length one stays typable,
+     catching up the moment the writer pauses. */
+  /* cost = one whole cycle: the pass plus the footnote passes it triggers */
+  const pgCost = useRef(0);
+  const pgCycle = useRef(0);
   function schedulePaginate(now) {
     clearTimeout(pgTimer.current);
-    passRef.current = 0;
-    if (now) { pgLast.current = Date.now(); repaginate(); return; }
-    if (Date.now() - pgLast.current >= PAGINATE_MAX_WAIT) { pgLast.current = Date.now(); repaginate(); return; }
-    pgTimer.current = setTimeout(() => { pgLast.current = Date.now(); repaginate(); }, 90);
+    const cost = pgCost.current;
+    const maxWait = Math.max(PAGINATE_MAX_WAIT, cost * 4);
+    const idle = Math.max(90, cost * 2);
+    /* a scheduled pass (not a keystroke that merely re-arms the timer)
+       is what grants footnote convergence its three passes */
+    const run = () => { pgLast.current = Date.now(); passRef.current = 0; pgCycle.current = 0; repaginate(); };
+    if (now) { run(); return; }
+    /* overdue: still after this keystroke has painted, never inside it */
+    if (Date.now() - pgLast.current >= maxWait) { pgLast.current = Date.now(); pgTimer.current = setTimeout(run, 0); return; }
+    pgTimer.current = setTimeout(run, idle);
   }
   useEffect(() => () => { clearTimeout(pgTimer.current); cancelAnimationFrame(scrollRaf.current); }, []);
   useEffect(() => { schedulePaginate(true); }, [geom, mode, docId]);
+
+  /* Zoom keeps the reading position: the point in the middle of the view
+     is remembered as a fraction of the paper's height and restored after
+     the sheet changes size — scrollTop alone left the writer a screen or
+     more away from where they were reading after every zoom step. */
+  const readAnchor = useRef(null);
+  const anchorFrozen = useRef(false);
+  function paperFraction() {
+    const sc = scrollRef.current, paper = paperRef.current;
+    if (!sc || !paper || !paper.offsetHeight) return null;
+    const top = paper.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
+    return (sc.scrollTop + sc.clientHeight / 2 - top) / paper.offsetHeight;
+  }
+  const lastScale = useRef(geom.scale);
+  useEffect(() => {
+    if (lastScale.current === geom.scale) return;
+    lastScale.current = geom.scale;
+    const f = readAnchor.current;
+    if (f == null) return;
+    anchorFrozen.current = true;
+    const restore = () => {
+      const sc = scrollRef.current, paper = paperRef.current;
+      if (!sc || !paper) return;
+      const top = paper.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
+      sc.scrollTop = Math.max(0, top + f * paper.offsetHeight - sc.clientHeight / 2);
+    };
+    restore();
+    /* again once the zoom transition and the repagination have landed */
+    const t1 = setTimeout(restore, 120), t2 = setTimeout(() => { restore(); anchorFrozen.current = false; }, 360);
+    return () => { clearTimeout(t1); clearTimeout(t2); anchorFrozen.current = false; };
+  }, [geom.scale]);
   /* schedulePaginate measures live offsetTop/offsetHeight, which — while
      the zoom slider's own CSS transition (.zoom-live, 220ms) is still
      running — read the sheet mid-animation rather than at its landing
@@ -1266,8 +1331,13 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
       if (Math.abs((prev[i] || 0) - v) > 2) { prev[i] = v; changed = true; }
     }
     if (prev.length > hs.length) { prev.length = hs.length; changed = true; }
-    if (changed && passRef.current < 3) { passRef.current++; repaginate(); }
-    else passRef.current = 0;
+    /* Up to three passes per scheduled pagination. Resetting the count
+       whenever a measure came in past the cap let a footnote that keeps
+       hopping between two pages start three more full passes on every
+       re-render — every keystroke, on a long chapter ~100 ms each. Only a
+       new scheduled pass (or settling) re-arms it now. */
+    if (!changed) passRef.current = 0;
+    else if (passRef.current < 3) { passRef.current++; repaginate(); }
   }
 
   const pageCount = pages.length;
@@ -1292,6 +1362,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
 
   /* ---- scenes: the outline follows the caret and the scroll ---- */
   function onScroll() {
+    if (!anchorFrozen.current) readAnchor.current = paperFraction();
     if (scrollRaf.current) return;
     scrollRaf.current = requestAnimationFrame(() => {
       scrollRaf.current = 0;
@@ -1746,12 +1817,34 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
     sel.removeAllRanges(); sel.addRange(lastRange.current);
     return true;
   }
-  function setAlign(cls) {
+  /* A real (non-collapsed) selection inside the document, live or the one
+     the toolbar press just took away. */
+  function hasTextSelection(area) {
+    const sel = window.getSelection();
+    const r = sel && sel.rangeCount && area.contains(sel.anchorNode) ? sel.getRangeAt(0) : lastRange.current;
+    return !!(r && !r.collapsed && area.contains(r.commonAncestorContainer));
+  }
+  /* "The whole text" means its prose: code blocks, tables, rules and
+     epigraphs keep the layout their own kind defines. */
+  const ALIGNABLE = /^(P|H[1-6]|BLOCKQUOTE|UL|OL|ASIDE)$/;
+  function allBlocks(area) {
+    return Array.prototype.filter.call(area.children, (el) =>
+      ALIGNABLE.test(el.tagName) && !(el.classList && el.classList.contains("pg-spacer")));
+  }
+  /* With text selected, alignment applies to just the blocks it touches;
+     with nothing selected it applies to the whole document — no selecting
+     everything first just to justify a chapter. */
+  function setAlign(cls, toggle) {
     const area = ref.current;
     if (!area) return;
+    const partial = hasTextSelection(area);
     restoreCaret(area);
-    const blocks = selectedBlocks(area);
+    const blocks = (partial ? selectedBlocks(area) : allBlocks(area)).filter((el) => ALIGNABLE.test(el.tagName));
     if (!blocks.length) return;
+    /* a class change never reaches the browser's own undo stack */
+    const before = serializeArea(area);
+    /* pressing an alignment every target block already has un-presses it */
+    if (toggle && cls && blocks.every((el) => el.classList.contains(cls))) cls = "";
     blocks.forEach((el) => {
       ALIGN_CLASSES.forEach((c) => el.classList.remove(c));
       if (cls) el.classList.add(cls);
@@ -1760,13 +1853,14 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
     area.focus();
     restoreCaret(area);
     setAlignState(cls);
+    pushStructural(before, serializeArea(area));
     commitChange();
     schedulePaginate(true);
   }
   /* Pressing the currently-active alignment button again un-presses it
      (back to the default left alignment) instead of staying stuck "on". */
   function toggleAlign(cls) {
-    setAlign(alignCls === cls ? "" : cls);
+    setAlign(cls, true);
   }
 
   /* ---- page settings ---- */
@@ -2251,6 +2345,7 @@ function LinkPopup({ href, anchor, lang, onApply, onClose }) {
       <div ref={popRef} className="link-pop" style={style} onMouseDown={(e) => e.stopPropagation()}>
         <Icon name="link" size={16} />
         <input ref={inputRef} className="link-pop-input mono" value={url}
+          type="url" inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="done"
           placeholder={tl("link_url_placeholder")}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => {

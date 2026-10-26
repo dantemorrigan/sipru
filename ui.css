@@ -1025,14 +1025,17 @@
 /* ---------- storage warning ----------
    Anchored to the opposite corner from .upd so an update notice and a
    "back up your work" notice never land on top of each other. */
-.stor-warn { position: fixed; left: 22px; bottom: 22px; z-index: 46;
+/* clear of the nav rail (desktop) and the tab bar (phone): the banner asks
+   for a backup, and used to sit right over the Profile button that makes one */
+.stor-warn { position: fixed; left: calc(var(--rail-w, 72px) + 22px); bottom: 22px; z-index: 46;
   display: flex; align-items: center; gap: 16px; max-width: min(420px, calc(100vw - 32px));
   padding: 14px 14px 14px 18px; background: var(--sheet); color: var(--ink);
   border: 1px solid var(--accent); border-radius: var(--r-lg); box-shadow: var(--shadow-3);
   animation: updIn .28s var(--ease-out) both; }
 .stor-warn .upd-spark { color: var(--accent); }
 @media (max-width: 620px) {
-  .stor-warn { left: 16px; right: 16px; bottom: 16px; max-width: none; }
+  .stor-warn { left: 16px; right: 16px; max-width: none;
+    bottom: calc(var(--tabbar-h, 64px) + env(safe-area-inset-bottom, 0px) + 12px); }
 }
 
 /* ---------- save flash ---------- */
@@ -1264,8 +1267,14 @@
     max-height: calc(100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
   .export-side { display: contents; }
   .export-modal .modal-head { order: 1; flex-shrink: 0; }
-  .exp-scroll { order: 2; flex: 0 1 auto; max-height: 42vh; }
-  .export-preview { order: 3; display: flex; flex: 1 1 auto; min-height: 140px; padding: 12px; }
+  /* The settings get the room; the preview is a fixed glance below them.
+     The other way round, a long book title in the header plus the preview
+     left the settings a ~90px strip — formats visible, nothing else. */
+  .exp-scroll { order: 2; flex: 1 1 auto; min-height: 120px; max-height: none; }
+  .export-preview { order: 3; display: flex; flex: 0 0 auto; height: 30vh; min-height: 150px; padding: 12px; }
+  .export-modal .modal-head { padding: 18px 20px 14px; }
+  .export-modal .modal-title { font-size: var(--t-lg); line-height: 1.2;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   .export-preview-inner { min-height: 0; }
   .exp-actions { order: 4; flex-shrink: 0; }
   .confirm-modal { padding: 36px 28px 32px; }
@@ -1692,4 +1701,15 @@
     animation-delay: 0s !important;
   }
   .ed-more-menu, .ed-paper, .ed-pagebox, .ed-area { transition-duration: .01ms !important; }
+}
+
+/* ---------- touch screens: text fields you can read and hit while typing ----------
+   On a phone several fields sat at 11–13px (page setup numbers, goals, the
+   streak, renames, the link and footnote popups) — legible on a desktop,
+   squint-and-miss on a 6" screen with the keyboard up. */
+@media (pointer: coarse) {
+  .streak-input, .link-pop-input, .ol-search input, .ol-rename, .fn-pop-input,
+  .snap-input, .goal-field input, .prof-input, .ed-rename { font-size: 16px; }
+  .streak-input, .snap-input, .goal-field input, .ol-rename { min-height: 40px; box-sizing: border-box; }
+  .pset-num input { font-size: 15px; width: 52px; min-height: 34px; }
 }

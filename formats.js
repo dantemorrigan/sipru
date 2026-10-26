@@ -686,9 +686,10 @@
     return "<w:r>" + (rpr ? "<w:rPr>" + rpr + "</w:rPr>" : "") +
       '<w:t xml:space="preserve">' + esc(r.text) + "</w:t></w:r>";
   }
-  function paraXML(runs, style, numId) {
+  function paraXML(runs, style, numId, jc, ilvl) {
     const ppr = (style ? '<w:pStyle w:val="' + style + '"/>' : "") +
-      (numId ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="' + numId + '"/></w:numPr>' : "");
+      (numId ? '<w:numPr><w:ilvl w:val="' + (ilvl || 0) + '"/><w:numId w:val="' + numId + '"/></w:numPr>' : "") +
+      (jc ? '<w:jc w:val="' + jc + '"/>' : "");
     return "<w:p>" + (ppr ? "<w:pPr>" + ppr + "</w:pPr>" : "") + runs.map(runXML).join("") + "</w:p>";
   }
 
@@ -752,14 +753,39 @@
      in the chunk to the page it will actually sit on; omit it only when
      no page geometry exists yet, and tableXML falls back to a standard
      page's width rather than to Word's own content-fit sizing. */
+  const BLOCK_JC = { l: "left", c: "center", r: "right", j: "both" };
   function htmlToDocxParas(html, pageWidth) {
     const holder = document.createElement("div");
     holder.innerHTML = html || "";
     const out = [];
-    const emit = (node, style, numId) => {
+    /* A block's own alignment (the editor's al-* classes) — on the block
+       itself, or for a list item on its list. */
+    const jcOf = (node) => {
+      for (let el = node, i = 0; el && el.getAttribute && i < 2; el = el.parentNode, i++) {
+        const m = (el.getAttribute("class") || "").match(/\bal-(l|c|r|j)\b/);
+        if (m) return BLOCK_JC[m[1]];
+      }
+      return "";
+    };
+    const emit = (node, style, numId, ilvl) => {
       const runs = runsFrom(node, {}, []);
       if (!runs.length && !numId) return;
-      out.push(paraXML(runs, style, numId));
+      out.push(paraXML(runs, style, numId, jcOf(node), ilvl));
+    };
+    /* One list item = its own text, then any list nested inside it one
+       level deeper. Reading the item whole glued the nested items' text
+       onto its own line ("двавложен") and lost the nesting. Every ordered
+       list gets its own numbering instance, so each one starts at 1. */
+    const emitList = (list, level, inherited) => {
+      const ordered = list.tagName.toLowerCase() === "ol";
+      const numId = ordered ? newOrderedNum() : (inherited && !inherited.ordered ? inherited.numId : 1);
+      list.querySelectorAll(":scope > li").forEach((li) => {
+        const own = li.cloneNode(true);
+        own.querySelectorAll(":scope > ul, :scope > ol").forEach((n) => n.remove());
+        const runs = runsFrom(own, {}, []);
+        out.push(paraXML(runs, "ListParagraph", numId, jcOf(li), Math.min(level, 4)));
+        li.querySelectorAll(":scope > ul, :scope > ol").forEach((sub) => emitList(sub, level + 1, { ordered, numId }));
+      });
     };
     const walk = (parent) => {
       parent.childNodes.forEach((n) => {
@@ -799,10 +825,7 @@
           out.push(paraXML([{ text: t ? t : "* * *" }], "Separator"));
         }
         else if (tag === "hr") out.push(paraXML([{ text: "* * *" }], "Separator"));
-        else if (tag === "ul" || tag === "ol") {
-          const numId = tag === "ul" ? 1 : 2;
-          n.querySelectorAll(":scope > li").forEach((li) => emit(li, "ListParagraph", numId));
-        } else if (tag === "p" || tag === "div") emit(n, null);
+        else if (tag === "ul" || tag === "ol") emitList(n, 0, null); else if (tag === "p" || tag === "div") emit(n, null);
         else if (tag === "section" || tag === "article") walk(n);
         else emit(n, null);
       });
@@ -841,18 +864,21 @@
     '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>' +
     '</Relationships>';
 
-  function stylesXML(fontName) {
+  function stylesXML(fontName, align) {
+    /* body text follows the page's alignment, as it does on screen and in PDF */
+    const bodyJc = { justify: "both", center: "center", right: "right" }[align] || "";
     const heading = (id, name, size, before) =>
       '<w:style w:type="paragraph" w:styleId="' + id + '"><w:name w:val="' + name + '"/>' +
       '<w:basedOn w:val="Normal"/><w:qFormat/>' +
-      '<w:pPr><w:keepNext/><w:spacing w:before="' + before + '" w:after="120"/><w:ind w:firstLine="0"/></w:pPr>' +
+      '<w:pPr><w:keepNext/><w:spacing w:before="' + before + '" w:after="120"/><w:ind w:firstLine="0"/><w:jc w:val="left"/></w:pPr>' +
       '<w:rPr><w:b/><w:sz w:val="' + size + '"/></w:rPr></w:style>';
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
       '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="' + esc(fontName) + '" w:hAnsi="' + esc(fontName) +
       '" w:cs="' + esc(fontName) + '"/><w:sz w:val="24"/><w:szCs w:val="24"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault>' +
       '<w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="300" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>' +
-      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>' +
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/>' +
+      (bodyJc ? '<w:pPr><w:jc w:val="' + bodyJc + '"/></w:pPr>' : "") + '</w:style>' +
       heading("Heading1", "heading 1", "40", "360") +
       heading("Heading2", "heading 2", "32", "280") +
       heading("Heading3", "heading 3", "28", "240") +
@@ -880,24 +906,36 @@
       '<w:style w:type="paragraph" w:styleId="RunHead"><w:name w:val="Running Head"/><w:basedOn w:val="Normal"/>' +
       '<w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:sz w:val="18"/></w:rPr></w:style>' +
       '<w:style w:type="paragraph" w:styleId="Code"><w:name w:val="Code"/><w:basedOn w:val="Normal"/>' +
-      '<w:pPr><w:ind w:left="0" w:firstLine="0"/><w:spacing w:before="120" w:after="120" w:line="264" w:lineRule="auto"/></w:pPr>' +
+      '<w:pPr><w:ind w:left="0" w:firstLine="0"/><w:spacing w:before="120" w:after="120" w:line="264" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr>' +
       '<w:rPr><w:rFonts w:ascii="JetBrains Mono" w:hAnsi="JetBrains Mono" w:cs="JetBrains Mono"/><w:sz w:val="19"/></w:rPr></w:style>' +
       '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/>' +
-      '<w:pPr><w:ind w:left="720"/><w:spacing w:after="60"/></w:pPr></w:style>' +
+      '<w:pPr><w:ind w:left="720"/><w:spacing w:after="60"/><w:jc w:val="left"/></w:pPr></w:style>' +
       '</w:styles>';
   }
 
-  const NUMBERING = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
-    '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>' +
-    '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/>' +
-    '<w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>' +
-    '<w:abstractNum w:abstractNumId="2"><w:multiLevelType w:val="hybridMultilevel"/>' +
-    '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/>' +
-    '<w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>' +
-    '<w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num>' +
-    '<w:num w:numId="2"><w:abstractNumId w:val="2"/></w:num>' +
-    '</w:numbering>';
+  /* Five levels each, so nested lists keep their depth. */
+  const lvls = (fmt) => [0, 1, 2, 3, 4].map((l) =>
+    '<w:lvl w:ilvl="' + l + '"><w:start w:val="1"/><w:numFmt w:val="' + fmt(l).f + '"/><w:lvlText w:val="' + fmt(l).t + '"/>' +
+    '<w:lvlJc w:val="left"/><w:pPr><w:ind w:left="' + (720 + 360 * l) + '" w:hanging="360"/></w:pPr></w:lvl>').join("");
+  const BULLETS = ["•", "◦", "▪", "•", "◦"];
+  const ORDERED = [["decimal", "%1."], ["lowerLetter", "%2."], ["lowerRoman", "%3."], ["decimal", "%4."], ["lowerLetter", "%5."]];
+  let orderedNums = 0;
+  const newOrderedNum = () => 3 + orderedNums++;
+  function numberingXML() {
+    let nums = '<w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num>' +
+      '<w:num w:numId="2"><w:abstractNumId w:val="2"/></w:num>';
+    for (let i = 0; i < orderedNums; i++) {
+      nums += '<w:num w:numId="' + (3 + i) + '"><w:abstractNumId w:val="2"/>' +
+        '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>';
+    }
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>' +
+      lvls((l) => ({ f: "bullet", t: BULLETS[l] })) + '</w:abstractNum>' +
+      '<w:abstractNum w:abstractNumId="2"><w:multiLevelType w:val="hybridMultilevel"/>' +
+      lvls((l) => ({ f: ORDERED[l][0], t: ORDERED[l][1] })) + '</w:abstractNum>' +
+      nums + '</w:numbering>';
+  }
 
   const PAGE_SIZES = {
     a4:     { w: 11906, h: 16838 },
@@ -919,7 +957,7 @@
   const HF_NS = ' xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"' +
     ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
   function fieldRun(instr) {
-    return '<w:fldSimple w:instr="' + esc(instr) + '"><w:r><w:t>1</w:t></w:r></w:fldSimple>';
+    return '<w:fldSimple w:instr="' + esc(instr).replace(/"/g, "&quot;") + '"><w:r><w:t>1</w:t></w:r></w:fldSimple>';
   }
   function slotXML(value, ctx) {
     if (!value) return "";
@@ -947,6 +985,7 @@
      behaves exactly as it did before.                                     */
   function buildDocx(opts) {
     const o = opts || {};
+    orderedNums = 0;
     const pg = o.page || null;
     let size = PAGE_SIZES[o.paperSize] || PAGE_SIZES.a4;
     let mgT, mgR, mgB, mgL;
@@ -958,8 +997,9 @@
              letter: { w: 215.9, h: 279.4 }, legal: { w: 215.9, h: 355.6 } }[pg.size] || { w: 210, h: 297 });
       const dim = pg.orient === "landscape" ? { w: d.h, h: d.w } : d;
       size = { w: Math.round(dim.w * MM_TO_TW), h: Math.round(dim.h * MM_TO_TW) };
-      mgT = Math.round(pg.mt * MM_TO_TW); mgR = Math.round(pg.mr * MM_TO_TW);
-      mgB = Math.round(pg.mb * MM_TO_TW); mgL = Math.round(pg.ml * MM_TO_TW);
+      const fm = fitMargins(dim.w, dim.h, pg);
+      mgT = Math.round(fm.mt * MM_TO_TW); mgR = Math.round(fm.mr * MM_TO_TW);
+      mgB = Math.round(fm.mb * MM_TO_TW); mgL = Math.round(fm.ml * MM_TO_TW);
     }
 
     const width = size.w - mgL - mgR;
@@ -1021,7 +1061,10 @@
 
     const settings_xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
-      (pg && pg.mirror ? "<w:evenAndOddHeaders/>" : "") + "</w:settings>";
+      (pg && pg.mirror ? "<w:evenAndOddHeaders/>" : "") +
+      /* justified text must not stretch a line ended by a manual break
+         (verse, an address) — the same rule the screen and PDF follow */
+      "<w:compat><w:doNotExpandShiftReturn/></w:compat></w:settings>";
 
     return zip([
       { name: "[Content_Types].xml", data: CONTENT_TYPES.replace("</Types>",
@@ -1034,15 +1077,31 @@
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
         rels.join("") + "</Relationships>" },
       { name: "word/settings.xml", data: settings_xml },
-      { name: "word/styles.xml", data: stylesXML(DOCX_FONTS[o.font] || DOCX_FONTS.book) },
-      { name: "word/numbering.xml", data: NUMBERING },
+      { name: "word/styles.xml", data: stylesXML(DOCX_FONTS[o.font] || DOCX_FONTS.book, pg ? (pg.align || "justify") : "") },
+      { name: "word/numbering.xml", data: numberingXML() },
     ].concat(files));
   }
 
   const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
+  /* Margins (mm) that still leave a text area on the sheet. Each margin is
+     clamped on its own in page setup, so on a small or custom page the
+     pair could add up to more than the page — text hung off the paper.
+     The pair on each axis may take at most 60% of it; past that both are
+     scaled down together. Editor, DOCX and PDF all use this one rule. */
+  function fitMargins(wMM, hMM, m) {
+    const out = { mt: +m.mt || 0, mr: +m.mr || 0, mb: +m.mb || 0, ml: +m.ml || 0 };
+    const fit = (a, b, room) => {
+      const sum = out[a] + out[b];
+      if (sum > room && sum > 0) { const f = room / sum; out[a] *= f; out[b] *= f; }
+    };
+    fit("ml", "mr", wMM * 0.6);
+    fit("mt", "mb", hMM * 0.6);
+    return out;
+  }
+
   Object.assign(window, {
     SipruFormats: { sanitizeHTML, txtToHTML, mdToHTML, importFile, importKind, IMPORT_ACCEPT,
-      buildDocx, htmlToDocxParas, zip, DOCX_MIME },
+      buildDocx, htmlToDocxParas, zip, DOCX_MIME, fitMargins },
   });
 })();
