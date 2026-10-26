@@ -1025,14 +1025,17 @@
 /* ---------- storage warning ----------
    Anchored to the opposite corner from .upd so an update notice and a
    "back up your work" notice never land on top of each other. */
-.stor-warn { position: fixed; left: 22px; bottom: 22px; z-index: 46;
+/* clear of the nav rail (desktop) and the tab bar (phone): the banner asks
+   for a backup, and used to sit right over the Profile button that makes one */
+.stor-warn { position: fixed; left: calc(var(--rail-w, 72px) + 22px); bottom: 22px; z-index: 46;
   display: flex; align-items: center; gap: 16px; max-width: min(420px, calc(100vw - 32px));
   padding: 14px 14px 14px 18px; background: var(--sheet); color: var(--ink);
   border: 1px solid var(--accent); border-radius: var(--r-lg); box-shadow: var(--shadow-3);
   animation: updIn .28s var(--ease-out) both; }
 .stor-warn .upd-spark { color: var(--accent); }
 @media (max-width: 620px) {
-  .stor-warn { left: 16px; right: 16px; bottom: 16px; max-width: none; }
+  .stor-warn { left: 16px; right: 16px; max-width: none;
+    bottom: calc(var(--tabbar-h, 64px) + env(safe-area-inset-bottom, 0px) + 12px); }
 }
 
 /* ---------- save flash ---------- */

@@ -25,7 +25,7 @@ function eq(name, actual, expected) {
 /* A localStorage good enough for the store: real read-back, and a quota
    that can be closed on demand to reproduce a full disk. */
 function makeStorage(opts) {
-  const map = new Map();
+  const map = new Map(Object.entries((opts && opts.preset) || {}));
   const state = { failing: false, limit: (opts && opts.limit) || Infinity, writes: 0 };
   return {
     state,
@@ -343,6 +343,22 @@ function freshStore(opts) {
   check("project search navigates to its project", result[0] && result[0].projectId === pid);
   store.updateProject(pid, { synopsis: "Unique book synopsis" });
   eq("matching title and synopsis produces one result", store.search("Unique book").length, 1);
+}
+
+/* ---------------- an unreadable save is never written over ---------------- */
+{
+  const cut = '{"user":{"name":"A"},"projects":[{"id":"p1","title":"Book"'; // truncated
+  const { store, storage } = freshStore({ preset: { "sipru:v1": cut } });
+  eq("an unreadable save is set aside under its own key", storage.api.getItem("sipru:v1:unreadable"), cut);
+  check("the store reports it", store.hadUnreadableSave());
+}
+{
+  const cut = '{"user":{"name":"A"},"projects":[' + '"x",'.repeat(50);
+  /* no room to set it aside: then nothing may be written over it */
+  const { store, storage } = freshStore({ preset: { "sipru:v1": cut }, limit: 10 });
+  store.createNote("New");
+  eq("with no room to set it aside, the original stays in place", storage.api.getItem("sipru:v1"), cut);
+  check("and saving reports itself as not writable", !store.isWritable());
 }
 
 const passed = results.filter((r) => r.ok).length;

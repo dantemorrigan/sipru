@@ -199,6 +199,7 @@
   }
 
   function persist(s) {
+    if (keepOriginal) return false;
     try {
       const json = JSON.stringify(s);
       lastSize = json.length;
@@ -268,16 +269,29 @@
 
   /* Declared after persist(): seeding a brand-new install writes through it
      straight away, so it has to already exist by the time this runs. */
+  /* A save that no longer parses (cut short by a crash or a full disk) used
+     to be answered with a fresh store written straight over it — the one
+     copy of the writer's text, gone at the moment it might still have been
+     repaired. It is set aside under its own key first; if even that does
+     not fit, nothing is written over it at all. */
+  const wordCache = new Map();
+  const CORRUPT_KEY = KEY + ":unreadable";
+  let keepOriginal = false;
   function load() {
+    let raw = null;
     try {
-      const raw = localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY);
+      raw = localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY);
       if (raw) {
         const parsed = migrate(JSON.parse(raw));
         if (parsed) { lastSize = raw.length; return parsed; }
       }
     } catch (e) {}
+    if (raw) {
+      try { localStorage.setItem(CORRUPT_KEY, raw); }
+      catch (e) { keepOriginal = true; }
+    }
     const s = migrate(seed());
-    persist(s);
+    if (!keepOriginal) persist(s);
     return s;
   }
   let state = load();
@@ -288,7 +302,10 @@
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     /* fires once when saving starts failing (quota full, writes refused) */
     onPersistError(fn) { errorListeners.add(fn); return () => errorListeners.delete(fn); },
-    isWritable: () => writable,
+    isWritable: () => writable && !keepOriginal,
+    /* true when the saved data could not be read: it is kept under
+       CORRUPT_KEY (or left untouched in place) for recovery */
+    hadUnreadableSave: () => keepOriginal || (() => { try { return !!localStorage.getItem(CORRUPT_KEY); } catch (e) { return false; } })(),
 
     /* ---- how close the store is to filling its budget ----
        No browser publishes an exact localStorage quota, but ~5M characters
@@ -533,8 +550,18 @@
       state.notes.forEach((n) => { words += countWords(n.content); });
       return { words, projects: state.projects.length, notes: state.notes.length, chapters };
     },
+    /* The dashboard asks for this per card on every render; recounting
+       every chapter's HTML each time cost ~77 ms a pass on a large library.
+       A chapter's count is reused for as long as its content is the same
+       string. */
     projectWords(p) {
-      return p.chapters.reduce((s, c) => s + countWords(c.content), 0);
+      return p.chapters.reduce((s, c) => {
+        const hit = wordCache.get(c.id);
+        if (hit && hit.content === c.content) return s + hit.words;
+        const words = countWords(c.content);
+        wordCache.set(c.id, { content: c.content, words });
+        return s + words;
+      }, 0);
     },
 
     /* Today's words, the last seven days and the run of consecutive days
@@ -598,7 +625,12 @@
       if (!s || !s.user) return false;
       state = s;
       textCache.clear();
+      /* restoring a backup is the writer choosing what replaces an
+         unreadable save, so it may be written over now */
+      const kept = keepOriginal;
+      keepOriginal = false;
       if (!persist(state)) {
+        keepOriginal = kept;
         state = backup;
         lastSize = backupSize;   /* the failed write is not what's on disk */
         textCache.clear();
@@ -607,7 +639,7 @@
       listeners.forEach((fn) => fn(state));
       return true;
     },
-    reset() { localStorage.removeItem(KEY); localStorage.removeItem(LEGACY_KEY); state = migrate(seed()); textCache.clear(); commit(); },
+    reset() { keepOriginal = false; localStorage.removeItem(KEY); localStorage.removeItem(LEGACY_KEY); state = migrate(seed()); textCache.clear(); commit(); },
 
     countWords, clampTitle, clampSynopsis, SEARCH_LIMIT
   };

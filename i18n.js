@@ -282,6 +282,7 @@
       /* ---- storage pressure ---- */
       toast_storage_full: "Хранилище переполнено — изменения не сохраняются. Скачайте бэкап.",
       toast_storage_err: "Не удалось сохранить изменения",
+      toast_save_unreadable: "Сохранённые данные не читаются — они не тронуты. Восстановите бэкап в профиле",
       storage_warn_title: "Хранилище почти заполнено",
       storage_warn_body: "Скачайте резервную копию, пока есть место",
       storage_full_title: "Изменения не сохраняются",
@@ -753,6 +754,7 @@
       /* ---- storage pressure ---- */
       toast_storage_full: "Storage is full — changes aren't being saved. Download a backup.",
       toast_storage_err: "Could not save your changes",
+      toast_save_unreadable: "Your saved data could not be read — it was left untouched. Restore a backup in your profile",
       storage_warn_title: "Storage is nearly full",
       storage_warn_body: "Download a backup while there is still room",
       storage_full_title: "Changes aren't being saved",

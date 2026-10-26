@@ -56,6 +56,10 @@ function App() {
     toast(tl(info.kind === "quota" ? "toast_storage_full" : "toast_storage_err"));
   }), [store, toast]);
 
+  useEffect(() => {
+    if (store.hadUnreadableSave()) toast(T(store.get().user.lang || "en")("toast_save_unreadable"));
+  }, []);
+
   const setTheme = (t) => store.setUser({ theme: t });
 
   const nav = useMemo(() => ({
