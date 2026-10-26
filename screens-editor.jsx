@@ -2288,6 +2288,7 @@ function LinkPopup({ href, anchor, lang, onApply, onClose }) {
       <div ref={popRef} className="link-pop" style={style} onMouseDown={(e) => e.stopPropagation()}>
         <Icon name="link" size={16} />
         <input ref={inputRef} className="link-pop-input mono" value={url}
+          type="url" inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="done"
           placeholder={tl("link_url_placeholder")}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => {

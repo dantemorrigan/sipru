@@ -1693,3 +1693,14 @@
   }
   .ed-more-menu, .ed-paper, .ed-pagebox, .ed-area { transition-duration: .01ms !important; }
 }
+
+/* ---------- touch screens: text fields you can read and hit while typing ----------
+   On a phone several fields sat at 11–13px (page setup numbers, goals, the
+   streak, renames, the link and footnote popups) — legible on a desktop,
+   squint-and-miss on a 6" screen with the keyboard up. */
+@media (pointer: coarse) {
+  .streak-input, .link-pop-input, .ol-search input, .ol-rename, .fn-pop-input,
+  .snap-input, .goal-field input, .prof-input, .ed-rename { font-size: 16px; }
+  .streak-input, .snap-input, .goal-field input, .ol-rename { min-height: 40px; box-sizing: border-box; }
+  .pset-num input { font-size: 15px; width: 52px; min-height: 34px; }
+}

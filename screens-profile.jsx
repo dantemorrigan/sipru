@@ -121,7 +121,7 @@ function Profile({ store, user, nav, route, onTheme, onSearch, onToast }) {
 
               <div className="prof-row">
                 <span className="prof-row-l">{tl("prof_lbl_name")}</span>
-                <input value={name} onChange={(e)=>setName(e.target.value)} onBlur={saveName}
+                <input value={name} onChange={(e)=>setName(e.target.value)} onBlur={saveName} autoCapitalize="words" autoComplete="off" enterKeyHint="done"
                   onKeyDown={(e)=>e.key==="Enter"&&e.target.blur()} maxLength={40} className="prof-input" />
               </div>
 

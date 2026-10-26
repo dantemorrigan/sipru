@@ -267,7 +267,7 @@ function SearchModal({ store, lang, projectId, onPick, onClose }) {
       <div className="modal search-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="search-bar">
           <Icon name="search" size={18} />
-          <input className="search-input" autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+          <input className="search-input" autoFocus value={q} enterKeyHint="search" onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown} placeholder={tl(projectId ? "search_placeholder_project" : "search_placeholder")} />
           {results.length > 0 && (
             <span className="search-count mono">{results.total || results.length} {tl("search_results_n")}</span>
