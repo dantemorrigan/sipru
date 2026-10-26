@@ -856,7 +856,8 @@ function buildBookHTML(project, opts) {
   const chapters = project.chapters.filter((c) => opts.include[c.id] !== false);
   const pg = opts.page || {};
   const d = pageDimsMM(pg);
-  const mt = pg.mt != null ? pg.mt : 20, mr = pg.mr != null ? pg.mr : 18, mb = pg.mb != null ? pg.mb : 20, ml = pg.ml != null ? pg.ml : 18;
+  const { mt, mr, mb, ml } = SipruFormats.fitMargins(d.w, d.h, {
+    mt: pg.mt != null ? pg.mt : 20, mr: pg.mr != null ? pg.mr : 18, mb: pg.mb != null ? pg.mb : 20, ml: pg.ml != null ? pg.ml : 18 });
   const screenEm = Math.round(d.w / 5.4) + "em";
   const screenPad = Math.round(Math.min(ml, mr) * 2.6) + "px";
   const fontStack = opts.font === "mono"
@@ -864,15 +865,15 @@ function buildBookHTML(project, opts) {
     : opts.font === "article" ? "'Lora', Georgia, serif" : "'Source Serif 4', Georgia, serif";
   let body = "";
   if (opts.titlePage) {
-    body += `<section class="b-title"><div class="b-kicker">SIPRU.</div><h1>${project.title}</h1>${project.synopsis ? `<p class="b-syn">${project.synopsis}</p>` : ""}</section>`;
+    body += `<section class="b-title"><div class="b-kicker">SIPRU.</div><h1>${escText(project.title)}</h1>${project.synopsis ? `<p class="b-syn">${escText(project.synopsis)}</p>` : ""}</section>`;
   }
   if (opts.toc) {
-    body += `<section class="b-toc"><h2>${t("toc_title", opts.lang || "ru")}</h2><ol>${chapters.map((c) => `<li><span>${c.title}</span></li>`).join("")}</ol></section>`;
+    body += `<section class="b-toc"><h2>${t("toc_title", opts.lang || "ru")}</h2><ol>${chapters.map((c) => `<li><span>${escText(c.title)}</span></li>`).join("")}</ol></section>`;
   }
   chapters.forEach((c, i) => {
-    body += `<section class="b-chap"><h1>${escText(c.title)}</h1>${chapterBody(c.content || "")}</section>`;
+    body += `<section class="b-chap"><h1 class="b-chap-title">${escText(c.title)}</h1>${chapterBody(c.content || "")}</section>`;
   });
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${project.title}</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escText(project.title)}</title>
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Lora:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
   <style>
     @page { size: ${d.w}mm ${d.h}mm; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm; }
@@ -889,7 +890,12 @@ function buildBookHTML(project, opts) {
     p { margin: 0 0 ${pg.spaceAfter != null ? pg.spaceAfter : 0.6}em; text-indent: ${pg.indent != null ? pg.indent : 1.5}em; text-align: ${(pg.align || "justify") === "justify" ? "justify" : pg.align}; }
     h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p, blockquote + p, ul + p, ol + p, hr + p, p:first-child { text-indent: 0; }
     blockquote { margin: 1.1em 1.6em; font-style: italic; color: #555; }
-    ul, ol { padding-left: 1.5em; margin: .4em 0; } li { margin-bottom: .3em; text-align: left; }
+    ul, ol { padding-left: 1.5em; margin: .4em 0; } li { margin-bottom: .3em; }
+    /* every text block follows the page alignment, as it does in the
+       editor — not just <p>. Zero specificity, so a block's own al-*
+       alignment still wins. */
+    :where(.b-chap > :is(h1, h2, h3, h4, h5, h6, blockquote, ul, ol, aside):not(.b-chap-title), .b-chap li) {
+      text-align: ${(pg.align || "justify") === "justify" ? "justify" : pg.align}; }
     hr { border: none; text-align: center; margin: 1.6em 0; }
     hr:after { content: "✶"; color: #c2542f; }
 ${BLOCK_CSS}
@@ -937,7 +943,7 @@ function buildBookDocx(project, opts) {
   if (opts.toc) {
     sections.push({
       heading: t("toc_title", opts.lang || "en"),
-      html: "<ol>" + chapters.map((c) => "<li>" + c.title.replace(/[<>&]/g, " ") + "</li>").join("") + "</ol>",
+      html: "<ol>" + chapters.map((c) => "<li>" + escText(c.title) + "</li>").join("") + "</ol>",
       pageBreakBefore: opts.titlePage,
     });
   }
@@ -1089,10 +1095,11 @@ function buildNoteHTML(note, opts) {
     : opts.font === "article" ? "'Lora', Georgia, serif" : "'Source Serif 4', Georgia, serif";
   const pg = opts.page || {};
   const d = pageDimsMM(pg);
-  const mt = pg.mt != null ? pg.mt : 20, mr = pg.mr != null ? pg.mr : 18, mb = pg.mb != null ? pg.mb : 20, ml = pg.ml != null ? pg.ml : 18;
+  const { mt, mr, mb, ml } = SipruFormats.fitMargins(d.w, d.h, {
+    mt: pg.mt != null ? pg.mt : 20, mr: pg.mr != null ? pg.mr : 18, mb: pg.mb != null ? pg.mb : 20, ml: pg.ml != null ? pg.ml : 18 });
   const screenEm = Math.round(d.w / 5.4) + "em";
   const screenPad = Math.round(Math.min(ml, mr) * 2.6) + "px";
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${note.title}</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escText(note.title)}</title>
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Lora:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
   <style>
     @page { size: ${d.w}mm ${d.h}mm; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm; }
@@ -1105,6 +1112,8 @@ function buildNoteHTML(note, opts) {
     p:first-child { text-indent: 0; }
     blockquote { margin: 1.1em 1.6em; font-style: italic; color: #555; border-left: 3px solid #c2542f; padding-left: 1em; }
     ul, ol { padding-left: 1.5em; margin: .4em 0; } li { margin-bottom: .3em; }
+    :where(.n-wrap > :is(h1, h2, h3, h4, h5, h6, blockquote, ul, ol, aside), .n-wrap li) {
+      text-align: ${(pg.align || "left") === "justify" ? "justify" : pg.align || "left"}; }
     hr { border: none; text-align: center; margin: 1.6em 0; }
     hr:after { content: "✶"; color: #c2542f; }
 ${BLOCK_CSS}
@@ -1115,7 +1124,7 @@ ${BLOCK_CSS}
       body { padding: 60px 0 80px; }
       .n-wrap { max-width: ${screenEm}; margin: 0 auto; padding: 0 ${screenPad}; }
     }
-  </style></head><body><div class="n-wrap">${opts.titlePage ? `<div class="n-head"><div class="n-kicker">SIPRU.</div><h1 class="n-title">${note.title}</h1></div>` : ""}${chapterBody(note.content || "")}</div></body></html>`;
+  </style></head><body><div class="n-wrap">${opts.titlePage ? `<div class="n-head"><div class="n-kicker">SIPRU.</div><h1 class="n-title">${escText(note.title)}</h1></div>` : ""}${chapterBody(note.content || "")}</div></body></html>`;
 }
 
 function NoteExportModal({ note, onClose, onToast, lang, defaultFont, page }) {

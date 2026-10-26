@@ -686,9 +686,9 @@
     return "<w:r>" + (rpr ? "<w:rPr>" + rpr + "</w:rPr>" : "") +
       '<w:t xml:space="preserve">' + esc(r.text) + "</w:t></w:r>";
   }
-  function paraXML(runs, style, numId, jc) {
+  function paraXML(runs, style, numId, jc, ilvl) {
     const ppr = (style ? '<w:pStyle w:val="' + style + '"/>' : "") +
-      (numId ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="' + numId + '"/></w:numPr>' : "") +
+      (numId ? '<w:numPr><w:ilvl w:val="' + (ilvl || 0) + '"/><w:numId w:val="' + numId + '"/></w:numPr>' : "") +
       (jc ? '<w:jc w:val="' + jc + '"/>' : "");
     return "<w:p>" + (ppr ? "<w:pPr>" + ppr + "</w:pPr>" : "") + runs.map(runXML).join("") + "</w:p>";
   }
@@ -767,10 +767,25 @@
       }
       return "";
     };
-    const emit = (node, style, numId) => {
+    const emit = (node, style, numId, ilvl) => {
       const runs = runsFrom(node, {}, []);
       if (!runs.length && !numId) return;
-      out.push(paraXML(runs, style, numId, jcOf(node)));
+      out.push(paraXML(runs, style, numId, jcOf(node), ilvl));
+    };
+    /* One list item = its own text, then any list nested inside it one
+       level deeper. Reading the item whole glued the nested items' text
+       onto its own line ("двавложен") and lost the nesting. Every ordered
+       list gets its own numbering instance, so each one starts at 1. */
+    const emitList = (list, level, inherited) => {
+      const ordered = list.tagName.toLowerCase() === "ol";
+      const numId = ordered ? newOrderedNum() : (inherited && !inherited.ordered ? inherited.numId : 1);
+      list.querySelectorAll(":scope > li").forEach((li) => {
+        const own = li.cloneNode(true);
+        own.querySelectorAll(":scope > ul, :scope > ol").forEach((n) => n.remove());
+        const runs = runsFrom(own, {}, []);
+        out.push(paraXML(runs, "ListParagraph", numId, jcOf(li), Math.min(level, 4)));
+        li.querySelectorAll(":scope > ul, :scope > ol").forEach((sub) => emitList(sub, level + 1, { ordered, numId }));
+      });
     };
     const walk = (parent) => {
       parent.childNodes.forEach((n) => {
@@ -810,10 +825,7 @@
           out.push(paraXML([{ text: t ? t : "* * *" }], "Separator"));
         }
         else if (tag === "hr") out.push(paraXML([{ text: "* * *" }], "Separator"));
-        else if (tag === "ul" || tag === "ol") {
-          const numId = tag === "ul" ? 1 : 2;
-          n.querySelectorAll(":scope > li").forEach((li) => emit(li, "ListParagraph", numId));
-        } else if (tag === "p" || tag === "div") emit(n, null);
+        else if (tag === "ul" || tag === "ol") emitList(n, 0, null); else if (tag === "p" || tag === "div") emit(n, null);
         else if (tag === "section" || tag === "article") walk(n);
         else emit(n, null);
       });
@@ -901,17 +913,29 @@
       '</w:styles>';
   }
 
-  const NUMBERING = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
-    '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>' +
-    '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/>' +
-    '<w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>' +
-    '<w:abstractNum w:abstractNumId="2"><w:multiLevelType w:val="hybridMultilevel"/>' +
-    '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/>' +
-    '<w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>' +
-    '<w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num>' +
-    '<w:num w:numId="2"><w:abstractNumId w:val="2"/></w:num>' +
-    '</w:numbering>';
+  /* Five levels each, so nested lists keep their depth. */
+  const lvls = (fmt) => [0, 1, 2, 3, 4].map((l) =>
+    '<w:lvl w:ilvl="' + l + '"><w:start w:val="1"/><w:numFmt w:val="' + fmt(l).f + '"/><w:lvlText w:val="' + fmt(l).t + '"/>' +
+    '<w:lvlJc w:val="left"/><w:pPr><w:ind w:left="' + (720 + 360 * l) + '" w:hanging="360"/></w:pPr></w:lvl>').join("");
+  const BULLETS = ["•", "◦", "▪", "•", "◦"];
+  const ORDERED = [["decimal", "%1."], ["lowerLetter", "%2."], ["lowerRoman", "%3."], ["decimal", "%4."], ["lowerLetter", "%5."]];
+  let orderedNums = 0;
+  const newOrderedNum = () => 3 + orderedNums++;
+  function numberingXML() {
+    let nums = '<w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num>' +
+      '<w:num w:numId="2"><w:abstractNumId w:val="2"/></w:num>';
+    for (let i = 0; i < orderedNums; i++) {
+      nums += '<w:num w:numId="' + (3 + i) + '"><w:abstractNumId w:val="2"/>' +
+        '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>';
+    }
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>' +
+      lvls((l) => ({ f: "bullet", t: BULLETS[l] })) + '</w:abstractNum>' +
+      '<w:abstractNum w:abstractNumId="2"><w:multiLevelType w:val="hybridMultilevel"/>' +
+      lvls((l) => ({ f: ORDERED[l][0], t: ORDERED[l][1] })) + '</w:abstractNum>' +
+      nums + '</w:numbering>';
+  }
 
   const PAGE_SIZES = {
     a4:     { w: 11906, h: 16838 },
@@ -933,7 +957,7 @@
   const HF_NS = ' xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"' +
     ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
   function fieldRun(instr) {
-    return '<w:fldSimple w:instr="' + esc(instr) + '"><w:r><w:t>1</w:t></w:r></w:fldSimple>';
+    return '<w:fldSimple w:instr="' + esc(instr).replace(/"/g, "&quot;") + '"><w:r><w:t>1</w:t></w:r></w:fldSimple>';
   }
   function slotXML(value, ctx) {
     if (!value) return "";
@@ -961,6 +985,7 @@
      behaves exactly as it did before.                                     */
   function buildDocx(opts) {
     const o = opts || {};
+    orderedNums = 0;
     const pg = o.page || null;
     let size = PAGE_SIZES[o.paperSize] || PAGE_SIZES.a4;
     let mgT, mgR, mgB, mgL;
@@ -972,8 +997,9 @@
              letter: { w: 215.9, h: 279.4 }, legal: { w: 215.9, h: 355.6 } }[pg.size] || { w: 210, h: 297 });
       const dim = pg.orient === "landscape" ? { w: d.h, h: d.w } : d;
       size = { w: Math.round(dim.w * MM_TO_TW), h: Math.round(dim.h * MM_TO_TW) };
-      mgT = Math.round(pg.mt * MM_TO_TW); mgR = Math.round(pg.mr * MM_TO_TW);
-      mgB = Math.round(pg.mb * MM_TO_TW); mgL = Math.round(pg.ml * MM_TO_TW);
+      const fm = fitMargins(dim.w, dim.h, pg);
+      mgT = Math.round(fm.mt * MM_TO_TW); mgR = Math.round(fm.mr * MM_TO_TW);
+      mgB = Math.round(fm.mb * MM_TO_TW); mgL = Math.round(fm.ml * MM_TO_TW);
     }
 
     const width = size.w - mgL - mgR;
@@ -1052,14 +1078,30 @@
         rels.join("") + "</Relationships>" },
       { name: "word/settings.xml", data: settings_xml },
       { name: "word/styles.xml", data: stylesXML(DOCX_FONTS[o.font] || DOCX_FONTS.book, pg ? (pg.align || "justify") : "") },
-      { name: "word/numbering.xml", data: NUMBERING },
+      { name: "word/numbering.xml", data: numberingXML() },
     ].concat(files));
   }
 
   const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
+  /* Margins (mm) that still leave a text area on the sheet. Each margin is
+     clamped on its own in page setup, so on a small or custom page the
+     pair could add up to more than the page — text hung off the paper.
+     The pair on each axis may take at most 60% of it; past that both are
+     scaled down together. Editor, DOCX and PDF all use this one rule. */
+  function fitMargins(wMM, hMM, m) {
+    const out = { mt: +m.mt || 0, mr: +m.mr || 0, mb: +m.mb || 0, ml: +m.ml || 0 };
+    const fit = (a, b, room) => {
+      const sum = out[a] + out[b];
+      if (sum > room && sum > 0) { const f = room / sum; out[a] *= f; out[b] *= f; }
+    };
+    fit("ml", "mr", wMM * 0.6);
+    fit("mt", "mb", hMM * 0.6);
+    return out;
+  }
+
   Object.assign(window, {
     SipruFormats: { sanitizeHTML, txtToHTML, mdToHTML, importFile, importKind, IMPORT_ACCEPT,
-      buildDocx, htmlToDocxParas, zip, DOCX_MIME },
+      buildDocx, htmlToDocxParas, zip, DOCX_MIME, fitMargins },
   });
 })();
