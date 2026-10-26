@@ -317,6 +317,10 @@ async function openInsertMenu(page) {
     await page.waitForTimeout(150);
     const part = await alignClasses(page);
     check("align :: a selection aligns only the block it touches", part.join(",") === "al-c,al-r,al-c", part.join(","));
+    await undo(page);
+    await page.waitForTimeout(150);
+    const undone = await alignClasses(page);
+    check("align :: undo reverts the last alignment", undone.join(",") === "al-c,al-c,al-c", undone.join(","));
     await context.close();
   }
 
