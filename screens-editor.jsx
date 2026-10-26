@@ -51,6 +51,8 @@ function useDocSave(docId, store, getHTML) {
   return { schedule, flush };
 }
 
+/* elements whose start is always a word boundary, even with no space typed */
+const WORD_BREAK_TAGS = /^(P|DIV|H[1-6]|LI|UL|OL|BLOCKQUOTE|PRE|TABLE|TR|TD|TH|FIGURE|FIGCAPTION|HR|SECTION|ASIDE)$/;
 const FONT_MAP = { book: "var(--book)", article: "var(--book-alt)", mono: "var(--mono)" };
 
 /* Shortcut hints have to name the key the reader actually has: ⌘ on a Mac,
@@ -252,7 +254,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
       if (unwrapNestedBlocks(ref.current)) saved.current = serializeArea(ref.current);
       else saved.current = html;
       try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch (e) {}
-      setWords(store.countWords(html));
+      setWords(countVisibleWords(ref.current));
       depth.current = { u: 0, r: 0 };
       structural.current = { undo: [], redo: [] };
       setHist({ undo: false, redo: false });
@@ -295,7 +297,10 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
     if (!focusMode) return;
     /* entering focus starts a fresh sitting: the count as it stands now is
        the baseline everything typed from here is measured against */
-    focusBase.current = words;
+    clearTimeout(wordTimer.current);
+    const now = nodeRef.current ? countVisibleWords(nodeRef.current) : words;
+    focusBase.current = now;
+    setWords(now);
     const onKey = (e) => { if (e.key === "Escape") setFocusMode(false); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -400,14 +405,26 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
   /* Words from textContent, counted without building an array of every match:
      countWords() strips tags off a full innerHTML copy, which is far too much
      work to repeat per keystroke on a long chapter. */
+  /* One walk over the text, with every block boundary and <br> counted as
+     a break. textContent alone glues the last word of one paragraph to the
+     first of the next ("конец" + "начало" → one word), so a sitting spent
+     writing short paragraphs counted as almost nothing — and focus mode,
+     whose baseline came from the store's tag-aware count, showed 0. */
   function countVisibleWords(el) {
-    const t = el.textContent;
-    let n = 0, inWord = false;
-    for (let i = 0; i < t.length; i++) {
-      const c = t.charCodeAt(i);
-      const ws = c === 32 || c === 9 || c === 10 || c === 13 || c === 160;
-      if (ws) inWord = false;
-      else if (!inWord) { inWord = true; n++; }
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    let n = 0, inWord = false, node;
+    while ((node = walker.nextNode())) {
+      if (node.nodeType === 1) {
+        if (node.tagName === "BR" || WORD_BREAK_TAGS.test(node.tagName)) inWord = false;
+        continue;
+      }
+      const t = node.nodeValue;
+      for (let i = 0; i < t.length; i++) {
+        const c = t.charCodeAt(i);
+        const ws = c === 32 || c === 9 || c === 10 || c === 13 || c === 160;
+        if (ws) inWord = false;
+        else if (!inWord) { inWord = true; n++; }
+      }
     }
     return n;
   }
@@ -1746,12 +1763,32 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
     sel.removeAllRanges(); sel.addRange(lastRange.current);
     return true;
   }
-  function setAlign(cls) {
+  /* A real (non-collapsed) selection inside the document, live or the one
+     the toolbar press just took away. */
+  function hasTextSelection(area) {
+    const sel = window.getSelection();
+    const r = sel && sel.rangeCount && area.contains(sel.anchorNode) ? sel.getRangeAt(0) : lastRange.current;
+    return !!(r && !r.collapsed && area.contains(r.commonAncestorContainer));
+  }
+  /* "The whole text" means its prose: code blocks, tables, rules and
+     epigraphs keep the layout their own kind defines. */
+  const ALIGNABLE = /^(P|H[1-6]|BLOCKQUOTE|UL|OL|ASIDE)$/;
+  function allBlocks(area) {
+    return Array.prototype.filter.call(area.children, (el) =>
+      ALIGNABLE.test(el.tagName) && !(el.classList && el.classList.contains("pg-spacer")));
+  }
+  /* With text selected, alignment applies to just the blocks it touches;
+     with nothing selected it applies to the whole document — no selecting
+     everything first just to justify a chapter. */
+  function setAlign(cls, toggle) {
     const area = ref.current;
     if (!area) return;
+    const partial = hasTextSelection(area);
     restoreCaret(area);
-    const blocks = selectedBlocks(area);
+    const blocks = partial ? selectedBlocks(area) : allBlocks(area);
     if (!blocks.length) return;
+    /* pressing an alignment every target block already has un-presses it */
+    if (toggle && cls && blocks.every((el) => el.classList.contains(cls))) cls = "";
     blocks.forEach((el) => {
       ALIGN_CLASSES.forEach((c) => el.classList.remove(c));
       if (cls) el.classList.add(cls);
@@ -1766,7 +1803,7 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
   /* Pressing the currently-active alignment button again un-presses it
      (back to the default left alignment) instead of staying stuck "on". */
   function toggleAlign(cls) {
-    setAlign(alignCls === cls ? "" : cls);
+    setAlign(cls, true);
   }
 
   /* ---- page settings ---- */
