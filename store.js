@@ -77,7 +77,7 @@
   function seed() {
     const { projects, notes } = emptyContent();
     return {
-      user: { name: "", theme: "light", editorFont: "book", lang: "en", dailyGoal: 500, createdAt: now() },
+      user: { name: "", theme: "light", editorFont: "book", lang: "en", dailyGoal: 500, sound: true, haptics: true, createdAt: now() },
       onboarded: false,
       days: {},
       projects,

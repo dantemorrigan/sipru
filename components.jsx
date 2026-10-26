@@ -128,6 +128,8 @@ function useToast() {
   const [toast, setToast] = useState(null);
   const show = useCallback((msg) => {
     setToast({ msg, id: Math.random(), closing: false });
+    /* every result toast is also felt and heard, by what it says */
+    if (window.SipruFx) window.SipruFx.notify(msg);
   }, []);
   /* Visible for a while, then a brief fade before it actually unmounts —
      an instant disappearance read as a glitch, not a dismissal. */

@@ -141,6 +141,28 @@ function Profile({ store, user, nav, route, onTheme, onSearch, onToast }) {
                 </div>
               </div>
 
+              <div className="prof-row">
+                <span className="prof-row-l">{tl("prof_lbl_sound")}</span>
+                <div className="seg seg--sm">
+                  <button className={"seg-btn"+(user.sound!==false?" on":"")} data-fx="off"
+                    onClick={()=>{ store.setUser({sound:true}); window.SipruFx && window.SipruFx.play("on"); }}>{tl("prof_on")}</button>
+                  <button className={"seg-btn"+(user.sound===false?" on":"")} data-fx="off"
+                    onClick={()=>{ window.SipruFx && window.SipruFx.play("off"); store.setUser({sound:false}); }}>{tl("prof_off")}</button>
+                </div>
+              </div>
+
+              {window.SipruFx && window.SipruFx.hapticsAvailable() && (
+              <div className="prof-row">
+                <span className="prof-row-l">{tl("prof_lbl_haptics")}</span>
+                <div className="seg seg--sm">
+                  <button className={"seg-btn"+(user.haptics!==false?" on":"")} data-fx="off"
+                    onClick={()=>{ store.setUser({haptics:true}); window.SipruFx.haptic("on"); }}>{tl("prof_on")}</button>
+                  <button className={"seg-btn"+(user.haptics===false?" on":"")} data-fx="off"
+                    onClick={()=>{ window.SipruFx.haptic("off"); store.setUser({haptics:false}); }}>{tl("prof_off")}</button>
+                </div>
+              </div>
+              )}
+
               {!/android|iphone|ipad/i.test(navigator.userAgent || "") && (
               <div className="prof-row">
                 <span className="prof-row-l">{tl("prof_lbl_tour")}</span>

@@ -47,9 +47,9 @@ tools, and prevents duplicate or colliding work.
   after editing a source file always rebuild and stage the matching
   `build/*.js` output in the same commit.
 - `npm test` — runs `test/run.js` (rebuilds first, then runs the suites).
-  Expect six passing counts printed (store, i18n, round-trip, editor,
-  pagination, export); the browser suites need Playwright and are skipped
-  without it.
+  Expect eight passing counts printed (store, i18n, feedback, round-trip,
+  editor, pagination, export, mobile); the browser suites need Playwright
+  and are skipped without it.
 - Releasing: bump the version in `package.json`, `package-lock.json`,
   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `Cargo.lock`, add a
   `CHANGELOG.md` section, merge to `main` — `release.yml` builds all three
