@@ -17,25 +17,18 @@
 (function () {
   var shell = window.SipruAndroidShell;
   var root = document.documentElement;
-  var N = { available: !!shell, ime: 0 };
+  var N = { available: !!shell, ime: 0, kb: 0 };
   window.SipruNative = N;
 
   function px(v) { return (Math.max(0, +v || 0)) + "px"; }
 
-  var baseH = window.innerHeight;
-  /* Without a keyboard the viewport height is the reference: if it has
-     already shrunk by the keyboard's height the page needs no extra
-     offset (the WebView resized itself); if not, the keyboard is sitting
-     on top of it and the page has to lift its bottom bars by hand. */
-  window.addEventListener("resize", function () { if (!N.ime) baseH = window.innerHeight; });
-
-  /* How many px of the bottom of the page the keyboard covers that the
-     viewport has not already given up. */
-  N.keyboardOffset = function () {
-    if (!N.ime) return 0;
-    var lost = Math.max(0, baseH - window.innerHeight);
-    return Math.max(0, Math.round(N.ime - lost));
-  };
+  /* How many px of the bottom of the page the keyboard covers. The shell
+     measures it against the WebView's actual bounds, so it is already zero
+     when the WebView has resized itself to end above the keyboard and the
+     full height when the keyboard sits on top of an unresized page.
+     (Estimating this here from innerHeight went wrong whenever a resize
+     event beat the shell's message, and doubled the lift.) */
+  N.keyboardOffset = function () { return N.kb; };
 
   function apply(i) {
     root.style.setProperty("--sat", px(i.top));
@@ -43,6 +36,7 @@
     root.style.setProperty("--sab", px(i.bottom));
     root.style.setProperty("--sal", px(i.left));
     N.ime = Math.max(0, +i.ime || 0);
+    N.kb = Math.max(0, Math.round(+i.kb || 0));
     root.classList.add("native-insets");
     try { window.dispatchEvent(new CustomEvent("sipru-insets", { detail: i })); } catch (e) {}
   }

@@ -826,7 +826,13 @@
   background: var(--paper); transition: opacity .35s; z-index: 15; }
 .ed-foot-meta { flex: 1; display: flex; align-items: center; padding: 0 22px; font-size: var(--t-xs);
   color: var(--ink-soft); gap: 8px; }
-.ed-foot-sep { color: var(--ink-faint); }
+.ed-foot-sep { color: var(--ink-faint); flex: 0 0 auto; }
+/* long book and chapter titles shrink with an ellipsis instead of pushing
+   the page count out of the footer */
+.ed-foot-meta { min-width: 0; }
+.ed-foot-proj, .ed-foot-doc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-foot-proj { flex: 0 1 auto; max-width: 40%; }
+.ed-foot-doc { flex: 1 1 auto; }
 .ed-foot-saved { color: var(--accent); font-size: var(--t-xs); }
 .ed-count { display: flex; align-items: center; gap: 14px; padding: 0 22px; border-left: 1px solid var(--line);
   font-size: var(--t-xs); color: var(--ink-soft); white-space: nowrap; }

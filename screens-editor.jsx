@@ -2250,7 +2250,9 @@ function Editor({ store, user, nav, route, onTheme, onSearch, docId, apiRef, onT
 
       <footer className="ed-foot" ref={footRef} style={{ "--ed-bar-h": barH + "px", "--ed-kb": kbOffset + "px" }}>
         <div className="ed-foot-meta mono">
-          {project ? project.title : tl("note_label")} <span className="ed-foot-sep">·</span> {doc.title}
+          <span className="ed-foot-proj">{project ? project.title : tl("note_label")}</span>
+          <span className="ed-foot-sep">·</span>
+          <span className="ed-foot-doc">{doc.title}</span>
           {savedFlash && <span className="ed-foot-saved">{tl("saved_flash")}</span>}
         </div>
         <div className="ed-count mono">

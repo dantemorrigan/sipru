@@ -31,6 +31,9 @@ MEMBERS = r'''
   private fun sipruShellAttach(webView: android.webkit.WebView) {
     val shell = SipruShell(this, webView)
     webView.addJavascriptInterface(shell, "SipruAndroidShell")
+    /* The WebView resizes a beat after the insets arrive (or not at all),
+       and what the keyboard covers depends on its size right now. */
+    webView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> shell.publish() }
     val decor = window.decorView
     androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(decor) { v, insets ->
       shell.onInsets(insets)
@@ -55,10 +58,18 @@ class SipruShell(
   private val activity: android.app.Activity,
   private val webView: android.webkit.WebView
 ) {
-  @Volatile private var json = "{\"top\":0,\"right\":0,\"bottom\":0,\"left\":0,\"ime\":0}"
+  @Volatile private var json = "{\"top\":0,\"right\":0,\"bottom\":0,\"left\":0,\"ime\":0,\"kb\":0}"
+  private var last: androidx.core.view.WindowInsetsCompat? = null
 
   /* Runs on the UI thread for every insets change (bars, cutout, keyboard). */
   fun onInsets(insets: androidx.core.view.WindowInsetsCompat) {
+    last = insets
+    publish()
+  }
+
+  /* Also runs whenever the WebView is laid out again. */
+  fun publish() {
+    val insets = last ?: return
     val bars = insets.getInsets(
       androidx.core.view.WindowInsetsCompat.Type.systemBars() or
         androidx.core.view.WindowInsetsCompat.Type.displayCutout()
@@ -68,9 +79,21 @@ class SipruShell(
     fun css(px: Int): Int = Math.round(px / density)
     /* a raised keyboard covers the gesture bar, so nothing is left to clear */
     val bottom = if (ime > 0) 0 else bars.bottom
+    /* How much of the WebView's own area the keyboard sits on *right now*.
+       Zero once the WebView has already been resized to end above it —
+       lifting the bottom bars by the keyboard's height as well put them a
+       third of a screen too high, with the empty page showing below. */
+    var covered = 0
+    if (ime > 0) {
+      val at = IntArray(2)
+      webView.getLocationInWindow(at)
+      val webBottom = at[1] + webView.height
+      val imeTop = activity.window.decorView.height - ime
+      covered = Math.max(0, webBottom - imeTop)
+    }
     val next = "{\"top\":" + css(bars.top) + ",\"right\":" + css(bars.right) +
       ",\"bottom\":" + css(bottom) + ",\"left\":" + css(bars.left) +
-      ",\"ime\":" + css(ime) + "}"
+      ",\"ime\":" + css(ime) + ",\"kb\":" + css(covered) + "}"
     if (next == json) return
     json = next
     webView.post {

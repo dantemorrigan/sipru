@@ -107,8 +107,22 @@ function check(name, cond, detail) {
   check("phone :: the formatting row spans the whole screen", ed.scrollerW >= W - 2, "w=" + ed.scrollerW);
   check("phone :: at least bold, italic and underline are reachable without scrolling", ed.visibleTools >= 7, "visible=" + ed.visibleTools);
 
+  /* ---- a long chapter title must not push the page count out of the footer ---- */
+  await page.evaluate(() => {
+    const S = window.SipruStore; const pr = S.get().projects[0];
+    S.updateDoc(pr.chapters[0].id, { title: "ХуйХуйХуйХуйХуйХуйХуйХуйХуйХуйХуйХуйХуйХуйХуйХуй".replace(/Хуй/g, "Слово") });
+  });
+  await page.waitForTimeout(300);
+  const foot = await page.evaluate(() => {
+    const c = document.querySelector(".ed-count").getBoundingClientRect();
+    const d = document.querySelector(".ed-foot-doc");
+    return { countRight: c.right, countLeft: c.left, docClipped: d.scrollWidth > d.clientWidth };
+  });
+  check("phone :: a long title leaves the page count on screen", foot.countRight <= W + 1 && foot.countLeft >= 0, JSON.stringify(foot));
+  check("phone :: and is cut with an ellipsis", foot.docClipped, JSON.stringify(foot));
+
   /* ---- the keyboard ---- */
-  await page.evaluate((t) => window.__sipruInsets(JSON.stringify({ top: t, right: 0, bottom: 0, left: 0, ime: 330 })), TOP);
+  await page.evaluate((t) => window.__sipruInsets(JSON.stringify({ top: t, right: 0, bottom: 0, left: 0, ime: 330, kb: 330 })), TOP);
   await page.waitForTimeout(300);
   const kb = await page.evaluate(() => {
     const bar = document.querySelector(".ed-bar").getBoundingClientRect();
@@ -116,7 +130,13 @@ function check(name, cond, detail) {
   });
   check("phone :: the toolbar rides on top of the keyboard", Math.abs(kb.bottom - (H - 330)) <= 2, "bottom=" + kb.bottom);
   check("phone :: while typing only the formatting row stays", kb.endShown === false);
-  await page.evaluate((i) => window.__sipruInsets(JSON.stringify(i)), { top: TOP, right: 0, bottom: BOTTOM, left: 0, ime: 0 });
+  /* the other case seen on a real phone: the WebView shrank itself above the
+     keyboard, so the shell reports nothing covered and nothing may be lifted */
+  await page.evaluate((t) => window.__sipruInsets(JSON.stringify({ top: t, right: 0, bottom: 0, left: 0, ime: 330, kb: 0 })), TOP);
+  await page.waitForTimeout(300);
+  const shrunk = await page.evaluate(() => document.querySelector(".ed-bar").getBoundingClientRect().bottom);
+  check("phone :: a WebView that already shrank for the keyboard is not lifted twice", Math.abs(shrunk - H) <= 2, "bottom=" + shrunk);
+  await page.evaluate((i) => window.__sipruInsets(JSON.stringify(i)), { top: TOP, right: 0, bottom: BOTTOM, left: 0, ime: 0, kb: 0 });
 
   /* ---- feedback follows the press ---- */
   const before = await page.evaluate(() => window.__haptics.length);

@@ -128,12 +128,12 @@ function sandbox(opts) {
   N.haptic("success");
   check("native :: haptics reach the shell", calls.indexOf("success") >= 0, calls.join());
 
-  /* keyboard: the page lifts its bars only for what the viewport did not already give up */
-  sb.win.__sipruInsets(JSON.stringify({ top: 40, right: 0, bottom: 0, left: 0, ime: 300 }));
-  eq("native :: a keyboard that did not resize the page is its full height", N.keyboardOffset(), 300);
-  sb.win.innerHeight = 600;
-  eq("native :: a keyboard the page already shrank for needs no offset", N.keyboardOffset(), 0);
-  sb.win.__sipruInsets(JSON.stringify({ top: 40, right: 0, bottom: 24, left: 0, ime: 0 }));
+  /* keyboard: the shell measures what it covers of the WebView, and the page lifts by exactly that */
+  sb.win.__sipruInsets(JSON.stringify({ top: 40, right: 0, bottom: 0, left: 0, ime: 300, kb: 300 }));
+  eq("native :: a keyboard over an unresized page is its full height", N.keyboardOffset(), 300);
+  sb.win.__sipruInsets(JSON.stringify({ top: 40, right: 0, bottom: 0, left: 0, ime: 300, kb: 0 }));
+  eq("native :: a keyboard the WebView already shrank for needs no lift", N.keyboardOffset(), 0);
+  sb.win.__sipruInsets(JSON.stringify({ top: 40, right: 0, bottom: 24, left: 0, ime: 0, kb: 0 }));
   eq("native :: no keyboard, no offset", N.keyboardOffset(), 0);
 }
 {
