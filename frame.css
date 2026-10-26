@@ -484,7 +484,11 @@
 .modeswitch-b.on { background: var(--sheet); border-color: var(--line); color: var(--ink); font-weight: 500; }
 .ed-bar { padding: 7px 20px; border-bottom: 1px solid var(--line); }
 .tool, .icon-btn { border-radius: var(--r-md); }
-.ed-outline, .ed-setup { flex-basis: 280px; width: 280px; }
+/* desktop side panels only — on narrow screens they are drawers whose width
+   ui.css sets; this used to override that and squeeze them to 280px */
+@media (min-width: 861px) {
+  .ed-outline, .ed-setup { flex-basis: 280px; width: 280px; }
+}
 
 @media (max-width: 860px) {
   .frame--editor { grid-template-columns: 1fr; }
@@ -554,6 +558,27 @@
 .onb-cta { width: 100%; max-width: 480px; justify-content: center; }
 .onb-foot { margin-top: auto; padding-top: 28px; font-size: var(--t-xs);
   letter-spacing: .16em; text-transform: uppercase; color: var(--ink-faint); }
+
+/* The name field — a real field, as wide as the cards and buttons around
+   it. It used to be a bare 52px underline input with no min-width: wider
+   than its column, so focusing it scrolled the whole left pane sideways
+   and the step sat flush against the window edge. */
+.onb-left { overflow-x: hidden; }
+.onb-namewrap {
+  width: 100%; max-width: 480px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 18px; min-height: 60px;
+  background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-lg);
+  transition: border-color .2s var(--ease), box-shadow .2s var(--ease);
+}
+.onb-namewrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.onb-name {
+  flex: 1; min-width: 0; width: 100%;
+  font-size: var(--t-lg); font-weight: 500; letter-spacing: -.01em;
+  border: 0; padding: 14px 0; background: transparent;
+}
+.onb-name-dot { width: 11px; height: 11px; border-radius: 3px; }
+.onb-actions { flex-wrap: wrap; }
 
 @media (max-width: 980px) {
   .onb { grid-template-columns: 1fr; }

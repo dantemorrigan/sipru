@@ -84,7 +84,7 @@ function Onboarding({ onDone }) {
       {/* STEP -1 — language */}
       {step === -1 && (
         <div className="onb-stage screen-enter" key="lang">
-          <div className="eyebrow onb-kicker">{lang === "ru" ? "Шаг 1 · Язык" : "Step 1 · Language"}</div>
+          <div className="eyebrow onb-kicker">{lang === "ru" ? "язык" : "language"}</div>
           <h2 className="onb-q">
             {lang === "ru" ? "Выберите язык" : "Choose your language"}
           </h2>
@@ -131,6 +131,7 @@ function Onboarding({ onDone }) {
           <h2 className="onb-q">{tl("onb_q_1").split("\n").map((l, i) => <span key={i}>{l}<br /></span>)}</h2>
           <div className="onb-namewrap">
             <input ref={nameRef} className="onb-name" value={name} spellCheck={false}
+              autoCapitalize="words" autoComplete="off" enterKeyHint="next"
               placeholder={tl("onb_name_placeholder")} maxLength={40}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && hasName && go(2)} />
